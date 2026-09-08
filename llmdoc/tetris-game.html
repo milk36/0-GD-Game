@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>赛博朋克俄罗斯方块 · 实现说明</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 960px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.8em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+  }
+  h2 { color: #ff2a6d; margin-top: 36px; text-shadow: 0 0 12px rgba(255, 42, 109, 0.35); }
+  h3 { color: #ffe600; margin-top: 22px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  pre {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; color: #b7c4ef; line-height: 1.5;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #2a3554; padding: 8px 14px; text-align: left; }
+  th { background: #131a2e; color: #00f0ff; }
+  .ok { color: #00ff9f; }
+  .note {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>▚ 赛博朋克俄罗斯方块 · 实现说明</h1>
+
+<p>设计文档见 <code>tetris-design.html</code>。本文记录最终实现的结构、与设计的差异、
+验证结果与维护要点。游戏入口:游戏大厅 → 俄罗斯方块。</p>
+
+<h2>1. 文件结构</h2>
+<pre>res://
+├── scenes/tetris.tscn              # 游戏主场景(根 Control)
+├── scripts/
+│   ├── main_menu.gd                # 改造:GAME_SCENES 表按名跳转
+│   └── tetris/
+│       ├── tetris_defs.gd          # 形状表(7 方块 × 4 旋转态)+ 颜色 + 出生点
+│       ├── bag.gd                  # 7-bag 随机器
+│       ├── board.gd                # 22×10 棋盘数据:can_place/lock/full_rows/remove_rows
+│       ├── board_view.gd           # 棋盘 _draw 自绘(霓虹格子/幽灵/消行动画/震动)
+│       ├── piece_preview.gd        # Hold/Next 小预览(@export slots=1/3)
+│       ├── backdrop.gd             # 背景:透视网格 + 扫描线 + 地平线光带
+│       └── tetris_game.gd          # 主控:状态机/重力/DAS/锁定延迟/计分/存档
+└── themes/main_theme.tres          # 复用大厅主题(按钮三态样式)</pre>
+
+<h2>2. 场景树(tetris.tscn)</h2>
+<pre>Tetris (Control, full rect, tetris_game.gd + main_theme)
+├── Backdrop (Control, full rect, backdrop.gd)
+├── Center (CenterContainer, full rect)
+│   └── Layout (HBoxContainer, sep 48)
+│       ├── LeftPanel (VBox 210px)     # 标题 + 7 条操作说明
+│       ├── BoardView (Control 320×640, board_view.gd)
+│       └── RightPanel (VBox 170px)
+│           ├── HoldBox  → HoldPreview (piece_preview, slots=1)
+│           ├── NextBox  → NextPreview (piece_preview, slots=3)
+│           └── Stats    # SCORE/LEVEL/LINES/HI-SCORE 标题+值
+├── PauseOverlay (ColorRect #05081099, hidden)
+│   └── Center > Box > PauseTitle + Resume/Restart/Menu 按钮
+└── GameOverOverlay (ColorRect #050810b3, hidden)
+    └── Center > Box > GOTitle"SYSTEM CRASH" + FinalScore + NewRecord + Retry/Menu 按钮</pre>
+
+<h2>3. 关键实现决策</h2>
+<ul>
+  <li><b>渲染全自绘</b>:棋盘 220 格 + 辉光多层描边全部 <code>CanvasItem._draw()</code>,
+      无节点开销、不依赖 Bloom(GL Compatibility 下表现稳定)。</li>
+  <li><b>棋盘 22 行 = 20 可视 + 2 隐藏</b>:锁定块整块落在隐藏区判 lock-out 负;
+      spawn 位于 row 0-1,出生即碰撞也判负。</li>
+  <li><b>简化墙踢</b>:旋转失败依次尝试 原位 → 左1 → 右1 → 上1;O 块禁旋转。</li>
+  <li><b>锁定延迟</b>:触底 0.5s,移动/旋转可重置计时(上限 15 次)。</li>
+  <li><b>DAS</b>:首次立即移动,按住 0.16s 后以 0.045s 间隔连发。</li>
+  <li><b>最高分</b>:<code>user://tetris_score.dat</code>(int64)。</li>
+  <li><b>输入</b>:8 个 <code>tetris_*</code> InputMap action(方向键 + WASD + 空格 + X/Z/C/P/Esc),
+      写入 project.godot。</li>
+  <li><b>窗口</b>:1280×720(棋盘 32px 格 × 10×20)。</li>
+</ul>
+
+<h2>4. 与设计文档的差异</h2>
+<table>
+  <tr><th>设计</th><th>实现</th><th>原因</th></tr>
+  <tr><td>墙踢含 左2/右2</td><td>仅 原位/左1/右1/上1</td><td>简化版足够,I 块特殊情况罕见</td></tr>
+  <tr><td>左栏多个 Label</td><td>一致</td><td>—</td></tr>
+  <tr><td>BoardView 独立 board_view.gd</td><td>一致</td><td>—</td></tr>
+</table>
+
+<h2>5. 已知注意点(踩坑记录)</h2>
+<div class="note">
+  <ol>
+    <li><b>GDScript 类型推断</b>:遍历无类型数组(如 SHAPES)时 <code>:=</code> 无法推断,
+        必须显式 <code>var gx: int = x + c.x</code>;调用 <code>RefCounted</code>(board)
+        的方法返回值同理(<code>var grounded: bool = ...</code>)。</li>
+    <li><b>跨脚本引用注入</b>:<code>tetris_game._ready()</code> 必须执行
+        <code>board_view.board = board</code>,否则幽灵块计算在 Nil 上崩溃
+        (首版遗漏此行导致 debugger break,已修复并加 null 保护)。</li>
+    <li><b>menu 内 UI 路径</b>:覆盖层按钮在 <code>_ready()</code> 用绝对路径连接信号,
+        场景节点改名需同步 <code>@onready</code> 列表。</li>
+  </ol>
+</div>
+
+<h2>6. 验证结果(2026-09-07)</h2>
+<table>
+  <tr><th>项目</th><th>方式</th><th>结果</th></tr>
+  <tr><td>菜单跳转</td><td>模拟点击 TetrisButton</td><td class="ok">通过</td></tr>
+  <tr><td>形状数据(7×4 态、无重复格)</td><td>game_eval 单测</td><td class="ok">通过</td></tr>
+  <tr><td>边界/堆叠碰撞</td><td>game_eval 单测(左墙/底部/占用格)</td><td class="ok">通过</td></tr>
+  <tr><td>消行 full_rows/remove_rows</td><td>game_eval 单测</td><td class="ok">通过</td></tr>
+  <tr><td>lock-out 判定</td><td>game_eval 单测</td><td class="ok">通过</td></tr>
+  <tr><td>左移/旋转/硬降 + 计分</td><td>input_sequence 帧序列(硬降 18 格 = 36 分)</td><td class="ok">通过</td></tr>
+  <tr><td>幽灵块/Hold/Next 预览渲染</td><td>截图确认</td><td class="ok">通过</td></tr>
+  <tr><td>暂停覆盖层 + 按钮样式</td><td>模拟 P 键 + 截图</td><td class="ok">通过</td></tr>
+</table>
+
+<h2>7. 后续可扩展</h2>
+<ul>
+  <li>音效:锁定/消行/Tetris/升级(项目尚无音频资源)。</li>
+  <li>T-Spin / Back-to-Back / Combo 计分。</li>
+  <li>消行文字反馈(SINGLE/DOUBLE/TETRIS 特效字)。</li>
+  <li>背景音乐(合成器浪潮 loop)。</li>
+</ul>
+
+<p style="margin-top:40px;color:#5a6486">— 实现完成于 2026-09-07 · demo-game · Godot 4.7.2</p>
+
+</body>
+</html>

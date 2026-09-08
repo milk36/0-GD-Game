@@ -1,0 +1,96 @@
+[gd_scene format=3 uid="uid://basu7148jlw0h"]
+
+[ext_resource type="Theme" uid="uid://bx7u84oqt5uyf" path="res://themes/main_theme.tres" id="1_ekxnf"]
+[ext_resource type="Script" uid="uid://d4t6q6pfd65" path="res://scripts/main_menu.gd" id="1_l6cm7"]
+
+[node name="MainMenu" type="Control" unique_id=1464830177]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme = ExtResource("1_ekxnf")
+script = ExtResource("1_l6cm7")
+
+[node name="UILayer" type="Control" parent="." unique_id=915715783]
+anchors_preset = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Background" type="ColorRect" parent="UILayer" unique_id=740392030]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.07058824, 0.078431375, 0.12156863, 1)
+
+[node name="Center" type="CenterContainer" parent="UILayer" unique_id=933443063]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Panel" type="PanelContainer" parent="UILayer/Center" unique_id=50802487]
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="UILayer/Center/Panel" unique_id=1322434543]
+layout_mode = 2
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 32
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 32
+
+[node name="List" type="VBoxContainer" parent="UILayer/Center/Panel/Margin" unique_id=1682880321]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="UILayer/Center/Panel/Margin/List" unique_id=554577197]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.93333334, 0.9411765, 1, 1)
+theme_override_font_sizes/font_size = 36
+text = "游戏大厅"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="UILayer/Center/Panel/Margin/List" unique_id=1087825474]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54509807, 0.5647059, 0.65882355, 1)
+theme_override_font_sizes/font_size = 15
+text = "选择一个游戏开始"
+horizontal_alignment = 1
+
+[node name="Sep" type="HSeparator" parent="UILayer/Center/Panel/Margin/List" unique_id=1990868437]
+layout_mode = 2
+
+[node name="SnakeButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=1966304133]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "贪吃蛇"
+
+[node name="TetrisButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=1952141438]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "俄罗斯方块"
+
+[node name="G2048Button" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=2096444458]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "2048"
+
+[node name="BreakoutButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=1046029037]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "打砖块"
+
+[node name="MineButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=462814541]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "扫雷"
+
+[node name="StatusLabel" type="Label" parent="UILayer/Center/Panel/Margin/List" unique_id=561755763]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.37254903, 0.827451, 0.6039216, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1

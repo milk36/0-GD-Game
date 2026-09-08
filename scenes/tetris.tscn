@@ -1,0 +1,294 @@
+[gd_scene format=3 uid="uid://j3fui37wox2"]
+
+[ext_resource type="Theme" uid="uid://bx7u84oqt5uyf" path="res://themes/main_theme.tres" id="1_j50mw"]
+[ext_resource type="Script" uid="uid://nmm0ve0j7xrm" path="res://scripts/tetris/tetris_game.gd" id="2_vilai"]
+[ext_resource type="Script" uid="uid://bmqvs7s2w4hk0" path="res://scripts/tetris/backdrop.gd" id="3_0jb5p"]
+[ext_resource type="Script" uid="uid://b5pvyjdcy3m4h" path="res://scripts/tetris/board_view.gd" id="4_s3l4a"]
+[ext_resource type="Script" uid="uid://yn1up3ogoi48" path="res://scripts/tetris/piece_preview.gd" id="5_cbgu4"]
+
+[node name="Tetris" type="Control" unique_id=1475114676]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme = ExtResource("1_j50mw")
+script = ExtResource("2_vilai")
+
+[node name="Backdrop" type="Control" parent="." unique_id=1864428486]
+anchors_preset = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("3_0jb5p")
+
+[node name="Center" type="CenterContainer" parent="." unique_id=1984219135]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Layout" type="HBoxContainer" parent="Center" unique_id=538211007]
+layout_mode = 2
+theme_override_constants/separation = 48
+
+[node name="LeftPanel" type="VBoxContainer" parent="Center/Layout" unique_id=1535348083]
+custom_minimum_size = Vector2(210, 0)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Center/Layout/LeftPanel" unique_id=97912705]
+layout_mode = 2
+theme_override_colors/font_color = Color(0, 0.9411765, 1, 1)
+theme_override_font_sizes/font_size = 26
+text = "НЕОН // TETRIS"
+
+[node name="SubTitle" type="Label" parent="Center/Layout/LeftPanel" unique_id=223778252]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.16470589, 0.42745098, 1)
+theme_override_font_sizes/font_size = 15
+text = "赛博朋克 · 方块终端"
+
+[node name="Sep" type="HSeparator" parent="Center/Layout/LeftPanel" unique_id=444551860]
+layout_mode = 2
+
+[node name="HelpTitle" type="Label" parent="Center/Layout/LeftPanel" unique_id=1680729185]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54509807, 0.5647059, 0.65882355, 1)
+theme_override_font_sizes/font_size = 13
+text = "── 操作 ──"
+
+[node name="H1" type="Label" parent="Center/Layout/LeftPanel" unique_id=1576420866]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3529412, 0.39215687, 0.5254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "← → 移动"
+
+[node name="H2" type="Label" parent="Center/Layout/LeftPanel" unique_id=1170882610]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3529412, 0.39215687, 0.5254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "↓ 软降 +1/格"
+
+[node name="H3" type="Label" parent="Center/Layout/LeftPanel" unique_id=264005206]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3529412, 0.39215687, 0.5254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "SPACE 硬降 +2/格"
+
+[node name="H4" type="Label" parent="Center/Layout/LeftPanel" unique_id=1675351935]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3529412, 0.39215687, 0.5254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "↑/X 顺旋 · Z 逆旋"
+
+[node name="H5" type="Label" parent="Center/Layout/LeftPanel" unique_id=2147141162]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3529412, 0.39215687, 0.5254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "C 暂存交换"
+
+[node name="H6" type="Label" parent="Center/Layout/LeftPanel" unique_id=1502877848]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3529412, 0.39215687, 0.5254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "P / ESC 暂停"
+
+[node name="BoardView" type="Control" parent="Center/Layout" unique_id=1143008857]
+custom_minimum_size = Vector2(320, 640)
+layout_mode = 2
+script = ExtResource("4_s3l4a")
+
+[node name="RightPanel" type="VBoxContainer" parent="Center/Layout" unique_id=176442075]
+custom_minimum_size = Vector2(170, 0)
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="HoldBox" type="VBoxContainer" parent="Center/Layout/RightPanel" unique_id=1619631340]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="HoldTitle" type="Label" parent="Center/Layout/RightPanel/HoldBox" unique_id=788353423]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9019608, 0, 1)
+theme_override_font_sizes/font_size = 14
+text = "HOLD · 暂存 [C]"
+
+[node name="HoldPreview" type="Control" parent="Center/Layout/RightPanel/HoldBox" unique_id=488063233]
+custom_minimum_size = Vector2(120, 64)
+layout_mode = 2
+script = ExtResource("5_cbgu4")
+
+[node name="NextBox" type="VBoxContainer" parent="Center/Layout/RightPanel" unique_id=715678264]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="NextTitle" type="Label" parent="Center/Layout/RightPanel/NextBox" unique_id=1313592221]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9019608, 0, 1)
+theme_override_font_sizes/font_size = 14
+text = "NEXT · 预览"
+
+[node name="NextPreview" type="Control" parent="Center/Layout/RightPanel/NextBox" unique_id=643273398]
+custom_minimum_size = Vector2(120, 192)
+layout_mode = 2
+script = ExtResource("5_cbgu4")
+slots = 3
+
+[node name="Sep2" type="HSeparator" parent="Center/Layout/RightPanel" unique_id=1424709312]
+layout_mode = 2
+
+[node name="Stats" type="VBoxContainer" parent="Center/Layout/RightPanel" unique_id=1921238840]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="ScoreTitle" type="Label" parent="Center/Layout/RightPanel/Stats" unique_id=340107052]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54509807, 0.5647059, 0.65882355, 1)
+theme_override_font_sizes/font_size = 12
+text = "SCORE 分数"
+
+[node name="ScoreValue" type="Label" parent="Center/Layout/RightPanel/Stats" unique_id=1752375131]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9019608, 0, 1)
+theme_override_font_sizes/font_size = 26
+text = "0"
+
+[node name="LevelTitle" type="Label" parent="Center/Layout/RightPanel/Stats" unique_id=1828365003]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54509807, 0.5647059, 0.65882355, 1)
+theme_override_font_sizes/font_size = 12
+text = "LEVEL 等级"
+
+[node name="LevelValue" type="Label" parent="Center/Layout/RightPanel/Stats" unique_id=613978808]
+layout_mode = 2
+theme_override_colors/font_color = Color(0, 0.9411765, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "1"
+
+[node name="LinesTitle" type="Label" parent="Center/Layout/RightPanel/Stats" unique_id=318422524]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54509807, 0.5647059, 0.65882355, 1)
+theme_override_font_sizes/font_size = 12
+text = "LINES 行数"
+
+[node name="LinesValue" type="Label" parent="Center/Layout/RightPanel/Stats" unique_id=751019648]
+layout_mode = 2
+theme_override_colors/font_color = Color(0, 0.9411765, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "0"
+
+[node name="HiTitle" type="Label" parent="Center/Layout/RightPanel/Stats" unique_id=1040281339]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54509807, 0.5647059, 0.65882355, 1)
+theme_override_font_sizes/font_size = 12
+text = "HI-SCORE 最高分"
+
+[node name="HiValue" type="Label" parent="Center/Layout/RightPanel/Stats" unique_id=730170516]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.16470589, 0.42745098, 1)
+theme_override_font_sizes/font_size = 16
+text = "0"
+
+[node name="PauseOverlay" type="ColorRect" parent="." unique_id=224341316]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.019607844, 0.03137255, 0.0627451, 0.6)
+
+[node name="Center" type="CenterContainer" parent="PauseOverlay" unique_id=1365951255]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Box" type="VBoxContainer" parent="PauseOverlay/Center" unique_id=2119873579]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="PauseTitle" type="Label" parent="PauseOverlay/Center/Box" unique_id=553637246]
+layout_mode = 2
+theme_override_colors/font_color = Color(0, 0.9411765, 1, 1)
+theme_override_font_sizes/font_size = 42
+text = "PAUSED"
+horizontal_alignment = 1
+
+[node name="PauseSub" type="Label" parent="PauseOverlay/Center/Box" unique_id=1916213874]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54509807, 0.5647059, 0.65882355, 1)
+theme_override_font_sizes/font_size = 14
+text = "// 系统挂起"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="PauseOverlay/Center/Box" unique_id=206613679]
+custom_minimum_size = Vector2(220, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "继 续 [P]"
+
+[node name="RestartButton" type="Button" parent="PauseOverlay/Center/Box" unique_id=919514700]
+custom_minimum_size = Vector2(220, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "重新开始"
+
+[node name="MenuButton" type="Button" parent="PauseOverlay/Center/Box" unique_id=781987942]
+custom_minimum_size = Vector2(220, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "返回大厅"
+
+[node name="GameOverOverlay" type="ColorRect" parent="." unique_id=756771278]
+visible = false
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.019607844, 0.03137255, 0.0627451, 0.7019608)
+
+[node name="Center" type="CenterContainer" parent="GameOverOverlay" unique_id=1981777456]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Box" type="VBoxContainer" parent="GameOverOverlay/Center" unique_id=1541891928]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="GOTitle" type="Label" parent="GameOverOverlay/Center/Box" unique_id=230829956]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.16470589, 0.42745098, 1)
+theme_override_font_sizes/font_size = 40
+text = "SYSTEM CRASH"
+horizontal_alignment = 1
+
+[node name="GOSub" type="Label" parent="GameOverOverlay/Center/Box" unique_id=2005063777]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54509807, 0.5647059, 0.65882355, 1)
+theme_override_font_sizes/font_size = 14
+text = "// 连接中断 — 方块溢出"
+horizontal_alignment = 1
+
+[node name="FinalScore" type="Label" parent="GameOverOverlay/Center/Box" unique_id=109588297]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9019608, 0, 1)
+theme_override_font_sizes/font_size = 20
+text = "本局得分  0"
+horizontal_alignment = 1
+
+[node name="NewRecord" type="Label" parent="GameOverOverlay/Center/Box" unique_id=1877102199]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9019608, 0, 1)
+theme_override_font_sizes/font_size = 16
+text = "★ 新纪录 NEW RECORD ★"
+horizontal_alignment = 1
+
+[node name="RetryButton" type="Button" parent="GameOverOverlay/Center/Box" unique_id=878669702]
+custom_minimum_size = Vector2(220, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "再来一局"
+
+[node name="MenuButton" type="Button" parent="GameOverOverlay/Center/Box" unique_id=1203813717]
+custom_minimum_size = Vector2(220, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "返回大厅"

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>赛博朋克俄罗斯方块 · 游戏设计规划</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 960px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.9em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.45);
+  }
+  h2 {
+    color: #ff2a6d; margin-top: 40px; letter-spacing: 1px;
+    text-shadow: 0 0 14px rgba(255, 42, 109, 0.4);
+  }
+  h3 { color: #ffe600; margin-top: 24px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  pre {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; color: #b7c4ef; line-height: 1.5;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #2a3554; padding: 8px 14px; text-align: left; }
+  th { background: #131a2e; color: #00f0ff; }
+  .note {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 8px; vertical-align: -2px; border: 1px solid #33406b; }
+  .toc { background: #10182c; border: 1px solid #2a3554; border-radius: 10px; padding: 16px 24px; }
+  .toc a { color: #7ee7ff; text-decoration: none; }
+  .toc a:hover { color: #ff2a6d; }
+</style>
+</head>
+<body>
+
+<h1>▚ 赛博朋克俄罗斯方块 · 游戏设计规划</h1>
+
+<div class="toc">
+<b>目录</b>：
+1. <a href="#overview">项目概述</a> ·
+2. <a href="#visual">视觉设计规范</a> ·
+3. <a href="#rules">游戏规则与机制</a> ·
+4. <a href="#ui">UI 布局设计</a> ·
+5. <a href="#input">输入映射</a> ·
+6. <a href="#tech">技术实现方案</a> ·
+7. <a href="#milestones">里程碑拆分</a> ·
+8. <a href="#acceptance">验收标准</a>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="overview">1. 项目概述</h2>
+
+<p><b>定位</b>：在 demo-game 游戏大厅中新增第一款可玩小游戏。从主菜单点击
+「俄罗斯方块」进入游戏场景，Esc/按钮返回大厅。经典俄罗斯方块规则 +
+赛博朋克霓虹视觉包装。</p>
+
+<table>
+  <tr><th>项目</th><th>内容</th></tr>
+  <tr><td>玩法类型</td><td>经典落块消除（Tetris Guideline 简化版）</td></tr>
+  <tr><td>视觉风格</td><td>赛博朋克：深空蓝黑底、霓虹青/粉主色、扫描线、故障感消行动画</td></tr>
+  <tr><td>平台</td><td>Godot 4.7.2 桌面端（GL Compatibility 渲染器）</td></tr>
+  <tr><td>目标版本</td><td>M1 核心可玩 → M3 打磨完成，单场景交付</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="visual">2. 视觉设计规范</h2>
+
+<h3>2.1 全局色板</h3>
+<table>
+  <tr><th>用途</th><th>色值</th><th>示例</th></tr>
+  <tr><td>窗口背景</td><td><code>#050810</code>（近黑深蓝）</td><td><span class="swatch" style="background:#050810"></span></td></tr>
+  <tr><td>棋盘底</td><td><code>#0a0e1a</code></td><td><span class="swatch" style="background:#0a0e1a"></span></td></tr>
+  <tr><td>网格线</td><td><code>#16203a</code>（低亮度，不抢戏）</td><td><span class="swatch" style="background:#16203a"></span></td></tr>
+  <tr><td>主霓虹（青）</td><td><code>#00f0ff</code> 标题/边框/选中态</td><td><span class="swatch" style="background:#00f0ff"></span></td></tr>
+  <tr><td>副霓虹（粉）</td><td><code>#ff2a6d</code> 强调/警告/Game Over</td><td><span class="swatch" style="background:#ff2a6d"></span></td></tr>
+  <tr><td>点缀霓虹（黄）</td><td><code>#ffe600</code> 计分数字/高亮</td><td><span class="swatch" style="background:#ffe600"></span></td></tr>
+</table>
+
+<h3>2.2 七种方块配色（各占一种霓虹色）</h3>
+<table>
+  <tr><th>方块</th><th>色值</th><th>示意</th><th>方块</th><th>色值</th><th>示意</th></tr>
+  <tr><td>I</td><td><code>#00f0ff</code> 青</td><td><span class="swatch" style="background:#00f0ff"></span></td>
+      <td>S</td><td><code>#00ff9f</code> 荧光绿</td><td><span class="swatch" style="background:#00ff9f"></span></td></tr>
+  <tr><td>O</td><td><code>#ffe600</code> 黄</td><td><span class="swatch" style="background:#ffe600"></span></td>
+      <td>Z</td><td><code>#ff2a6d</code> 品红粉</td><td><span class="swatch" style="background:#ff2a6d"></span></td></tr>
+  <tr><td>T</td><td><code>#bd00ff</code> 电紫</td><td><span class="swatch" style="background:#bd00ff"></span></td>
+      <td>J</td><td><code>#2979ff</code> 亮蓝</td><td><span class="swatch" style="background:#2979ff"></span></td></tr>
+  <tr><td>L</td><td><code>#ff9100</code> 橙</td><td><span class="swatch" style="background:#ff9100"></span></td>
+      <td></td><td></td><td></td></tr>
+</table>
+
+<h3>2.3 方块单元渲染风格</h3>
+<ul>
+  <li>每个格子：霓虹主色填充（略暗化 80%）+ 亮色描边（2px）+ 内部对角高光线，模拟霓虹灯管质感。</li>
+  <li>发光实现：绘制多层半透明扩散描边（外扩 2/4/6px、透明度递减），
+      <b>不依赖 HDR/Bloom</b>——项目使用 GL Compatibility 渲染器，
+      以 <code>CanvasItem._draw()</code> 多层绘制实现辉光，保证全平台一致。</li>
+  <li>幽灵方块（Ghost）：仅描边 + 20% 透明填充，指示落点。</li>
+</ul>
+
+<h3>2.4 全屏氛围特效</h3>
+<ul>
+  <li><b>扫描线</b>：全屏叠加层，每 4px 一条 3% 透明度暗线（一张可平铺纹理或 _draw 绘制）。</li>
+  <li><b>背景网格</b>：棋盘外背景绘制淡青色透视网格线（透明度 4%），营造数字空间感。</li>
+  <li><b>消行动画</b>：被消除行先闪白 → 霓虹色故障抖动（水平错位 + 随机色差）→ 碎裂消失，总时长约 0.25s。</li>
+  <li><b>硬降特效</b>：方块落地瞬间棋盘轻微向下震动 2-3px + 落点列拖尾光柱。</li>
+  <li><b>升级特效</b>：升级时边框霓虹色波纹扫过一次。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="rules">3. 游戏规则与机制</h2>
+
+<h3>3.1 棋盘与方块</h3>
+<ul>
+  <li>棋盘 10 列 × 20 行（可视），另加顶部 2 行隐藏缓冲区，共 22 行。</li>
+  <li>7 种标准方块（I/O/T/S/Z/J/L），采用 <b>7-bag 随机器</b>：每袋 7 种随机排序发完再补袋，保证分布均匀。</li>
+  <li>出生位置：棋盘顶部居中（列 3-6 区域），出生即与已堆叠方块重叠 → 直接 Game Over。</li>
+</ul>
+
+<h3>3.2 操作机制</h3>
+<table>
+  <tr><th>机制</th><th>规则</th></tr>
+  <tr><td>移动</td><td>左右各 1 格；按住可 DAS 连发（延迟 0.17s，重复间隔 0.05s）</td></tr>
+  <tr><td>软降</td><td>按住下键加速下落（重力 ×20），每格 +1 分</td></tr>
+  <tr><td>硬降</td><td>瞬间落底并锁定，每格 +2 分，触发落地震动特效</td></tr>
+  <tr><td>旋转</td><td>顺时针（↑/X）、逆时针（Z）；带<b>简化墙踢</b>：尝试原位 → 左移1 → 右移1 → 上移1，均失败则旋转无效。O 块不可旋转。</td></tr>
+  <tr><td>Hold 暂存</td><td>C 键将当前块与暂存块交换，每块落定前限用 1 次</td></tr>
+  <tr><td>锁定延迟</td><td>触底后 0.5s 内可移动/旋转重置计时（最多重置 15 次，防无限拖延）</td></tr>
+</ul>
+
+<h3>3.3 计分与等级</h3>
+<table>
+  <tr><th>消除</th><th>得分（×当前等级）</th><th>术语</th></tr>
+  <tr><td>1 行</td><td>100</td><td>SINGLE</td></tr>
+  <tr><td>2 行</td><td>300</td><td>DOUBLE</td></tr>
+  <tr><td>3 行</td><td>500</td><td>TRIPLE</td></tr>
+  <tr><td>4 行</td><td>800</td><td>TETRIS（附加金色闪光）</td></tr>
+</table>
+<ul>
+  <li>升级：每消除 10 行升 1 级。</li>
+  <li>重力曲线：第 n 级下落间隔 = <code>max(0.05, 1.0 × 0.85^(n-1))</code> 秒/行。</li>
+</ul>
+
+<h3>3.4 游戏状态机</h3>
+<pre>MENU(大厅) → PLAYING ⇄ PAUSED(暂停覆盖层) → GAME_OVER(结算覆盖层) → 返回大厅 / 重开</pre>
+
+<!-- ============================================================ -->
+<h2 id="ui">4. UI 布局设计</h2>
+
+<pre>┌────────────────────────────────────────────────────┐
+│  [左栏·操作说明]   [中央·棋盘 10×20]   [右栏·状态]   │
+│  ┌────────────┐   ┌──────────────┐   ┌───────────┐ │
+│  │ ← → 移动    │   │              │   │ HOLD 暂存 │ │
+│  │ ↓ 软降      │   │   霓虹边框    │   │ ┌─┐       │ │
+│  │ 空格 硬降   │   │   内部网格    │   │ └─┘       │ │
+│  │ ↑/X 顺旋   │   │              │   │ NEXT×3    │ │
+│  │ Z 逆旋     │   │  (方块+幽灵)  │   │ ┌─┐┌─┐┌─┐│ │
+│  │ C 暂存     │   │              │   │ └─┘└─┘└─┘│ │
+│  │ P/Esc 暂停 │   │              │   │ ─────────  │ │
+│  └────────────┘   └──────────────┘   │ SCORE  分数│ │
+│                                       │ LEVEL  等级│ │
+│                                       │ LINES  行数│ │
+│                                       │ HI-SCORE  │ │
+│                                       └───────────┘ │
+└────────────────────────────────────────────────────┘</pre>
+
+<ul>
+  <li>棋盘：中央，霓虹青双边框（外发光），格宽 32px → 棋盘 320×640，窗口适配 1280×720 基准、<code>canvas_items</code> 拉伸。</li>
+  <li>顶部标题条：<code>НЕОН TETRIS // 赛博方块</code> 霓虹描边字。</li>
+  <li>暂停覆盖层：半透明黑 + 「PAUSED / 已暂停」+ 继续/重开/返回大厅按钮。</li>
+  <li>Game Over 覆盖层：粉红故障字「SYSTEM CRASH」+ 本局分数/最高分 + 重开/返回大厅。</li>
+  <li>最高分：<code>user://tetris_score.dat</code> 本地持久化。</li>
+  <li>主菜单接入：<code>main_menu.gd</code> 的 <code>_on_game_selected</code> 按游戏名跳转对应场景。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="input">5. 输入映射（注册为 InputMap Action）</h2>
+<table>
+  <tr><th>Action</th><th>默认键</th><th>说明</th></tr>
+  <tr><td><code>tetris_left</code></td><td>← / A</td><td>左移</td></tr>
+  <tr><td><code>tetris_right</code></td><td>→ / D</td><td>右移</td></tr>
+  <tr><td><code>tetris_soft_drop</code></td><td>↓ / S</td><td>软降</td></tr>
+  <tr><td><code>tetris_hard_drop</code></td><td>空格</td><td>硬降</td></tr>
+  <tr><td><code>tetris_rotate_cw</code></td><td>↑ / X</td><td>顺时针旋转</td></tr>
+  <tr><td><code>tetris_rotate_ccw</code></td><td>Z</td><td>逆时针旋转</td></tr>
+  <tr><td><code>tetris_hold</code></td><td>C</td><td>暂存交换</td></tr>
+  <tr><td><code>tetris_pause</code></td><td>P / Esc</td><td>暂停（Game Over 时 Esc=返回大厅）</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="tech">6. 技术实现方案</h2>
+
+<h3>6.1 文件结构</h3>
+<pre>res://
+├── scenes/
+│   ├── main_menu.tscn        # 已有，接入跳转
+│   └── tetris.tscn           # 游戏主场景（本作新增）
+├── scripts/
+│   ├── main_menu.gd          # 已有，改造 _on_game_selected
+│   └── tetris/
+│       ├── tetris_game.gd    # 挂根节点：状态机、重力、计分、输入调度
+│       ├── board.gd          # 棋盘数据：22×10 数组、碰撞检测、消行
+│       ├── bag.gd            # 7-bag 随机器
+│       └── piece.gd          # Piece 数据类：类型/旋转态/位置/颜色
+└── themes/main_theme.tres    # 已有，复用按钮样式</pre>
+
+<h3>6.2 场景树（tetris.tscn）</h3>
+<pre>Tetris (Control, full rect, tetris_game.gd)
+├── Backdrop (Control, _draw 背景网格 + 扫描线)
+├── Layout (HBoxContainer 居中)
+│   ├── LeftPanel (操作说明 VBox，Label 组)
+│   ├── BoardView (Control, custom_min 320×640, board_view.gd: _draw 绘制
+│   │            网格/已锁定块/当前块/幽灵块/消行闪光)
+│   └── RightPanel (VBox: HoldView + NextView×3 + 分数区)
+├── PauseOverlay (ColorRect 半透明 + 按钮组, 默认 hidden)
+└── GameOverOverlay (同上, 默认 hidden)</pre>
+
+<h3>6.3 关键数据结构</h3>
+<pre># piece.gd —— 形状以 4 个旋转态的格子坐标表硬编码（简化 SRS）
+const SHAPES := {
+  "I": [ [Vector2i(0,1),Vector2i(1,1),Vector2i(2,1),Vector2i(3,1)], ...4 态 ],
+  ...
+}
+# board.gd
+var cells: Array[Array]   # 22 行 × 10 列，0=空，否则存方块类型索引
+# tetris_game.gd 重力
+var drop_timer: float     # _process(delta) 累加，超过当前间隔触发下落</pre>
+
+<h3>6.4 渲染决策</h3>
+<div class="note">
+  <b>为什么用 <code>_draw()</code> 自绘而不是 TileMap / 大量节点？</b>
+  棋盘最多 220 格 + 特效层，自绘一次 <code>queue_redraw()</code> 即可全量重画，
+  无节点开销；霓虹辉光需要多层半透明矩形，自绘最容易控制；
+  且 GL Compatibility 下不依赖 2D Glow 特性，表现稳定。
+</div>
+
+<h3>6.5 主菜单接入改造</h3>
+<pre># main_menu.gd
+const GAME_SCENES := { "俄罗斯方块": "res://scenes/tetris.tscn" }
+
+func _on_game_selected(game_name: String) -> void:
+    if GAME_SCENES.has(game_name):
+        get_tree().change_scene_to_file(GAME_SCENES[game_name])
+    else:
+        _status.text = "「%s」开发中，敬请期待~" % game_name</pre>
+
+<!-- ============================================================ -->
+<h2 id="milestones">7. 里程碑拆分</h2>
+<table>
+  <tr><th>里程碑</th><th>内容</th><th>产出</th></tr>
+  <tr><td><b>M1 核心可玩</b></td>
+      <td>棋盘+方块+移动/旋转/软硬降+消行+计分+等级加速+Game Over+主菜单跳转</td>
+      <td>完整可玩的素版</td></tr>
+  <tr><td><b>M2 视觉包装</b></td>
+      <td>霓虹配色渲染、幽灵方块、Hold/Next 面板、扫描线、背景网格</td>
+      <td>赛博朋克视觉成型</td></tr>
+  <tr><td><b>M3 打磨</b></td>
+      <td>消行故障动画、硬降震动、锁定延迟、DAS 连发、最高分存档、暂停/结算覆盖层</td>
+      <td>交付版</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="acceptance">8. 验收标准</h2>
+<ul>
+  <li>从大厅点击「俄罗斯方块」进入游戏，Esc 可返回大厅（先弹暂停层）。</li>
+  <li>7 种方块正确生成（7-bag）、可移动/旋转（含墙踢）/软降/硬降/Hold，幽灵方块指示落点。</li>
+  <li>消行正确（1-4 行）、计分公式正确、每 10 行升级并加速。</li>
+  <li>方块堆到顶部触发 Game Over，覆盖层显示成绩，可重开。</li>
+  <li>锁定延迟与 DAS 生效；最高分重启后保留。</li>
+  <li>视觉符合第 2 节规范；无报错、无脚本警告；窗口缩放布局不错位。</li>
+</ul>
+
+<p style="margin-top:40px;color:#5a6486">— 设计定稿于 2026-09-07 · demo-game 项目 · Godot 4.7.2</p>
+
+</body>
+</html>
