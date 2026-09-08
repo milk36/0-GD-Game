@@ -5,12 +5,15 @@
 [ext_resource type="Script" uid="uid://bmqvs7s2w4hk0" path="res://scripts/tetris/backdrop.gd" id="3_0jb5p"]
 [ext_resource type="Script" uid="uid://b5pvyjdcy3m4h" path="res://scripts/tetris/board_view.gd" id="4_s3l4a"]
 [ext_resource type="Script" uid="uid://yn1up3ogoi48" path="res://scripts/tetris/piece_preview.gd" id="5_cbgu4"]
+[ext_resource type="Script" uid="uid://chrcwvpw7k55i" path="res://scripts/tetris/particle_layer.gd" id="5_vilai"]
 
 [node name="Tetris" type="Control" unique_id=1475114676]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 theme = ExtResource("1_j50mw")
 script = ExtResource("2_vilai")
 
@@ -95,6 +98,13 @@ text = "P / ESC 暂停"
 custom_minimum_size = Vector2(320, 640)
 layout_mode = 2
 script = ExtResource("4_s3l4a")
+
+[node name="Particles" type="Control" parent="Center/Layout/BoardView" unique_id=1059885614]
+anchors_preset = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("5_vilai")
 
 [node name="RightPanel" type="VBoxContainer" parent="Center/Layout" unique_id=176442075]
 custom_minimum_size = Vector2(170, 0)
@@ -292,3 +302,16 @@ custom_minimum_size = Vector2(220, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 17
 text = "返回大厅"
+
+[node name="FloatLabel" type="Label" parent="." unique_id=848028735]
+visible = false
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -240.0
+offset_top = 96.0
+offset_right = 240.0
+offset_bottom = 136.0
+theme_override_colors/font_color = Color(1, 0.8235294, 0.24705882, 1)
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 1

@@ -63,3 +63,74 @@ func remove_rows(rows: Array[int]) -> void:
 		row.resize(WIDTH)
 		row.fill(0)
 		cells.insert(0, row)
+
+
+## ---- 道具系统支持 ----
+
+func random_filled_cell() -> Vector2i:
+	## 随机返回一个已填充格(棋盘坐标);棋盘为空返回 (-1,-1)。
+	var filled: Array[Vector2i] = []
+	for y in HEIGHT:
+		for x in WIDTH:
+			if cells[y][x] != 0:
+				filled.append(Vector2i(x, y))
+	if filled.is_empty():
+		return Vector2i(-1, -1)
+	return filled[randi() % filled.size()]
+
+
+func filled_row_indices() -> Array[int]:
+	## 含至少一个方块的行号列表。
+	var rows: Array[int] = []
+	for y in HEIGHT:
+		for x in WIDTH:
+			if cells[y][x] != 0:
+				rows.append(y)
+				break
+	return rows
+
+
+func filled_column_indices() -> Array[int]:
+	## 含至少一个方块的列号列表。
+	var cols: Array[int] = []
+	for x in WIDTH:
+		for y in HEIGHT:
+			if cells[y][x] != 0:
+				cols.append(x)
+				break
+	return cols
+
+
+func all_filled_cells() -> Array[Vector2i]:
+	var filled: Array[Vector2i] = []
+	for y in HEIGHT:
+		for x in WIDTH:
+			if cells[y][x] != 0:
+				filled.append(Vector2i(x, y))
+	return filled
+
+
+func collect_row_cells(y: int) -> Array:
+	## 该行所有非空格 [{pos:Vector2i, t:int}]。
+	var out: Array = []
+	for x in WIDTH:
+		var t: int = cells[y][x]
+		if t != 0:
+			out.append({"pos": Vector2i(x, y), "t": t})
+	return out
+
+
+func collect_column_cells(x: int) -> Array:
+	## 该列所有非空格 [{pos:Vector2i, t:int}]。
+	var out: Array = []
+	for y in HEIGHT:
+		var t: int = cells[y][x]
+		if t != 0:
+			out.append({"pos": Vector2i(x, y), "t": t})
+	return out
+
+
+func clear_cells(list: Array) -> void:
+	## 原位清除一组格子(雨/雷),其余方块不动。
+	for c in list:
+		cells[c.pos.y][c.pos.x] = 0

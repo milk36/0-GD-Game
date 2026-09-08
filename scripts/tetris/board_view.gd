@@ -1,6 +1,6 @@
 extends Control
 ## 棋盘渲染:网格、霓虹格子(多层半透明描边模拟辉光)、当前块、幽灵块、
-## 消行故障动画、硬降震动。全部 _draw 自绘,不依赖 Bloom。
+## 消行故障动画、硬降震动、道具碎片格与道具特效。全部 _draw 自绘。
 
 const DEFS := preload("res://scripts/tetris/tetris_defs.gd")
 const Board := preload("res://scripts/tetris/board.gd")
@@ -15,11 +15,24 @@ var clearing_rows: Array[int] = []
 var clear_progress := 0.0  # 0→1,由 tetris_game 每帧同步
 var shake_time := 0.0
 
+# ---- 道具碎片格 ----
+var item_cell := Vector2i(-1, -1)  # 棋盘坐标(-1,-1)=无
+var item_life_ratio := 1.0         # 剩余时间比例
+
+# ---- 道具特效预闪 ----
+var fx_active := false
+var fx_kind := -1                  # DEFS.Item
+var fx_rows: Array[int] = []
+var fx_cols: Array[int] = []
+var fx_cells: Array[Vector2i] = []
+var fx_progress := 0.0             # 0→1,由 tetris_game 每帧同步
+
 
 func _process(delta: float) -> void:
 	if shake_time > 0.0:
 		shake_time -= delta
-	if clearing_rows.size() > 0 or shake_time > 0.0:
+	if clearing_rows.size() > 0 or shake_time > 0.0 \
+			or item_cell.x >= 0 or fx_active:
 		queue_redraw()
 
 
@@ -36,6 +49,33 @@ func start_clear(rows: Array[int]) -> void:
 
 func stop_clear() -> void:
 	clearing_rows = []
+	queue_redraw()
+
+
+func set_item_cell(cell: Vector2i, ratio: float) -> void:
+	item_cell = cell
+	item_life_ratio = ratio
+	queue_redraw()
+
+
+func show_item_fx(kind: int, rows: Array, cols: Array, cells: Array) -> void:
+	fx_active = true
+	fx_kind = kind
+	fx_rows = []
+	for r in rows:
+		fx_rows.append(r)
+	fx_cols = []
+	for c in cols:
+		fx_cols.append(c)
+	fx_cells = []
+	for c in cells:
+		fx_cells.append(c)
+	fx_progress = 0.0
+	queue_redraw()
+
+
+func hide_item_fx() -> void:
+	fx_active = false
 	queue_redraw()
 
 
@@ -58,6 +98,12 @@ func _draw() -> void:
 
 	if not current.is_empty() and board != null:
 		_draw_active(off)
+
+	if fx_active:
+		_draw_item_fx(off)
+
+	if item_cell.x >= 0:
+		_draw_item_cell(off)
 
 	_draw_frame(off)
 
@@ -87,12 +133,10 @@ func _draw_active(off: Vector2) -> void:
 		var gx: int = current.x + c.x
 		var gy: int = current.y + c.y
 		var g_y: int = ghost_y + c.y
-		# 幽灵块(落点指示)
 		var g_rect := Rect2(
 			off + Vector2(gx * CELL, (g_y - Board.HIDDEN) * CELL) + Vector2(2, 2),
 			Vector2(CELL - 4, CELL - 4))
 		_draw_ghost_cell(g_rect, col)
-		# 当前块(只画可视区)
 		if gy >= Board.HIDDEN:
 			var rect := Rect2(
 				off + Vector2(gx * CELL, (gy - Board.HIDDEN) * CELL) + Vector2(2, 2),
@@ -138,3 +182,60 @@ func _draw_clearing_cell(r: Rect2, col: Color) -> void:
 	var flash := Color(1, 1, 1, clampf(1.0 - p * 1.4, 0.0, 1.0))
 	var shift: float = sin(p * 40.0 + r.position.y) * 6.0 * (1.0 - p)
 	draw_rect(Rect2(r.position + Vector2(shift, 0), r.size), flash, false, 2.0)
+
+
+## ---- 道具碎片格(金色脉动框 + 倒计时弧) ----
+func _draw_item_cell(off: Vector2) -> void:
+	if item_cell.y < Board.HIDDEN:
+		return
+	var pos := off + Vector2(item_cell.x * CELL, (item_cell.y - Board.HIDDEN) * CELL)
+	var t := float(Time.get_ticks_msec()) / 1000.0
+	var pulse := 0.55 + 0.45 * sin(t * 6.0)
+	var col := DEFS.ITEM_CELL_COLOR
+	# 脉动外框(双层)
+	draw_rect(Rect2(pos - Vector2(3, 3), Vector2(CELL + 6, CELL + 6)),
+		Color(col, 0.25 * pulse), false, 3.0)
+	draw_rect(Rect2(pos + Vector2(3, 3), Vector2(CELL - 6, CELL - 6)),
+		Color(col, 0.9 * pulse), false, 1.5)
+	# 倒计时弧(格子右上角)
+	var center := pos + Vector2(CELL - 8, 8)
+	draw_arc(center, 5.0, -PI / 2.0, -PI / 2.0 + TAU * item_life_ratio, 12,
+		Color(col, 0.95), 2.0)
+	# 中心菱形标记
+	var mid := pos + Vector2(CELL / 2.0, CELL / 2.0)
+	var d := 4.0 + 1.5 * pulse
+	draw_line(mid - Vector2(d, 0), mid + Vector2(d, 0), Color(col, 0.9), 1.5)
+	draw_line(mid - Vector2(0, d / 2.0), mid + Vector2(0, d / 2.0), Color(col, 0.9), 1.5)
+
+
+## ---- 道具特效预闪(选中区域高亮) ----
+func _draw_item_fx(off: Vector2) -> void:
+	var col: Color = DEFS.ITEM_COLORS.get(fx_kind, Color.WHITE)
+	var t := float(Time.get_ticks_msec()) / 1000.0
+	var blink := 0.35 + 0.45 * absf(sin(t * 14.0))
+	match fx_kind:
+		DEFS.Item.WIND:
+			for r in fx_rows:
+				if r < Board.HIDDEN:
+					continue
+				var y := (r - Board.HIDDEN) * CELL
+				draw_rect(Rect2(off + Vector2(0, y + 2), Vector2(BOARD_W, CELL - 4)),
+					Color(col, 0.30 * blink))
+				draw_line(off + Vector2(0, y + 1), off + Vector2(BOARD_W, y + 1),
+					Color(col, blink), 1.5)
+		DEFS.Item.BOLT:
+			for c in fx_cols:
+				var x := c * CELL
+				draw_rect(Rect2(off + Vector2(x + 2, 0), Vector2(CELL - 4, BOARD_H)),
+					Color(col, 0.25 * blink))
+				draw_line(off + Vector2(x + 1, 0), off + Vector2(x + 1, BOARD_H),
+					Color(col, blink), 1.5)
+		DEFS.Item.RAIN:
+			for cell in fx_cells:
+				if cell.y < Board.HIDDEN:
+					continue
+				var rect := Rect2(
+					off + Vector2(cell.x * CELL, (cell.y - Board.HIDDEN) * CELL) + Vector2(4, 4),
+					Vector2(CELL - 8, CELL - 8))
+				draw_rect(rect, Color(col, 0.35 * blink))
+				draw_rect(rect, Color(col, 0.9 * blink), false, 1.5)

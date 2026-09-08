@@ -62,6 +62,24 @@ const COLORS := {
 const SPAWN_X := 3
 const SPAWN_Y := 0
 
+## ---- 道具系统(风/雨/雷电) ----
+enum Item { WIND, RAIN, BOLT }
+
+const ITEM_NAMES := ["WIND · 风已注入", "RAIN · 雨已注入", "BOLT · 雷已注入"]
+const ITEM_COLORS := {
+	Item.WIND: Color("#7ef9ff"),
+	Item.RAIN: Color("#4d7bff"),
+	Item.BOLT: Color("#ffe600"),
+}
+const ITEM_CELL_COLOR := Color("#ffd23f")
+
+const ITEM_FIRST_DELAY := 15.0
+const ITEM_INTERVAL := 20.0
+const ITEM_LIFE := 15.0
+const ITEM_FX_TIME := 0.35
+const RAIN_MAX_CELLS := 10
+const ITEM_SCORE_PER_CELL := 5
+
 
 static func shape(type_index: int, rot: int) -> Array:
 	return SHAPES[TYPES[type_index]][wrapi(rot, 0, 4)]

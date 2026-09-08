@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>俄罗斯方块 · 道具系统与粒子特效 · 需求设计</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 960px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.8em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+  }
+  h2 { color: #ff2a6d; margin-top: 40px; text-shadow: 0 0 12px rgba(255, 42, 109, 0.35); }
+  h3 { color: #ffe600; margin-top: 24px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  pre {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; color: #b7c4ef; line-height: 1.5;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #2a3554; padding: 8px 14px; text-align: left; }
+  th { background: #131a2e; color: #00f0ff; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 8px; vertical-align: -2px; border: 1px solid #33406b; }
+  .decision {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .decision b { color: #ffe600; }
+  .todo {
+    background: #1c1420; border-left: 4px solid #ff2a6d;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .todo b { color: #ff2a6d; }
+</style>
+</head>
+<body>
+
+<h1>▚ 俄罗斯方块 · 道具系统与粒子特效 · 需求设计</h1>
+
+<p>在现有俄罗斯方块（见 <code>tetris-design.html</code> / <code>tetris-game.html</code>）基础上新增：
+<b>风 / 雨 / 雷电</b> 三种随机道具与<b>消除粒子特效</b>。本文档为实现前的需求定义，
+边界行为以「设计决策」形式显式固定；标 <b>待确认</b> 的条目可在评审后调整，不影响其余部分。</p>
+
+<!-- ================================================================ -->
+<h2>1. 道具获取机制 —— 「数据碎片格」</h2>
+
+<p>采用「<b>数据碎片格</b>」概念包装（赛博朋克语境：棋盘上随机出现一段加密数据，
+在时限内将其"下载"即可获得道具）：</p>
+
+<ol>
+  <li><b>刷新</b>：开局 15 秒后首次刷新，此后每隔 <b>20 秒</b> 刷新一次；
+      全局同一时刻棋盘上最多存在 <b>1 个</b> 碎片格，新刷出的覆盖旧的。</li>
+  <li><b>位置规则</b>：从<b>当前已有方块占据的格子</b>中随机选取一格，
+      该格标记为碎片格（霓虹金色脉动描边 + 扫描动画）。
+      若刷新时刻棋盘无任何堆叠方块，则推迟到出现首个锁定块后的下一帧再选格。</li>
+  <li><b>获取判定</b>：碎片格自带 <b>15 秒</b> 倒计时。
+      若在倒计时内该格子所处方块<b>被消行带走</b>（普通消行即可，1~4 行均可），
+      判定获取成功；倒计时归零未消除则碎片格熄灭消失，等待下轮刷新。</li>
+  <li><b>道具分配</b>：获取成功时，风 / 雨 / 雷 三选一<b>等概率随机</b>（各 1/3），
+      弹出对应图标与名称反馈（WIND 风 / RAIN 雨 / BOLT 雷电）。</li>
+</ol>
+
+<div class="decision">
+  <b>设计决策 D1（碎片格选取范围）</b>：只选「已填充」格子。
+  理由：碎片格在空位上时玩家无法主动"消除该格"，只能被动等堆叠到达，
+  体验不可控；已填充格保证玩家始终可以通过消行主动争取。
+</div>
+
+<div class="decision">
+  <b>设计决策 D2（道具使用方式）— 已确认：自动触发</b>：获取道具后<b>立即自动触发</b>效果
+  （0.35s 预闪演出 → 执行清除），无道具槽、无释放按键。
+  消除目标不足（如风无可消行）时道具作废，浮字提示「数据丢失」。
+</div>
+
+<!-- ================================================================ -->
+<h2>2. 三种道具效果定义</h2>
+
+<table>
+  <tr><th>道具</th><th>主题色</th><th>效果</th><th>不足时行为</th></tr>
+  <tr>
+    <td><b>风 WIND</b></td>
+    <td><span class="swatch" style="background:#7ef9ff"></span><code>#7ef9ff</code> 浅青</td>
+    <td>横向<b>随机消除 2 行</b>：从「含至少 1 个方块的行」中随机选 2 行，
+        消除这两行的全部方块，上方整体下移（复用现有消行下落逻辑）</td>
+    <td>非空行不足 2 行时有几行消几行；无可消行则不消耗道具</td>
+  </tr>
+  <tr>
+    <td><b>雨 RAIN</b></td>
+    <td><span class="swatch" style="background:#4d7bff"></span><code>#4d7bff</code> 亮蓝</td>
+    <td>从棋盘全部已填充格子中<b>随机散点消除，最多 10 个</b>（均匀随机、可分散任意位置）</td>
+    <td>已填充格子不足 10 个时全部消除；棋盘为空则不消耗道具</td>
+  </tr>
+  <tr>
+    <td><b>雷电 BOLT</b></td>
+    <td><span class="swatch" style="background:#ffe600"></span><code>#ffe600</code> 电光黄</td>
+    <td>竖向<b>随机消除 2 列</b>：从 10 列中随机选 2 列，
+        消除这两列的全部已填充方块（形成竖井）</td>
+    <td>两列均无方块时不消耗道具；仅一列有方块时仍消耗（消 1 列）</td>
+  </tr>
+</table>
+
+<div class="decision">
+  <b>设计决策 D3（消除后的重力）</b>：风消整行后上方下移（天然符合现有逻辑）；
+  <b>雨与雷电消除后其余方块保持原位、不逐格下落</b>，留下孔洞 / 竖井。
+  理由：俄罗斯方块锁定块本无重力，孔洞正是道具的战略价值（雷电清竖井、雨打洞）；
+  引入逐格重力会造成全盘连锁位移、破坏玩家布局预期且实现复杂。
+</div>
+
+<div class="decision">
+  <b>设计决策 D4（计分与升级）— 待确认</b>：道具消除<b>不计入 LINES</b>（不影响升级节奏），
+  按「每消除 1 格 = 5 分 × 当前等级」给分（软降/硬降计分不变）。
+  理由：若计入 LINES，道具会大幅加速升级、破坏难度曲线。
+</div>
+
+<div class="decision">
+  <b>设计决策 D5（释放时机）</b>：道具在 PLAYING 与 CLEARING 状态可释放；
+  暂停 / Game Over 时不可。释放瞬间走独立的 0.35s 道具动画状态（期间方块重力暂停），
+  动画结束后恢复。释放 <b>不重置</b> 当前块的锁定延迟计时。
+</div>
+
+<div class="decision">
+  <b>设计决策 D6（碎片格与消行判定的原子性）</b>：判定"碎片格被消行带走"以
+  <code>board.remove_rows()</code> 执行后的格子内容为准 —— 碎片格所在行被消即成功，
+  与该行是单消还是 Tetris 无关。道具（风）触发的整行消除<b>同样可以带走碎片格</b>（道具滚道具，允许）。
+</div>
+
+<!-- ================================================================ -->
+<h2>3. 粒子与视觉特效</h2>
+
+<h3>3.1 消除粒子（核心需求）</h3>
+<ul>
+  <li><b>普通消行</b>：现有 0.28s 故障闪光动画结束时，每个被消格子爆出
+      <b>8~10 个粒子</b>，颜色继承该格方块霓虹色，初速向外随机（50~180 px/s），
+      带轻微重力（300 px/s²）与阻尼，寿命 0.4~0.7s，尺寸 2~4px，淡出消失。</li>
+  <li><b>道具消除</b>：同上，每格粒子数提升到 <b>12~16 个</b>并附加白色高亮粒子混合，
+      强化"被系统删除"的观感。</li>
+  <li><b>性能</b>：粒子为纯数据数组（pos/vel/color/life），由独立粒子层
+      <code>_draw()</code> 自绘，单帧峰值约 200×16 ≈ 3200 粒子上限保护（超限随机丢弃最旧），
+      无节点创建开销。</li>
+</ul>
+
+<h3>3.2 道具专属特效</h3>
+<table>
+  <tr><th>事件</th><th>表现</th></tr>
+  <tr><td>碎片格出现</td><td>金色方框从大缩到位（0.3s）+ 脉动描边 + 角落倒计时环</td></tr>
+  <tr><td>获取成功</td><td>碎片格位置金色粒子爆发 + 右栏道具槽弹跳高亮 + 浮字「WIND/RAIN/BOLT 已捕获」</td></tr>
+  <tr><td>获取失败（超时）</td><td>红色闪烁 2 次后熄灭，微弱红色粒子散逸</td></tr>
+  <tr><td>风释放</td><td>被选中的 2 行先青色高亮 0.15s → 横向风痕扫过（左右两条速度线）→ 格子消除 + 粒子</td></tr>
+  <tr><td>雨释放</td><td>被选中的散点格子逐个（间隔 30ms）蓝白闪现 → 消除 + 向下坠落的拖尾粒子（模拟雨滴）</td></tr>
+  <tr><td>雷电释放</td><td>被选中的 2 列顶部到底部电光（锯齿折线，0.2s）→ 列闪白 → 消除 + 黄白电弧粒子</td></tr>
+</table>
+
+<h3>3.3 HUD 变更</h3>
+<ul>
+  <li>无道具槽（自动触发）；获取反馈改为棋盘上方<b>浮字</b>：
+      「⌁ WIND · 风已注入」「☂ RAIN · 雨已注入」「⚡ BOLT · 雷已注入」，
+      道具色渐隐 1.2s。</li>
+  <li>目标不足作废时浮字「数据丢失…」灰色。</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2>4. 输入与配置</h2>
+
+<p>本需求<b>无新增按键</b>（道具自动触发），原有操作不变。</p>
+
+<p>数值配置集中在 <code>tetris_defs.gd</code> 常量区（刷新间隔 20s / 首刷延迟 15s /
+碎片时限 15s / 雨上限 10 格 / 粒子参数），便于调参。</p>
+
+<!-- ================================================================ -->
+<h2>5. 技术方案（增量）</h2>
+
+<pre>scripts/tetris/
+├── tetris_defs.gd        + 道具枚举/颜色/数值常量
+├── board.gd              + clear_rows_at(rows)      风:指定行整行移除(上方下移)
+│                         + clear_random_cells(n)    雨:返回被消坐标列表
+│                         + clear_columns(cols)      雷:指定列清除(不下落)
+│                         + random_filled_cell()     碎片格选点
+│                         + filled_row_indices() / filled_column_indices()
+├── tetris_game.gd        + 碎片格状态机(idle/armed/countdown)
+│                           道具自动触发流程(获取→ITEM_FX 预闪→执行)
+│                           ITEM_FX 状态(0.35s) + 粒子事件驱动 + 浮字
+├── board_view.gd         + 碎片格高亮绘制(金色脉动+倒计时环)
+│                           道具选中行/列/散点的高亮预闪
+├── particle_layer.gd     新增:粒子系统(数组池 + _draw + _process 更新)
+└── piece_preview.gd      不变</pre>
+
+<ul>
+  <li>粒子层挂在 BoardView 同级（棋盘坐标系内），只依赖注入的数据事件，
+      与游戏逻辑解耦：game 调用 <code>particles.burst(cells, color, count)</code>。</li>
+  <li>道具触发流程：<code>消行带走碎片格 → 随机道具 → ITEM_FX 预闪动画(0.35s)
+      → board 清除 + 粒子 burst + 计分 + 浮字 → 回到 PLAYING</code>。</li>
+  <li>风的整行移除直接复用 <code>remove_rows</code>（它本就支持任意行集合）；雨/雷为
+      原位置清除，不触发下移。</li>
+  <li>存档不变（hi_score 延续）。</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2>6. 边界与异常场景汇总</h2>
+<table>
+  <tr><th>场景</th><th>行为</th></tr>
+  <tr><td>刷新时棋盘无堆叠</td><td>推迟选格，计时器顺延（不消耗本轮刷新）</td></tr>
+  <tr><td>碎片格所在方块被"雨"散点消除（非整行）</td><td>不判定获取（仅整行消除算）；碎片格所在格被清空后<b>直接熄灭等待下轮</b>（避免复杂追踪）。注：自动触发模式下道具执行时碎片格必已熄灭，此场景仅存在于理论时序</td></tr>
+  <tr><td>道具目标不足（如风无可消行）</td><td>道具作废，浮字「数据丢失…」，不产生清除效果</td></tr>
+  <tr><td>暂停 / Game Over</td><td>碎片格计时冻结；ITEM_FX 动画冻结</td></tr>
+  <tr><td>重开局</td><td>碎片格、计时器全部重置</td></tr>
+  <tr><td>ITEM_FX 动画期间按移动/旋转</td><td>输入缓存忽略（0.35s 很短，可接受）</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>7. 里程碑与验收标准</h2>
+
+<h3>里程碑</h3>
+<table>
+  <tr><th>阶段</th><th>内容</th></tr>
+  <tr><td><b>P1 道具核心</b></td><td>board 三种清除方法 + 碎片格刷新/判定 + 自动触发流程 + 浮字 HUD</td></tr>
+  <tr><td><b>P2 粒子系统</b></td><td>particle_layer + 普通消行粒子 + 道具消除粒子</td></tr>
+  <tr><td><b>P3 特效打磨</b></td><td>碎片格动画/倒计时环、三道具专属演出</td></tr>
+</table>
+
+<h3>验收标准</h3>
+<ol>
+  <li>开局 15s 后棋盘出现碎片格（金色脉动），15s 内消掉其所在行自动触发随机道具，超时熄灭。</li>
+  <li>风：随机 2 行整体消除且上方下移；雨：随机 ≤10 格散点消除；雷：随机 2 列清除成竖井；
+      三者消除后其余方块位置不变（雨/雷不下落）。</li>
+  <li>道具消除按 5 分×等级×格数计分，LINES 不变。</li>
+  <li>目标不足时道具作废并浮字提示；获取与触发全程无按键操作。</li>
+  <li>普通消行与道具消除均有粒子飞溅；获取道具有金色爆发与浮字。</li>
+  <li>暂停时碎片格计时冻结；重开局道具状态全部重置。</li>
+  <li>无报错、无脚本警告；帧率稳定（粒子峰值不掉帧）。</li>
+</ol>
+
+<div class="decision">
+  <b>确认记录（2026-09-08）</b>
+  <ol>
+    <li>D2 已确认：<b>获取后自动触发</b>（无道具槽、无按键）。</li>
+    <li>D4 维持默认：道具消除不计 LINES、按 5 分×等级×格。</li>
+    <li>数值（刷新 20s / 首刷 15s / 碎片时限 15s / 雨上限 10）集中在常量，可随时调。</li>
+  </ol>
+</div>
+
+<p style="margin-top:40px;color:#5a6486">— 需求文档 v1.0 · 2026-09-08 · demo-game · 俄罗斯方块增量</p>
+
+</body>
+</html>
