@@ -8,6 +8,8 @@ layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 theme = ExtResource("1_ekxnf")
 script = ExtResource("1_l6cm7")
 
@@ -70,6 +72,12 @@ custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "俄罗斯方块"
+
+[node name="TetrisFunButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=1141703634]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "俄罗斯方块·欢乐模式"
 
 [node name="G2048Button" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=2096444458]
 custom_minimum_size = Vector2(0, 46)

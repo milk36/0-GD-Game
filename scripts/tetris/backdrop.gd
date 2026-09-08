@@ -28,7 +28,7 @@ func _draw() -> void:
 
 	# 全屏扫描线
 	var dark := Color(0, 0, 0, 0.05)
-	var y := 0.0
-	while y < h:
-		draw_rect(Rect2(0, y, w, 2), dark)
-		y += 4.0
+	var sy := 0.0
+	while sy < h:
+		draw_rect(Rect2(0, sy, w, 2), dark)
+		sy += 4.0

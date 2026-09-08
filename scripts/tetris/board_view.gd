@@ -15,9 +15,9 @@ var clearing_rows: Array[int] = []
 var clear_progress := 0.0  # 0→1,由 tetris_game 每帧同步
 var shake_time := 0.0
 
-# ---- 道具碎片格 ----
-var item_cell := Vector2i(-1, -1)  # 棋盘坐标(-1,-1)=无
-var item_life_ratio := 1.0         # 剩余时间比例
+# ---- 道具碎片格(可多格并存) ----
+var item_cells: Array[Vector2i] = []   # 棋盘坐标
+var item_ratios: Array[float] = []     # 各格剩余时间比例
 
 # ---- 道具特效预闪 ----
 var fx_active := false
@@ -32,7 +32,7 @@ func _process(delta: float) -> void:
 	if shake_time > 0.0:
 		shake_time -= delta
 	if clearing_rows.size() > 0 or shake_time > 0.0 \
-			or item_cell.x >= 0 or fx_active:
+			or item_cells.size() > 0 or fx_active:
 		queue_redraw()
 
 
@@ -52,9 +52,15 @@ func stop_clear() -> void:
 	queue_redraw()
 
 
-func set_item_cell(cell: Vector2i, ratio: float) -> void:
-	item_cell = cell
-	item_life_ratio = ratio
+func set_item_cells(cells: Array, ratios: Array) -> void:
+	item_cells = []
+	for c in cells:
+		var ci: Vector2i = c
+		item_cells.append(ci)
+	item_ratios = []
+	for r in ratios:
+		var rf: float = r
+		item_ratios.append(rf)
 	queue_redraw()
 
 
@@ -102,8 +108,8 @@ func _draw() -> void:
 	if fx_active:
 		_draw_item_fx(off)
 
-	if item_cell.x >= 0:
-		_draw_item_cell(off)
+	if item_cells.size() > 0:
+		_draw_item_cells(off)
 
 	_draw_frame(off)
 
@@ -184,28 +190,31 @@ func _draw_clearing_cell(r: Rect2, col: Color) -> void:
 	draw_rect(Rect2(r.position + Vector2(shift, 0), r.size), flash, false, 2.0)
 
 
-## ---- 道具碎片格(金色脉动框 + 倒计时弧) ----
-func _draw_item_cell(off: Vector2) -> void:
-	if item_cell.y < Board.HIDDEN:
-		return
-	var pos := off + Vector2(item_cell.x * CELL, (item_cell.y - Board.HIDDEN) * CELL)
-	var t := float(Time.get_ticks_msec()) / 1000.0
-	var pulse := 0.55 + 0.45 * sin(t * 6.0)
-	var col := DEFS.ITEM_CELL_COLOR
-	# 脉动外框(双层)
-	draw_rect(Rect2(pos - Vector2(3, 3), Vector2(CELL + 6, CELL + 6)),
-		Color(col, 0.25 * pulse), false, 3.0)
-	draw_rect(Rect2(pos + Vector2(3, 3), Vector2(CELL - 6, CELL - 6)),
-		Color(col, 0.9 * pulse), false, 1.5)
-	# 倒计时弧(格子右上角)
-	var center := pos + Vector2(CELL - 8, 8)
-	draw_arc(center, 5.0, -PI / 2.0, -PI / 2.0 + TAU * item_life_ratio, 12,
-		Color(col, 0.95), 2.0)
-	# 中心菱形标记
-	var mid := pos + Vector2(CELL / 2.0, CELL / 2.0)
-	var d := 4.0 + 1.5 * pulse
-	draw_line(mid - Vector2(d, 0), mid + Vector2(d, 0), Color(col, 0.9), 1.5)
-	draw_line(mid - Vector2(0, d / 2.0), mid + Vector2(0, d / 2.0), Color(col, 0.9), 1.5)
+## ---- 道具碎片格(金色脉动框 + 倒计时弧,可多格) ----
+func _draw_item_cells(off: Vector2) -> void:
+	for i in item_cells.size():
+		var cell: Vector2i = item_cells[i]
+		if cell.y < Board.HIDDEN:
+			continue
+		var ratio := item_ratios[i] if i < item_ratios.size() else 1.0
+		var pos := off + Vector2(cell.x * CELL, (cell.y - Board.HIDDEN) * CELL)
+		var t := float(Time.get_ticks_msec()) / 1000.0
+		var pulse := 0.55 + 0.45 * sin(t * 6.0 + i * 1.3)  # 各格相位错开
+		var col := DEFS.ITEM_CELL_COLOR
+		# 脉动外框(双层)
+		draw_rect(Rect2(pos - Vector2(3, 3), Vector2(CELL + 6, CELL + 6)),
+			Color(col, 0.25 * pulse), false, 3.0)
+		draw_rect(Rect2(pos + Vector2(3, 3), Vector2(CELL - 6, CELL - 6)),
+			Color(col, 0.9 * pulse), false, 1.5)
+		# 倒计时弧(格子右上角)
+		var center := pos + Vector2(CELL - 8, 8)
+		draw_arc(center, 5.0, -PI / 2.0, -PI / 2.0 + TAU * ratio, 12,
+			Color(col, 0.95), 2.0)
+		# 中心菱形标记
+		var mid := pos + Vector2(CELL / 2.0, CELL / 2.0)
+		var d := 4.0 + 1.5 * pulse
+		draw_line(mid - Vector2(d, 0), mid + Vector2(d, 0), Color(col, 0.9), 1.5)
+		draw_line(mid - Vector2(0, d / 2.0), mid + Vector2(0, d / 2.0), Color(col, 0.9), 1.5)
 
 
 ## ---- 道具特效预闪(选中区域高亮) ----

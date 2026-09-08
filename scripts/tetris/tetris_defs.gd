@@ -65,6 +65,15 @@ const SPAWN_Y := 0
 ## ---- 道具系统(风/雨/雷电) ----
 enum Item { WIND, RAIN, BOLT }
 
+## 模式开关(由主菜单入口写入):false=标准,true=欢乐。
+static var fun_mode := false
+
+## 模式参数:碎片格首刷延迟 / 刷新间隔 / 存活时限 / 并存上限。
+const ITEM_PARAMS := {
+	false: {"first": 15.0, "interval": 20.0, "life": 15.0, "max_cells": 1},
+	true: {"first": 5.0, "interval": 6.0, "life": 10.0, "max_cells": 3},
+}
+
 const ITEM_NAMES := ["WIND · 风已注入", "RAIN · 雨已注入", "BOLT · 雷已注入"]
 const ITEM_COLORS := {
 	Item.WIND: Color("#7ef9ff"),

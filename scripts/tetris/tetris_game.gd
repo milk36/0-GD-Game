@@ -38,9 +38,10 @@ var das_dir := 0
 var das_timer := 0.0
 
 # ---- 道具系统 ----
-var item_cell := Vector2i(-1, -1)   # 当前碎片格(-1,-1)=无
+var item_cells: Array = []          # 并存碎片格 [{cell: Vector2i, life: float}]
 var item_spawn_timer := 0.0          # 距下次刷新倒计时
-var item_life := 0.0                 # 碎片格剩余存活时间
+var item_params: Dictionary = {}     # 当前模式参数(DEFS.ITEM_PARAMS)
+var item_queue: Array[int] = []      # 待执行道具队列(多格同消时依次连发)
 var fx_kind := -1                    # ITEM_FX 待执行的道具
 var item_fx_timer := 0.0
 var fx_rows: Array[int] = []         # 风:目标行
@@ -52,6 +53,7 @@ var _paused_from := State.PLAYING    # 暂停前的状态(恢复用)
 @onready var board_view: Control = $Center/Layout/BoardView
 @onready var particles: Control = $Center/Layout/BoardView/Particles
 @onready var float_label: Label = $FloatLabel
+@onready var mode_label: Label = $Center/Layout/LeftPanel/ModeLabel
 @onready var hold_preview: Control = $Center/Layout/RightPanel/HoldBox/HoldPreview
 @onready var next_preview: Control = $Center/Layout/RightPanel/NextBox/NextPreview
 @onready var score_label: Label = $Center/Layout/RightPanel/Stats/ScoreValue
@@ -76,7 +78,10 @@ func _ready() -> void:
 	($PauseOverlay/Center/Box/MenuButton as Button).pressed.connect(_back_to_menu)
 	($GameOverOverlay/Center/Box/RetryButton as Button).pressed.connect(_restart)
 	($GameOverOverlay/Center/Box/MenuButton as Button).pressed.connect(_back_to_menu)
-	item_spawn_timer = DEFS.ITEM_FIRST_DELAY
+	item_params = DEFS.ITEM_PARAMS.get(DEFS.fun_mode, DEFS.ITEM_PARAMS[false])
+	item_spawn_timer = item_params.first
+	_sync_item_cells()
+	_sync_mode_label()
 	_spawn()
 	_update_hud()
 
@@ -279,7 +284,7 @@ func _finish_clear() -> void:
 	var n := rows.size()
 	lines += n
 	score += SCORE_TABLE[n] * level
-	level = lines / 10 + 1
+	level = floori(lines / 10.0) + 1
 	if score > hi_score:
 		hi_score = score
 		_save_hi()
@@ -287,69 +292,90 @@ func _finish_clear() -> void:
 	state = State.PLAYING
 	_spawn()
 	_update_hud()
-	# 碎片格判定:所在行被消 → 获取道具;否则坐标随下移修正
-	if item_cell.x >= 0:
-		if rows.has(item_cell.y):
-			_clear_item_cell()
-			_acquire_item()
+	# 碎片格判定:所在行被消 → 熄灭并入道具队列;否则坐标随下移修正
+	var acquired := false
+	for i in range(item_cells.size() - 1, -1, -1):
+		var cell: Vector2i = item_cells[i].cell
+		if rows.has(cell.y):
+			item_cells.remove_at(i)
+			item_queue.append(randi() % 3)
+			acquired = true
 		else:
 			var shift := 0
 			for r in rows:
-				if r < item_cell.y:
+				if r < cell.y:
 					shift += 1
 			if shift > 0:
-				item_cell.y -= shift
-				board_view.set_item_cell(item_cell, item_life / DEFS.ITEM_LIFE)
+				item_cells[i].cell = Vector2i(cell.x, cell.y - shift)
+	_sync_item_cells()
+	if acquired:
+		_start_next_item()
 
 
 # ---------------- 道具系统 ----------------
 
 func _update_item(delta: float) -> void:
 	## 碎片格刷新与存活计时(仅 PLAYING 调用,暂停天然冻结)。
-	if item_cell.x < 0:
+	# 刷新:未达并存上限时计时
+	if item_cells.size() < int(item_params.max_cells):
 		item_spawn_timer -= delta
 		if item_spawn_timer <= 0.0:
 			var c: Vector2i = board.random_filled_cell()
-			if c.x >= 0:
-				item_cell = c
-				item_life = DEFS.ITEM_LIFE
-				board_view.set_item_cell(item_cell, 1.0)
+			if c.x >= 0 and not _has_item_cell(c):
+				item_cells.append({"cell": c, "life": float(item_params.life)})
+				item_spawn_timer = float(item_params.interval)
 			else:
-				item_spawn_timer = 1.0  # 棋盘空,1s 后重试
-	else:
-		item_life -= delta
-		if item_life <= 0.0:
-			_clear_item_cell()
-			item_spawn_timer = DEFS.ITEM_INTERVAL
-			_show_float("数据丢失…", Color("#8b90a8"))
-		else:
-			board_view.set_item_cell(item_cell, item_life / DEFS.ITEM_LIFE)
-
-
-func _clear_item_cell() -> void:
-	item_cell = Vector2i(-1, -1)
-	board_view.set_item_cell(Vector2i(-1, -1), 1.0)
-
-
-func _acquire_item() -> void:
-	## 碎片格获取成功:随机道具,选目标,进入 ITEM_FX 预闪。
-	var kind: int = randi() % 3
-	if not _select_item_targets(kind):
+				item_spawn_timer = 1.0  # 棋盘空或撞已有格,1s 后重试
+	# 存活:逐格倒计时,归零单独熄灭
+	var expired := false
+	for i in range(item_cells.size() - 1, -1, -1):
+		item_cells[i].life = item_cells[i].life - delta
+		if item_cells[i].life <= 0.0:
+			item_cells.remove_at(i)
+			expired = true
+	if expired:
 		_show_float("数据丢失…", Color("#8b90a8"))
+	_sync_item_cells()
+
+
+func _has_item_cell(c: Vector2i) -> bool:
+	for d in item_cells:
+		if d.cell == c:
+			return true
+	return false
+
+
+func _sync_item_cells() -> void:
+	## 同步碎片格与剩余时间比例到棋盘视图。
+	var cells: Array[Vector2i] = []
+	var ratios: Array[float] = []
+	for d in item_cells:
+		cells.append(d.cell)
+		ratios.append(clampf(d.life / float(item_params.life), 0.0, 1.0))
+	board_view.set_item_cells(cells, ratios)
+
+
+func _start_next_item() -> void:
+	## 从道具队列取下一个道具执行;无可用目标则依次跳过,全部作废时提示。
+	while not item_queue.is_empty():
+		var kind: int = item_queue.pop_front()
+		if not _select_item_targets(kind):
+			continue
+		fx_kind = kind
+		_show_float("⌁ " + DEFS.ITEM_NAMES[kind], DEFS.ITEM_COLORS[kind])
+		state = State.ITEM_FX
+		item_fx_timer = DEFS.ITEM_FX_TIME
+		var show_cells: Array = []
+		if kind == DEFS.Item.RAIN:
+			for cd in fx_rain_cells:
+				show_cells.append(cd.pos)
+		board_view.show_item_fx(
+			kind,
+			fx_rows if kind == DEFS.Item.WIND else [],
+			fx_cols if kind == DEFS.Item.BOLT else [],
+			show_cells)
 		return
-	fx_kind = kind
-	_show_float("⌁ " + DEFS.ITEM_NAMES[kind], DEFS.ITEM_COLORS[kind])
-	state = State.ITEM_FX
-	item_fx_timer = DEFS.ITEM_FX_TIME
-	var show_cells: Array = []
-	if kind == DEFS.Item.RAIN:
-		for cd in fx_rain_cells:
-			show_cells.append(cd.pos)
-	board_view.show_item_fx(
-		kind,
-		fx_rows if kind == DEFS.Item.WIND else [],
-		fx_cols if kind == DEFS.Item.BOLT else [],
-		show_cells)
+	_show_float("数据丢失…", Color("#8b90a8"))
 
 
 func _select_item_targets(kind: int) -> bool:
@@ -392,13 +418,28 @@ func _select_item_targets(kind: int) -> bool:
 
 
 func _execute_item() -> void:
-	## ITEM_FX 结束:执行清除 + 粒子 + 计分。
+	## ITEM_FX 结束:执行清除 + 粒子 + 计分;队列未空则继续连发。
 	var cleared: Array = []
 	match fx_kind:
 		DEFS.Item.WIND:
+			# 消行前判定:风带走其他碎片格 → 道具滚道具,入队连发
+			for i in range(item_cells.size() - 1, -1, -1):
+				if fx_rows.has(item_cells[i].cell.y):
+					item_cells.remove_at(i)
+					item_queue.append(randi() % 3)
 			for r in fx_rows:
 				cleared.append_array(board.collect_row_cells(r))
 			board.remove_rows(fx_rows)
+			# 剩余碎片格坐标随下移修正
+			for i in item_cells.size():
+				var cell: Vector2i = item_cells[i].cell
+				var shift := 0
+				for r in fx_rows:
+					if r < cell.y:
+						shift += 1
+				if shift > 0:
+					item_cells[i].cell = Vector2i(cell.x, cell.y - shift)
+			_sync_item_cells()
 		DEFS.Item.RAIN:
 			cleared = fx_rain_cells
 			board.clear_cells(fx_rain_cells)
@@ -417,6 +458,8 @@ func _execute_item() -> void:
 			_save_hi()
 		_update_hud()
 	state = State.PLAYING
+	if not item_queue.is_empty():
+		_start_next_item()
 
 
 func _show_float(text: String, color: Color) -> void:
@@ -424,6 +467,15 @@ func _show_float(text: String, color: Color) -> void:
 	float_label.modulate = color
 	float_label.visible = true
 	float_time = FLOAT_TIME
+
+
+func _sync_mode_label() -> void:
+	if DEFS.fun_mode:
+		mode_label.text = "⚡ FUN MODE · 欢乐模式"
+		mode_label.add_theme_color_override("font_color", Color("#ff2a6d"))
+	else:
+		mode_label.text = "STANDARD · 标准模式"
+		mode_label.add_theme_color_override("font_color", Color("#5a6486"))
 
 
 # ---------------- 通用流程 ----------------

@@ -49,6 +49,12 @@ theme_override_colors/font_color = Color(1, 0.16470589, 0.42745098, 1)
 theme_override_font_sizes/font_size = 15
 text = "赛博朋克 · 方块终端"
 
+[node name="ModeLabel" type="Label" parent="Center/Layout/LeftPanel" unique_id=100832965]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3529412, 0.39215687, 0.5254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "STANDARD · 标准模式"
+
 [node name="Sep" type="HSeparator" parent="Center/Layout/LeftPanel" unique_id=444551860]
 layout_mode = 2
 
