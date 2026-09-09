@@ -205,6 +205,30 @@ tetris_game.gd     + _execute_item 消除瞬间按道具调用对应粒子接口
       三种拖尾粒子经运行时同帧落盘截图确认(方向/配色正确);全程无脚本报错。</li>
 </ul>
 
+<h3>7.6 道具进化与新道具(2026-09-09 增量)</h3>
+
+<p>道具系统深化第一期为 5 种基础道具 + 3 种进化版(设计决策见
+<code>tetris-items-design.html</code> 的扩展记录):</p>
+<pre>tetris_defs.gd     + Item 枚举扩至 8 种;BASIC_ITEM_COUNT=5(随机池);
+                   + EVOLVE_MAP(相邻同类合并:风风→飓风/雨雨→暴雨/雷雷→雷暴);
+                   + STORM_WIND_ROWS=3 / TORRENT_MAX_CELLS=20 / THUNDER_MAX_COLS=3
+board.gd           + flip_horizontal(整棋盘每行反转) / peak_cells(每列最顶端 1 格)
+board_view.gd      + FLIP 演出:中央对称轴 + 左右扫描线向中轴收拢 + 扫过半区微光
+                   + PRUNE 演出:目标格同时绿高亮 + 格顶 V 形刀光
+                   + 进化版复用基础演出(_draw_item_fx 内 visual 归一化)
+tetris_game.gd     + _enqueue_item:入队时与队尾同类基础道具合并进化(翻转/削峰不参与);
+                   + FLIP 执行:镜像棋盘与碎片格坐标,当前块碰撞时向上抬升寻位(≤5 格,
+                     找不到判负);零消除零分,附硬降同款震动
+                   + PRUNE 执行:clear_cells(peak_cells),计分走通用 5×等级×格</pre>
+
+<ul>
+  <li>随机分布:基础 5 种等概率(风/雨/雷/翻转/削峰);进化版只能由合并产生。</li>
+  <li>进化版浮字独立命名(STORM · 飓风撕扯 / TORRENT · 暴雨倾盆 / THUNDER · 雷暴降临)。</li>
+  <li>FLIP/PRUNE 暂无专属施放音效(PRUNE 消除走 item_clear,FLIP 用震动反馈),待补音色。</li>
+  <li>验证:headless 测试场景 8 项断言全部通过(进化链/FLIP 镜像/PRUNE 执行/
+      空盘作废/随机池覆盖/三个进化版目标数);FLIP 与 PRUNE 演出定格截图确认。</li>
+</ul>
+
 <h2>8. 后续可扩展</h2>
 <ul>
   <li>音效:锁定/消行/Tetris/升级/道具触发(项目尚无音频资源)。</li>

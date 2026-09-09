@@ -78,7 +78,7 @@ func show_item_fx(kind: int, rows: Array, cols: Array, cells: Array) -> void:
 	for c in cells:
 		fx_cells.append(c)
 	_bolt_zigzags = []
-	if kind == DEFS.Item.BOLT:
+	if kind == DEFS.Item.BOLT or kind == DEFS.Item.THUNDER:
 		for c in cols:
 			var zl: Array = []
 			for k in 3:
@@ -241,13 +241,61 @@ func _draw_item_cells(off: Vector2) -> void:
 ## ---- 道具特效预闪(专属演出,全部由 fx_progress 驱动 → 暂停天然冻结) ----
 func _draw_item_fx(off: Vector2) -> void:
 	var col: Color = DEFS.ITEM_COLORS.get(fx_kind, Color.WHITE)
-	match fx_kind:
+	# 进化版复用基础版演出(只是目标更多)
+	var visual := fx_kind
+	if visual == DEFS.Item.STORM_WIND:
+		visual = DEFS.Item.WIND
+	elif visual == DEFS.Item.TORRENT:
+		visual = DEFS.Item.RAIN
+	elif visual == DEFS.Item.THUNDER:
+		visual = DEFS.Item.BOLT
+	match visual:
 		DEFS.Item.WIND:
 			_draw_wind_fx(off, col)
 		DEFS.Item.RAIN:
 			_draw_rain_fx(off, col)
 		DEFS.Item.BOLT:
 			_draw_bolt_fx(off, col)
+		DEFS.Item.FLIP:
+			_draw_flip_fx(off, col)
+		DEFS.Item.PRUNE:
+			_draw_prune_fx(off, col)
+
+
+func _draw_flip_fx(off: Vector2, col: Color) -> void:
+	## 翻转:中央对称轴亮起,左右两条竖直扫描线向中轴收拢,扫过半区微光。
+	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	var mid_x := off.x + BOARD_W / 2.0
+	draw_line(Vector2(mid_x, off.y), Vector2(mid_x, off.y + BOARD_H),
+		Color(col, 0.45 + 0.45 * blink), 2.0)
+	var half := BOARD_W / 2.0
+	for side in 2:
+		var dir := -1.0 if side == 0 else 1.0
+		var head_x := off.x + half + dir * half * (1.0 - fx_progress)
+		var tail_x := off.x + half + dir * half * (1.0 - fx_progress * 0.4)
+		draw_line(Vector2(head_x, off.y), Vector2(head_x, off.y + BOARD_H),
+			Color(col, 0.9), 2.5)
+		draw_line(Vector2(tail_x, off.y), Vector2(tail_x, off.y + BOARD_H),
+			Color(col, 0.3), 1.2)
+		var edge_x := off.x if side == 0 else off.x + BOARD_W
+		draw_rect(Rect2(Vector2(minf(edge_x, head_x), off.y),
+			Vector2(absf(head_x - edge_x), BOARD_H)), Color(col, 0.07))
+
+
+func _draw_prune_fx(off: Vector2, col: Color) -> void:
+	## 削峰:每列最顶端格同时亮起,格顶一对向上的刀光指示。
+	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	for cell in fx_cells:
+		if cell.y < Board.HIDDEN:
+			continue
+		var pos := off + Vector2(cell.x * CELL, (cell.y - Board.HIDDEN) * CELL)
+		var rect := Rect2(pos + Vector2(3, 3), Vector2(CELL - 6, CELL - 6))
+		draw_rect(rect, Color(col, 0.40))
+		draw_rect(rect, Color(1, 1, 1, 0.9 * blink), false, 2.0)
+		var cx := pos.x + CELL / 2.0
+		var top := pos.y - 2.0
+		draw_line(Vector2(cx - 5, top - 11), Vector2(cx, top), Color(col, 0.9), 2.0)
+		draw_line(Vector2(cx + 5, top - 11), Vector2(cx, top), Color(col, 0.9), 2.0)
 
 
 func _draw_wind_fx(off: Vector2, col: Color) -> void:

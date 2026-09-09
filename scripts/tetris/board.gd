@@ -134,3 +134,21 @@ func clear_cells(list: Array) -> void:
 	## 原位清除一组格子(雨/雷),其余方块不动。
 	for c in list:
 		cells[c.pos.y][c.pos.x] = 0
+
+
+func flip_horizontal() -> void:
+	## 整棋盘水平镜像(翻转道具):每行左右反转。
+	for y in HEIGHT:
+		cells[y].reverse()
+
+
+func peak_cells() -> Array:
+	## 每个非空列最顶端的 1 格 [{pos:Vector2i, t:int}](削峰道具目标)。
+	var out: Array = []
+	for x in WIDTH:
+		for y in HEIGHT:
+			var t: int = cells[y][x]
+			if t != 0:
+				out.append({"pos": Vector2i(x, y), "t": t})
+				break
+	return out

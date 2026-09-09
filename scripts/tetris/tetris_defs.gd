@@ -62,8 +62,8 @@ const COLORS := {
 const SPAWN_X := 3
 const SPAWN_Y := 0
 
-## ---- 道具系统(风/雨/雷电) ----
-enum Item { WIND, RAIN, BOLT }
+## ---- 道具系统(风/雨/雷电/翻转/削峰 + 三种进化版) ----
+enum Item { WIND, RAIN, BOLT, FLIP, PRUNE, STORM_WIND, TORRENT, THUNDER }
 
 ## 模式开关(由主菜单入口写入):false=标准,true=欢乐。
 static var fun_mode := false
@@ -74,13 +74,37 @@ const ITEM_PARAMS := {
 	true: {"first": 5.0, "interval": 6.0, "life": 10.0, "max_cells": 3},
 }
 
-const ITEM_NAMES := ["WIND · 风已注入", "RAIN · 雨已注入", "BOLT · 雷已注入"]
+const ITEM_NAMES := [
+	"WIND · 风已注入", "RAIN · 雨已注入", "BOLT · 雷已注入",
+	"FLIP · 镜像翻转", "PRUNE · 削峰修整",
+	"STORM · 飓风撕扯", "TORRENT · 暴雨倾盆", "THUNDER · 雷暴降临",
+]
 const ITEM_COLORS := {
 	Item.WIND: Color("#7ef9ff"),
 	Item.RAIN: Color("#4d7bff"),
 	Item.BOLT: Color("#ffe600"),
+	Item.FLIP: Color("#bd5cff"),
+	Item.PRUNE: Color("#00ff9f"),
+	Item.STORM_WIND: Color("#7ef9ff"),
+	Item.TORRENT: Color("#4d7bff"),
+	Item.THUNDER: Color("#ffe600"),
 }
 const ITEM_CELL_COLOR := Color("#ffd23f")
+
+## 基础道具随机池大小(风/雨/雷/翻转/削峰等概率;进化版不入随机池)。
+const BASIC_ITEM_COUNT := 5
+
+## 队列中相邻同类基础道具合并的进化映射(翻转/削峰不参与进化)。
+const EVOLVE_MAP := {
+	Item.WIND: Item.STORM_WIND,
+	Item.RAIN: Item.TORRENT,
+	Item.BOLT: Item.THUNDER,
+}
+
+## 进化道具的强化目标数(基础版:风 2 行 / 雨 10 格 / 雷 2 列)。
+const STORM_WIND_ROWS := 3
+const TORRENT_MAX_CELLS := 20
+const THUNDER_MAX_COLS := 3
 
 const ITEM_FIRST_DELAY := 15.0
 const ITEM_INTERVAL := 20.0

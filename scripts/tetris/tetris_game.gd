@@ -44,9 +44,10 @@ var item_params: Dictionary = {}     # 当前模式参数(DEFS.ITEM_PARAMS)
 var item_queue: Array[int] = []      # 待执行道具队列(多格同消时依次连发)
 var fx_kind := -1                    # ITEM_FX 待执行的道具
 var item_fx_timer := 0.0
-var fx_rows: Array[int] = []         # 风:目标行
-var fx_cols: Array[int] = []         # 雷:目标列
-var fx_rain_cells: Array = []        # 雨:目标格 [{pos, t}]
+var fx_rows: Array[int] = []         # 风/飓风:目标行
+var fx_cols: Array[int] = []         # 雷/雷暴:目标列
+var fx_rain_cells: Array = []        # 雨/暴雨:目标格 [{pos, t}]
+var fx_peak_cells: Array = []        # 削峰:每列最顶端格 [{pos, t}]
 var float_time := 0.0                # 浮字剩余时间
 var _paused_from := State.PLAYING    # 暂停前的状态(恢复用)
 var _tick_step := -1                 # 碎片格倒计时滴答档位(避免重复播同一秒)
@@ -299,7 +300,7 @@ func _finish_clear() -> void:
 		var cell: Vector2i = item_cells[i].cell
 		if rows.has(cell.y):
 			item_cells.remove_at(i)
-			item_queue.append(randi() % 3)
+			_enqueue_item(randi() % DEFS.BASIC_ITEM_COUNT)
 			acquired = true
 		else:
 			var shift := 0
@@ -316,6 +317,15 @@ func _finish_clear() -> void:
 
 
 # ---------------- 道具系统 ----------------
+
+func _enqueue_item(kind: int) -> void:
+	## 道具入队;队尾相邻同类基础道具合并进化(风风→飓风/雨雨→暴雨/雷雷→雷暴)。
+	if DEFS.EVOLVE_MAP.has(kind) and not item_queue.is_empty() \
+			and item_queue.back() == kind:
+		item_queue.pop_back()
+		item_queue.append(DEFS.EVOLVE_MAP[kind])
+	else:
+		item_queue.append(kind)
 
 func _update_item(delta: float) -> void:
 	## 碎片格刷新与存活计时(仅 PLAYING 调用,暂停天然冻结)。
@@ -391,13 +401,18 @@ func _start_next_item() -> void:
 		state = State.ITEM_FX
 		item_fx_timer = DEFS.ITEM_FX_TIME
 		var show_cells: Array = []
-		if kind == DEFS.Item.RAIN:
+		if kind == DEFS.Item.RAIN or kind == DEFS.Item.TORRENT:
 			for cd in fx_rain_cells:
 				show_cells.append(cd.pos)
+		elif kind == DEFS.Item.PRUNE:
+			for cd in fx_peak_cells:
+				show_cells.append(cd.pos)
+		var is_wind := kind == DEFS.Item.WIND or kind == DEFS.Item.STORM_WIND
+		var is_bolt := kind == DEFS.Item.BOLT or kind == DEFS.Item.THUNDER
 		board_view.show_item_fx(
 			kind,
-			fx_rows if kind == DEFS.Item.WIND else [],
-			fx_cols if kind == DEFS.Item.BOLT else [],
+			fx_rows if is_wind else [],
+			fx_cols if is_bolt else [],
 			show_cells)
 		return
 	_show_float("数据丢失…", Color("#8b90a8"))
@@ -409,37 +424,55 @@ func _select_item_targets(kind: int) -> bool:
 	fx_rows = []
 	fx_cols = []
 	fx_rain_cells = []
+	fx_peak_cells = []
 	match kind:
-		DEFS.Item.WIND:
+		DEFS.Item.WIND, DEFS.Item.STORM_WIND:
 			var rows: Array[int] = board.filled_row_indices()
 			if rows.is_empty():
 				return false
 			rows.shuffle()
-			var take := mini(2, rows.size())
+			var take := 2
+			if kind == DEFS.Item.STORM_WIND:
+				take = DEFS.STORM_WIND_ROWS
+			take = mini(take, rows.size())
 			for i in take:
 				fx_rows.append(rows[i])
-		DEFS.Item.RAIN:
+		DEFS.Item.RAIN, DEFS.Item.TORRENT:
 			var all: Array[Vector2i] = board.all_filled_cells()
 			if all.is_empty():
 				return false
 			all.shuffle()
-			var n := mini(DEFS.RAIN_MAX_CELLS, all.size())
+			var n := DEFS.RAIN_MAX_CELLS
+			if kind == DEFS.Item.TORRENT:
+				n = DEFS.TORRENT_MAX_CELLS
+			n = mini(n, all.size())
 			for i in n:
 				var c: Vector2i = all[i]
 				fx_rain_cells.append({
 					"pos": c,
 					"t": board.cells[c.y][c.x],
 				})
-		DEFS.Item.BOLT:
-			# 从有方块的列中随机选(至多 2 列),避免稀疏棋盘高概率作废
+		DEFS.Item.BOLT, DEFS.Item.THUNDER:
+			# 从有方块的列中随机选,避免稀疏棋盘高概率作废
 			var filled_cols: Array[int] = board.filled_column_indices()
 			if filled_cols.is_empty():
 				return false
 			filled_cols.shuffle()
 			fx_cols = []
-			var take_c := mini(2, filled_cols.size())
+			var take_c := 2
+			if kind == DEFS.Item.THUNDER:
+				take_c = DEFS.THUNDER_MAX_COLS
+			take_c = mini(take_c, filled_cols.size())
 			for i in take_c:
 				fx_cols.append(filled_cols[i])
+		DEFS.Item.FLIP:
+			# 翻转无消除目标;棋盘为空时翻转无意义,作废
+			if board.all_filled_cells().is_empty():
+				return false
+		DEFS.Item.PRUNE:
+			fx_peak_cells = board.peak_cells()
+			if fx_peak_cells.is_empty():
+				return false
 	return true
 
 
@@ -448,19 +481,19 @@ func _execute_item() -> void:
 	var cleared: Array = []
 	# 冲击音:与粒子爆发同帧,是道具的"听觉主体"
 	match fx_kind:
-		DEFS.Item.WIND:
+		DEFS.Item.WIND, DEFS.Item.STORM_WIND:
 			SFX.play("wind_cast")
-		DEFS.Item.RAIN:
+		DEFS.Item.RAIN, DEFS.Item.TORRENT:
 			SFX.play("rain_cast")
-		DEFS.Item.BOLT:
+		DEFS.Item.BOLT, DEFS.Item.THUNDER:
 			SFX.play("bolt_cast")
 	match fx_kind:
-		DEFS.Item.WIND:
+		DEFS.Item.WIND, DEFS.Item.STORM_WIND:
 			# 消行前判定:风带走其他碎片格 → 道具滚道具,入队连发
 			for i in range(item_cells.size() - 1, -1, -1):
 				if fx_rows.has(item_cells[i].cell.y):
 					item_cells.remove_at(i)
-					item_queue.append(randi() % 3)
+					_enqueue_item(randi() % DEFS.BASIC_ITEM_COUNT)
 			for r in fx_rows:
 				cleared.append_array(board.collect_row_cells(r))
 				particles.wind_streaks_row(r, 10)
@@ -475,16 +508,42 @@ func _execute_item() -> void:
 				if shift > 0:
 					item_cells[i].cell = Vector2i(cell.x, cell.y - shift)
 			_sync_item_cells()
-		DEFS.Item.RAIN:
+		DEFS.Item.RAIN, DEFS.Item.TORRENT:
 			cleared = fx_rain_cells
 			board.clear_cells(fx_rain_cells)
 			for cc in fx_rain_cells:
 				particles.rain_drops(cc.pos, 3)
-		DEFS.Item.BOLT:
+		DEFS.Item.BOLT, DEFS.Item.THUNDER:
 			for c in fx_cols:
 				cleared.append_array(board.collect_column_cells(c))
 				particles.bolt_arcs(c, 16)
 			board.clear_cells(cleared)
+		DEFS.Item.FLIP:
+			# 整棋盘水平镜像;零消除零分,纯解场工具
+			board.flip_horizontal()
+			# 碎片格坐标随镜像
+			for i in item_cells.size():
+				var ic: Vector2i = item_cells[i].cell
+				item_cells[i].cell = Vector2i(Board.WIDTH - 1 - ic.x, ic.y)
+			_sync_item_cells()
+			# 当前块不受翻转影响;若与镜像后的堆叠碰撞则向上抬升找合法位
+			if not board.can_place(current.type, current.rot, current.x, current.y):
+				var lifted := false
+				for k in range(1, 6):
+					if board.can_place(current.type, current.rot, current.x, current.y - k):
+						current.y -= k
+						lifted = true
+						break
+				if not lifted:
+					board_view.hide_item_fx()
+					fx_kind = -1
+					_game_over()
+					return
+			_after_piece_changed()
+			board_view.shake()
+		DEFS.Item.PRUNE:
+			cleared = fx_peak_cells
+			board.clear_cells(fx_peak_cells)
 	fx_kind = -1
 	board_view.hide_item_fx()
 	for cc in cleared:
