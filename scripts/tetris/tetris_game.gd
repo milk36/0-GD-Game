@@ -49,6 +49,7 @@ var fx_cols: Array[int] = []         # 雷:目标列
 var fx_rain_cells: Array = []        # 雨:目标格 [{pos, t}]
 var float_time := 0.0                # 浮字剩余时间
 var _paused_from := State.PLAYING    # 暂停前的状态(恢复用)
+var _tick_step := -1                 # 碎片格倒计时滴答档位(避免重复播同一秒)
 
 @onready var board_view: Control = $Center/Layout/BoardView
 @onready var particles: Control = $Center/Layout/BoardView/Particles
@@ -308,7 +309,9 @@ func _finish_clear() -> void:
 			if shift > 0:
 				item_cells[i].cell = Vector2i(cell.x, cell.y - shift)
 	_sync_item_cells()
+	_update_tick_sfx()
 	if acquired:
+		SFX.play("item_get")
 		_start_next_item()
 
 
@@ -324,6 +327,7 @@ func _update_item(delta: float) -> void:
 			if c.x >= 0 and not _has_item_cell(c):
 				item_cells.append({"cell": c, "life": float(item_params.life)})
 				item_spawn_timer = float(item_params.interval)
+				SFX.play("shard_spawn")
 			else:
 				item_spawn_timer = 1.0  # 棋盘空或撞已有格,1s 后重试
 	# 存活:逐格倒计时,归零单独熄灭
@@ -335,7 +339,28 @@ func _update_item(delta: float) -> void:
 			expired = true
 	if expired:
 		_show_float("数据丢失…", Color("#8b90a8"))
+		SFX.play("shard_expire")
 	_sync_item_cells()
+	_update_tick_sfx()
+
+
+func _update_tick_sfx() -> void:
+	## 碎片格剩余 ≤3s 时逐秒滴答(音高/音量递增)。取"最快到期"的那一格为准。
+	if item_cells.is_empty():
+		_tick_step = -1
+		return
+	var ml := INF
+	for d in item_cells:
+		ml = minf(ml, float(d.life))
+	if ml > 3.0:
+		_tick_step = -1
+		return
+	if ml <= 0.0:
+		return
+	var s := int(ceil(ml))
+	if s != _tick_step:
+		_tick_step = s
+		SFX.play("shard_tick%d" % clampi(3 - s, 0, 2))
 
 
 func _has_item_cell(c: Vector2i) -> bool:
@@ -376,6 +401,7 @@ func _start_next_item() -> void:
 			show_cells)
 		return
 	_show_float("数据丢失…", Color("#8b90a8"))
+	SFX.play("item_fizzle")
 
 
 func _select_item_targets(kind: int) -> bool:
@@ -420,6 +446,14 @@ func _select_item_targets(kind: int) -> bool:
 func _execute_item() -> void:
 	## ITEM_FX 结束:执行清除 + 粒子 + 计分;队列未空则继续连发。
 	var cleared: Array = []
+	# 冲击音:与粒子爆发同帧,是道具的"听觉主体"
+	match fx_kind:
+		DEFS.Item.WIND:
+			SFX.play("wind_cast")
+		DEFS.Item.RAIN:
+			SFX.play("rain_cast")
+		DEFS.Item.BOLT:
+			SFX.play("bolt_cast")
 	match fx_kind:
 		DEFS.Item.WIND:
 			# 消行前判定:风带走其他碎片格 → 道具滚道具,入队连发
@@ -456,6 +490,7 @@ func _execute_item() -> void:
 	for cc in cleared:
 		particles.burst_cell(cc.pos, cc.t, 14)
 	if not cleared.is_empty():
+		SFX.play("item_clear")
 		score += cleared.size() * DEFS.ITEM_SCORE_PER_CELL * level
 		if score > hi_score:
 			hi_score = score

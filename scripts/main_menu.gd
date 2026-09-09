@@ -18,6 +18,8 @@ func _ready() -> void:
 		if child is Button:
 			child.pressed.connect(_on_game_selected.bind(child.text))
 	_status.text = ""
+	# 大厅空闲时逐帧预热程序化音效，进游戏后首次触发不再有合成抖动
+	SFX.prewarm_async()
 
 
 func _on_game_selected(game_name: String) -> void:

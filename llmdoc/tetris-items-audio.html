@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="etDeVmFEz3eNOCy0EBXqRr">
+<head data-page-node-id="BUFtWC1JWttrh43dEjCoZS">
+<meta charset="UTF-8" data-page-node-id="Ia6UZE7wvItgOEZUobluzw">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="xK8hDG8jeDUUgnMrrjEiT7">
+<title>俄罗斯方块 · 道具音效设计 · 可试听</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 1000px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.8em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+  }
+  h2 { color: #ff2a6d; margin-top: 40px; text-shadow: 0 0 12px rgba(255, 42, 109, 0.35); }
+  h3 { color: #ffe600; margin-top: 24px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  pre {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; color: #b7c4ef; line-height: 1.5;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 0.92em; }
+  th, td { border: 1px solid #2a3554; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #131a2e; color: #00f0ff; }
+  .decision {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .decision b { color: #ffe600; }
+
+  /* ---- 试听面板 ---- */
+  .deck {
+    background: #10182c; border: 1px solid #2a3554; border-radius: 12px;
+    padding: 18px 20px; margin: 18px 0;
+  }
+  .deck h3 { margin-top: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .snd {
+    background: #0a0e1a; border: 1px solid #2a3554; border-left: 3px solid var(--c, #00f0ff);
+    border-radius: 8px; padding: 10px 12px; cursor: pointer; text-align: left;
+    color: #cdd3e8; font-family: inherit; font-size: 0.9em; transition: .12s;
+  }
+  .snd:hover { background: #16203a; border-color: var(--c, #00f0ff); transform: translateY(-1px); }
+  .snd:active { transform: translateY(0); }
+  .snd.playing { background: #1c2c4e; }
+  .snd b { display: block; color: var(--c, #00f0ff); font-size: 0.95em; }
+  .snd span { color: #7a85a8; font-size: 0.85em; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  .btn {
+    background: #16203a; border: 1px solid #3a4a78; color: #7ee7ff;
+    border-radius: 8px; padding: 9px 16px; cursor: pointer;
+    font-family: inherit; font-size: 0.9em; transition: .12s;
+  }
+  .btn:hover { background: #1f2d4e; border-color: #00f0ff; }
+  .btn.hot { border-color: #ff2a6d; color: #ff2a6d; }
+  input[type=range] { accent-color: #00f0ff; width: 180px; }
+  label { color: #8b93b8; font-size: 0.9em; }
+  canvas {
+    width: 100%; height: 96px; display: block; margin-top: 12px;
+    background: #080c16; border: 1px solid #2a3554; border-radius: 8px;
+  }
+  .tag {
+    display: inline-block; font-size: 0.78em; padding: 1px 7px; border-radius: 4px;
+    border: 1px solid #2a3554; color: #8b93b8; margin-left: 6px;
+  }
+  .tag.st { border-color: #4d7bff; color: #7ea8ff; }
+  .foot { margin-top: 40px; color: #5a6486; font-size: 0.9em; }
+</style>
+</head>
+<body data-page-node-id="Yl8prdPvEe0E7emzKZMbq1">
+
+<h1 data-page-node-id="4ITsWpYfng0c6FexNuFoPr">▚ 俄罗斯方块 · 道具音效设计 · 可试听</h1>
+
+<p data-page-node-id="dk9FgVwydMyBaVD43qteCj">项目此前<b data-page-node-id="uirNZhl8EHIhbQnd1ZzGBb">没有任何音频资源</b>，因此这套音效采用<b data-page-node-id="VVskDXEghNBQMiq0ZSDofM">程序化合成</b>：不引入任何 wav/ogg 素材，
+在运行时用代码实时生成 PCM（Godot 侧为 <code data-page-node-id="9jWyEBm7rTSXv6Xi6LyUQI">scripts/tetris/sfx_synth.gd</code>，
+本页用 Web Audio 复刻了<b data-page-node-id="y1sUNYN34jK8LfTKdBmNx6">完全相同</b>的合成算法与参数常量）。
+下面的按钮可以直接听到游戏里的实际音色。</p>
+
+<div class="deck" data-page-node-id="uHTaVuHt387VZREZEPKEao">
+  <h3 data-page-node-id="99DQBDs9fhCicD7wnzhF8H">▸ 试听台</h3>
+  <div class="grid" id="grid" data-page-node-id="bB3CbvScz2o0N3Ma8cS1pj"></div>
+  <div class="row" data-page-node-id="e66z1Ux6qOC72cMTlVu2LS">
+    <button class="btn hot" onclick="playSequence()" data-page-node-id="qV67CTH7KDeq7AzgOHaDqn">▶ 完整道具流程演示</button>
+    <button class="btn" onclick="playTrio()" data-page-node-id="EkGgTlHbEX0lNYSiRArM8C">▶ 三道具对比</button>
+    <button class="btn" onclick="stopAll()" data-page-node-id="LjjAla8P1sm5drQC4D0vT4">■ 停止</button>
+    <label data-page-node-id="SM3WWpgvS0ed0aPqqfCj9W">音量 <input type="range" id="vol" min="0" max="100" value="70" data-page-node-id="snf8OtsAXj7YlRgAQJ0Dr6"></label>
+  </div>
+  <canvas id="wave" width="1800" height="192" data-page-node-id="x9KNhTnGGHJp9dicxVsUDW"></canvas>
+  <div class="row" data-page-node-id="vS7CVmOFDJ66PTiItbt9pK">
+    <button class="btn" onclick="exportAll()" data-page-node-id="9h3HUazkOY6qjrRl7wdnxU">⤓ 导出全部 WAV（11 个文件）</button>
+    <span id="expinfo" style="color:#5a6486;font-size:.85em" data-page-node-id="Tc59R93tMho8YeQJDtPpQp"></span>
+  </div>
+</div>
+
+<h2 data-page-node-id="Lf4TXVmPkgEt3UXJYfA6Vy">1. 音效清单与设计</h2>
+
+<table data-page-node-id="drdDBV3kZSYARUX6W0JFzE">
+  <tr data-page-node-id="dFNlaCRmyH5OTa7QbJpLrr"><th data-page-node-id="IWep60dXkj37xvoEzhIZqD">音效 id</th><th data-page-node-id="IJ9Tuk9qeNFDjzEc2oimwD">触发时机</th><th data-page-node-id="IJ7gVOBxHNotcTdl5SCPOq">音色设计</th><th data-page-node-id="u3IQYEM4MleO8FekzbYse6">时长 / 声道</th></tr>
+  <tr data-page-node-id="efMLJ3wqZz20KN9R8LEnkD">
+    <td data-page-node-id="oGzuA8CDspx1YvJsS523Fd"><code data-page-node-id="9kTzi9TvSwM7K7ZpK87dEy">shard_spawn</code></td>
+    <td data-page-node-id="uSNw9uZNqfnhnQhipRZv6D">碎片格刷新出现</td>
+    <td data-page-node-id="CVk4Vi5Xrj1t3RR5g2OP7U">三角波<b data-page-node-id="MZh7qN6rGjAXuhGPYK2Fdj">纯五度上行</b> 660→1320Hz + 两声 2.4kHz 方波 blip + 一撮数据噪声，6.5kHz 低通收干净。<br data-page-node-id="YXt2m8mtIagoo3iOYiI0cL">
+        听感：终端里弹出一条新数据，清亮但不抢戏。</td>
+    <td data-page-node-id="gatuR3qKLMmK2QDpGT5CzI">0.22s · 单声道</td>
+  </tr>
+  <tr data-page-node-id="2muC2F3XUSf42ejCGgmmLP">
+    <td data-page-node-id="xfn8z3RIoKxMkaTDM0Hecz"><code data-page-node-id="LDEEt1UW6LQHjcDJhCZYtO">shard_tick0/1/2</code></td>
+    <td data-page-node-id="dg9wQuvYbW8k0UeTSBBfXi">碎片格剩余 3 / 2 / 1 秒</td>
+    <td data-page-node-id="svrSYfYRmdTf0avuLJi5MD">高频正弦+方波点击，音高 <b data-page-node-id="f4D2ueWZAxXs26PjeSVcJf">1568 → 1760 → 2093Hz</b>，音量同步递增（-6/-4/-2dB）。<br data-page-node-id="opsi5VNNKDC7dwSIm4aaUB">
+        只在最后 3 秒响，避免长时间噪声干扰。</td>
+    <td data-page-node-id="61SRXLkcPQgePGstRjOfwD">0.065s · 单声道</td>
+  </tr>
+  <tr data-page-node-id="8EiAAzGKwDKtsB1eTQQJ2C">
+    <td data-page-node-id="SDySBuihYmgwL2gYVi66jN"><code data-page-node-id="a7OGw5u4Lvg5uAHB38PP35">shard_expire</code></td>
+    <td data-page-node-id="4WpIvcHBMfAPjkMWJfLqE2">碎片格超时熄灭</td>
+    <td data-page-node-id="T5hJ9vj3ISVxw09kcgL8Pz">锯齿 420→130Hz 下扫，<b data-page-node-id="ARmgkIu5bYBZOEeazeiZbQ">低通截止同步从 3kHz 关到 260Hz</b>（"信号被掐断"），叠低频下沉 210→65Hz。</td>
+    <td data-page-node-id="5WeCHHhNHZYk8pAHsdHAn9">0.42s · 单声道</td>
+  </tr>
+  <tr data-page-node-id="ErFhbyqsGQt4sVE0wtYtL3">
+    <td data-page-node-id="GiE9g990KidOUsAhxuF7Yg"><code data-page-node-id="oEJFN7aPMQb5xfC4kv0hCK">item_get</code></td>
+    <td data-page-node-id="t2ZFgnOEHG43M8fdiGBBSW">消行带走碎片格 → 捕获成功</td>
+    <td data-page-node-id="IEgg88HClkZYeZfnCENYyh">C5-E5-G5 <b data-page-node-id="IOT4JyaGpU8XYX27LnyzoF">三音上行琶音</b>（间隔 55ms）+ FM 亮铃（载波 1568Hz、调制比 3.5、指数衰减）+ 130ms 延迟空间尾。<br data-page-node-id="KGXMZZzgKOVTxRrLWuHTyu">
+        经典"拾取到好东西"的正反馈。</td>
+    <td data-page-node-id="HMo2UNHIohTrRCBMA8wLGZ">0.50s · 单声道</td>
+  </tr>
+  <tr data-page-node-id="r8erawJSg045hZ4yHTF5LJ">
+    <td data-page-node-id="XD55M6m56SkAyThkNP9QtG"><code data-page-node-id="j60JejK0IWc21gobNMxAK0">wind_cast</code><span class="tag st" data-page-node-id="sOtncI9Fq3qFgsXg83wzKP">立体声</span></td>
+    <td data-page-node-id="B5ZHFTzc1yUf4P1JrZ7ifa">风 · 清除执行瞬间</td>
+    <td data-page-node-id="Fqca0grqshbrhkfDc16Z0l">带通白噪声中心频率 <b data-page-node-id="1mtW7gY7UUeopYDgZ9xNlo">320 → 5200 → 650Hz</b> 扫动（模拟一阵风掠过）+ 10.5Hz 呼啸 AM + 低频垫音；
+        <b data-page-node-id="8NmjRVDFaOAOQUwCK9jfSG">声像从最左扫到最右</b>，对应"整行被横向带走"。</td>
+    <td data-page-node-id="1y7ZaNssfj7f64bNKAnyYM">0.62s · 立体声</td>
+  </tr>
+  <tr data-page-node-id="OCJ8MpGiTyogmPkIQqrSMG">
+    <td data-page-node-id="AMViRq2LjwqNL5Nur79o9i"><code data-page-node-id="Da1YFjyNcLI7fUYWgv9jmU">rain_cast</code><span class="tag st" data-page-node-id="3nLZE6dzpExnzBtPrNr1gH">立体声</span></td>
+    <td data-page-node-id="nqnmmqo86iSstohLXuaUjt">雨 · 清除执行瞬间</td>
+    <td data-page-node-id="wbdFZBQC8xtTiqungBthZW">13 滴<b data-page-node-id="P656el1k2Hyr1xPNegDChy">音高在 16ms 内下滑到 0.42 倍</b>的正弦水滴（这是"叮咚"感的来源，硬编码常量，非随机）
+        + 900Hz 低通噪声雨幕铺底，每滴声像左右散开。</td>
+    <td data-page-node-id="jaYJKDt2UiNzKHboBASpqW">0.60s · 立体声</td>
+  </tr>
+  <tr data-page-node-id="quq8pY1ZEfaNxFMU8eKCNK">
+    <td data-page-node-id="EZqW9zV4BNZGsIrD8DdfM5"><code data-page-node-id="rwP0prWrD4vrUTUud0JAaS">bolt_cast</code><span class="tag st" data-page-node-id="vVHYL4OS5SJpMU9DtOJmZB">立体声</span></td>
+    <td data-page-node-id="YWB6p4zZ8C81v7NF3mArDs">雷电 · 清除执行瞬间</td>
+    <td data-page-node-id="6PLgMhqcGrDgH0MsKP4tP7">三段式：<b data-page-node-id="i6JUb4WmiU8fnvfOa71TkW">爆裂</b>（2.6kHz 高通噪声，4ms 内炸开）→ <b data-page-node-id="xZvdJ9wyueEFy1DLX5ja9f">撕裂</b>（锯齿 1900→280Hz 下扫 + 每 32 采样刷新的抖动 AM，模拟电弧不稳）
+        → <b data-page-node-id="K6iDOIsJpfxvFjZpNoH6Ai">轰鸣</b>（95→42Hz 低频）；尾部 85ms 回响 + 右声道 9 采样 Haas 加宽。</td>
+    <td data-page-node-id="i8uPmvsm2Dx4NdW1wVYb2t">0.50s · 立体声</td>
+  </tr>
+  <tr data-page-node-id="FvOfH2tmCUBtAeRQEEKaho">
+    <td data-page-node-id="KcsU0mGtPCKEUQIGsqNy7s"><code data-page-node-id="AWD2scpKAAsWXluMIqqUZ6">item_fizzle</code></td>
+    <td data-page-node-id="OdKmHJenUvkdlnUlxBrLCs">道具无可消目标 → 作废</td>
+    <td data-page-node-id="ly0NL68Rv5cux4RLzlcJaC">方波 340→150Hz 下行，<b data-page-node-id="Dr7wkxaPV2yxdlViFpvH8r">量化到 5 个电平</b>（数字劣化感）+ 120→70Hz 闷响，短促干瘪，明确"没打成"。</td>
+    <td data-page-node-id="9fxXC8m8Y2X1s3rgDQ9Pwy">0.26s · 单声道</td>
+  </tr>
+  <tr data-page-node-id="r0QWiKm2q1xwjUGOZ093QO">
+    <td data-page-node-id="mw8DqFnbIuhG7kvGG0Qnqn"><code data-page-node-id="Pj6bNOzj0QCT7CANkjErMF">item_clear</code></td>
+    <td data-page-node-id="9AMyusOMmG09tgejUzMFwZ">道具实际清除到格子</td>
+    <td data-page-node-id="M1HFYaYY9chzMJ748EaJmZ">两声上行 ping（1046 / 1568Hz）+ 高频碎光；<b data-page-node-id="t1v6XX5JZXrbEaCx6c2wvd">音量刻意压低 5dB</b>，作为道具主音之下的落点音，不喧宾夺主。</td>
+    <td data-page-node-id="CVkjj6JRtSKPe8K888vC8V">0.34s · 单声道</td>
+  </tr>
+</table>
+
+<h2 data-page-node-id="vO83QnO2KDWJ8JKdrtgSUc">2. 时序：一次完整的道具流程</h2>
+
+<pre data-page-node-id="Ufb4l4O9oLlo2Gm22nsPDN">碎片格出现 ──── 最后3秒滴答 ──── 玩家消掉该行 ──── 0.35s 预闪演出 ──── 清除执行
+    │                  │                  │                 │                │
+shard_spawn      tick0/1/2          item_get            (静默蓄力)      *_cast
+                                                                        +
+                                                                    item_clear
+
+超时未消 ──→ shard_expire（配"数据丢失…"浮字）
+无目标   ──→ item_fizzle （配"数据丢失…"浮字）</pre>
+
+<div class="decision" data-page-node-id="njaXgnmultWB74mWyUyPC5">
+  <b data-page-node-id="9x0djn4u0wBJUyMToc4ivG">设计决策 A1（捕获音与冲击音分离）</b>：<code data-page-node-id="kk3krcRQHiLKbkzBGRpXmI">item_get</code> 在<b data-page-node-id="uJsJ3B88SuE4H6uXEx7RLo">捕获瞬间</b>响（对应浮字弹出），
+  <code data-page-node-id="8Bs6TBDElphmNgKC73ZT07">*_cast</code> 在 <b data-page-node-id="Gptp7CxZ4DYg9Y2NfnDoRC">0.35s 预闪结束、粒子爆发的那一帧</b>响。两者分开，玩家能听出
+  "先拿到 → 再炸开"两个节拍；如果合成一发，打击感会糊在一起。
+</div>
+
+<div class="decision" data-page-node-id="VCuq7hBbMqEagl5adojTCP">
+  <b data-page-node-id="8Pu3199FDZQqGUftnuu8xE">设计决策 A2（道具音 = 冲击，不是 UI 提示音）</b>：三种道具的 <code data-page-node-id="JHhFb3VekRVrPOLRgEph6Y">*_cast</code> 都是
+  0.5~0.6s 的完整音景（有起音、有主体、有尾巴），而不是 80ms 的短提示音。
+  理由：道具是全屏级演出（粒子 + 高亮 + 计分），音太短会"配不上画面"，
+  且风和雷的立体声扫动本身就是"横向/竖向清除"的听觉说明。
+</div>
+
+<div class="decision" data-page-node-id="IJ8XqOyf96Ds4LBx2VhZzP">
+  <b data-page-node-id="RRl1Jp7oDiiXZM6DOsaOyv">设计决策 A3（三道具的频率分区）</b>：风集中在 <b data-page-node-id="VRbf4H5haqKa6icb26fa7l">中高频噪声</b>（气声）、
+  雨集中在 <b data-page-node-id="kffWxDxNOBuj0LnZhCXBkt">高频散点</b>（1.3~2.7kHz 水滴）、雷集中在 <b data-page-node-id="kDgLHv8qRDDKXpIWM88u8V">全频 + 低频轰鸣</b>。
+  三者频谱几乎不重叠，<b data-page-node-id="upOxn3GNiIkkea9pQd0vVr">欢乐模式下道具连发时不会糊成一团</b>，玩家闭眼也能分辨拿到了哪个。
+</div>
+
+<h2 data-page-node-id="FtepW2CiINFedEpW2Hwcj1">3. 混音表</h2>
+
+<table data-page-node-id="M8pbyZOz4GWdeTZPrToLmQ">
+  <tr data-page-node-id="sYON54PBXQ6rIt5t4bCd8e"><th data-page-node-id="eaIJifFjeJXEltbZQSiSAe">音效</th><th data-page-node-id="xXsTznIepAofKPeX7Y1kLF">相对音量</th><th data-page-node-id="QfhJaaZD7IauKQTYjLeKcz">说明</th></tr>
+  <tr data-page-node-id="B8q8OjHmyQ1tY2hAqvrqBC"><td data-page-node-id="A1zNqOnhji4ePKRR7o5bI9"><code data-page-node-id="MHPYQn0fPkvO5K1UOc7Tvj">item_get</code></td><td data-page-node-id="R6278qpxhoYPPq6DMIJhhG">+1 dB</td><td data-page-node-id="B6Eom0dfILZI2Bogg4LmgD">最重要的正反馈，略提</td></tr>
+  <tr data-page-node-id="e6tYQdIFHELZMyj8WYT0Da"><td data-page-node-id="mkdwS6CRNkIeeX4K1NReFn"><code data-page-node-id="NScSE7orzbwpz2tLlpJJ0T">shard_spawn</code> / <code data-page-node-id="eCyUPMGHExf9EO6SFpt6ao">wind_cast</code> / <code data-page-node-id="gJCpT2gtW4C8V3K7Sb1xbU">bolt_cast</code></td><td data-page-node-id="0ok20vnINfGPneUD6XC1cF">0 dB</td><td data-page-node-id="aHDwii5VIlaB7CfhzpaiR3">基准</td></tr>
+  <tr data-page-node-id="fOKhKDJAHBAugp29SfpRcb"><td data-page-node-id="SZUZdptcEzYDRw7nSG8rOV"><code data-page-node-id="9QJlD64YMJkAwA2uMqhZvr">rain_cast</code></td><td data-page-node-id="WVFFKy01ZdHYB83G4InxDw">−1 dB</td><td data-page-node-id="Mgkryh1vRcEEUaYRstbhYM">高频密集，略压防刺耳</td></tr>
+  <tr data-page-node-id="5fsjvkoGeP7zqeZVQNOBQ0"><td data-page-node-id="cnBJLyEYPlGBZSABDH2Oco"><code data-page-node-id="lbGgBjsStdPFsJwwvFDWlU">shard_expire</code></td><td data-page-node-id="7I33pfFlwaMOSfsgmZF2AG">−1 dB</td><td data-page-node-id="OhgTBBIfkVABGKqqOyNeY8">负面反馈，不希望太抢</td></tr>
+  <tr data-page-node-id="bRFRLABDm6Jq5GRBB34q9A"><td data-page-node-id="tseysUS1ebfRIKGH3ADguj"><code data-page-node-id="sB3wGkmnZncAygz1I9gpVL">item_fizzle</code></td><td data-page-node-id="HK4NWcgEEvE5ToDB8MEddc">−3 dB</td><td data-page-node-id="zQVvP7ylrobIuIsL1VYIIR">同上</td></tr>
+  <tr data-page-node-id="r7LitPiAOr5eUCarujWKM7"><td data-page-node-id="xFqDSjcQ0MeOuPiOSDzaxp"><code data-page-node-id="wyy4z5NgoUHUWvGiw3FhEY">shard_tick2/1/0</code></td><td data-page-node-id="Q2CULPiDVBhHRqJHREHcxZ">−2 / −4 / −6 dB</td><td data-page-node-id="xe6ACiY7QaOClOBN9aOWDJ">越早越轻，形成紧迫梯度</td></tr>
+  <tr data-page-node-id="KjBCfVDqmK814GHDAgKHHu"><td data-page-node-id="XkhL6f05GLB2JUxVDaPktG"><code data-page-node-id="kjcjfHnd0tmYPdeZaJLXD0">item_clear</code></td><td data-page-node-id="rhUBF7KwP3EKYbUxMBWibO">−5 dB</td><td data-page-node-id="oL4ENcsEK5ry2w3r5DMt6S">垫在道具主音之下的落点音</td></tr>
+</table>
+
+<p data-page-node-id="jM8rJBcWwokGAiSZoatMFE">总线上再统一 <code data-page-node-id="DfVnHGzRLN0KlKbnI6s91J">−8 dB</code>（<code data-page-node-id="UhNnk7A8HEQmqCTFn4zGbH">BASE_VOLUME_DB</code>），给后续加入的 BGM / 基础操作音效留出余量。</p>
+
+<h2 data-page-node-id="V54EnRFJdf1qKmNV78oYuO">4. 实现要点</h2>
+
+<ul data-page-node-id="q6999YEjyP8RUCsIbgCmFX">
+  <li data-page-node-id="8W35ibjJOlHWkFIxQydgVM"><b data-page-node-id="WslbQVhdvjjAzcWfBhWsDQ">零资源依赖</b>：全部波形由代码合成，仓库里没有也不需要任何音频文件。</li>
+  <li data-page-node-id="6tG0QUYCyjrazPSM7GLi2Z"><b data-page-node-id="ibyC4UZNtqbQPwhJvzv2Ge">懒合成 + 缓存</b>：首次播放某个 id 时才合成 PCM 并缓存（全部 11 个合计约 570ms）。</li>
+  <li data-page-node-id="CeD9jKANzSaEHYG5RqVqwy"><b data-page-node-id="jFDRQ9lriTyHpohzztTMu8">异步预热</b>：主菜单 <code data-page-node-id="xhSYkqjlC8vRpJQw0MBthA">_ready()</code> 调 <code data-page-node-id="Vx3lmZhVLFlQrU1x5sjbX4">SFX.prewarm_async()</code>，
+      每帧合成一个，摊平开销 —— 进游戏后首次触发不再有合成抖动。</li>
+  <li data-page-node-id="oB3ix1sLNjbFzLI4WStfUH"><b data-page-node-id="SZeDWXLNlyGHgjZimMJw9J">8 声道轮询</b>：欢乐模式下多碎片格同帧熄灭、或道具连发时不会互相打断。</li>
+  <li data-page-node-id="w9mITgduAHRmwXfnFeEXSF"><b data-page-node-id="yz9qMhN7Y8rrzgDCiwCgfR">暂停不受影响</b>：管理器 <code data-page-node-id="NjM1s78TrcPSaWwzgEB34u">process_mode = ALWAYS</code>，结算界面的音效照常播放。</li>
+  <li data-page-node-id="lCtHV9ro6Xu3FSZ9olzWcl"><b data-page-node-id="FxKluicnKPO3U2MzgkTpDY">雨滴参数硬编码</b>：不用随机数，任何平台合成结果一致，本页与游戏内听到的完全相同。</li>
+</ul>
+
+<pre data-page-node-id="IWuyJA26aEpNZayvLljOa0">scripts/tetris/
+├── sfx_synth.gd   新增:程序化合成器(振荡器/包络/滤波/延迟 + 11 个音色)
+├── sfx.gd         新增:音效管理器 autoload SFX(懒合成/缓存/声道池/混音表)
+└── tetris_game.gd 增量:9 处触发点(碎片出现/滴答/熄灭/捕获/三道具/作废/清除)</pre>
+
+<p class="foot" data-page-node-id="rAYARUc86HiX7MMmCK3lBg">— 音频设计 v1.0 · 2026-09-09 · demo-game · 俄罗斯方块道具系统</p>
+
+<script>
+// ============================================================
+// 与 sfx_synth.gd 完全等价的 JS 合成实现（参数逐一对应）
+// ============================================================
+const SR = 44100, TAU = Math.PI * 2;
+const SINE = 0, TRI = 1, SAW = 2, SQR = 3, NOISE = 4;
+
+const clampf = (x, a, b) => Math.min(b, Math.max(a, x));
+const frac = x => x - Math.floor(x);
+
+function osc(w, p) {
+  const m = frac(p);
+  switch (w) {
+    case SINE: return Math.sin(p * TAU);
+    case TRI:  return m < 0.25 ? m * 4 : (m < 0.75 ? 2 - m * 4 : m * 4 - 4);
+    case SAW:  return m * 2 - 1;
+    case SQR:  return m < 0.5 ? 1 : -1;
+    default:   return Math.random() * 2 - 1;
+  }
+}
+const glide = (f0, f1, t) => f0 * Math.pow(f1 / f0, clampf(t, 0, 1));
+
+function env(t, dur, atk, curve = 2) {
+  if (t < 0 || t >= dur) return 0;
+  if (t < atk) return t / Math.max(atk, 1e-6);
+  const u = 1 - (t - atk) / Math.max(dur - atk, 1e-6);
+  if (curve === 2) return u * u;
+  if (curve === 3) return u * u * u;
+  if (curve === 4) return u * u * u * u;
+  return Math.pow(u, curve);
+}
+const k_lp = fc => 1 - Math.exp(-TAU * clampf(fc, 20, SR * 0.45) / SR);
+
+function delayBuf(buf, time, fb, mix) {
+  const n = buf.length, d = Math.max(1, Math.floor(time * SR));
+  const out = Float32Array.from(buf);
+  for (let i = d; i < n; i++) out[i] += out[i - d] * fb;
+  for (let i = 0; i < n; i++) buf[i] = buf[i] * (1 - mix * 0.5) + out[i] * mix;
+  return buf;
+}
+function finalize(buf, gain) {
+  const n = buf.length;
+  const fi = Math.max(1, Math.floor(0.002 * SR)), fo = Math.max(1, Math.floor(0.010 * SR));
+  for (let i = 0; i < n; i++) {
+    let g = gain;
+    if (i < fi) g *= i / fi; else if (i > n - fo) g *= (n - i) / fo;
+    buf[i] = Math.tanh(buf[i] * g) * 0.92;
+  }
+  return buf;
+}
+function panGain(pan) {
+  const ang = (clampf(pan, -1, 1) + 1) * 0.5 * Math.PI * 0.5;
+  return [Math.cos(ang), Math.sin(ang)];
+}
+const mono = b => ({ L: b, R: b });
+
+// ---- 1. 碎片格出现 ----
+function shard_spawn() {
+  const dur = 0.22, n = Math.floor(dur * SR), out = new Float32Array(n);
+  const blips = [0.0, 0.05];
+  let ph = 0, lp = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR, td = t / dur;
+    ph += glide(660, 1320, td) / SR;
+    let v = osc(TRI, ph) * env(t, dur, 0.004, 2.2) * 0.55;
+    for (const b of blips) {
+      const tb = t - b;
+      if (tb >= 0 && tb < 0.015) v += osc(SQR, tb * 2400) * (1 - tb / 0.015) * 0.16;
+    }
+    if (t < 0.03) v += (Math.random() * 2 - 1) * (1 - t / 0.03) * 0.08;
+    lp += k_lp(6500) * (v - lp);
+    out[i] = lp;
+  }
+  return mono(finalize(out, 0.72));
+}
+
+// ---- 2. 倒计时滴答 ----
+function shard_tick(step) {
+  const freqs = [1568, 1760, 2093], amps = [0.30, 0.38, 0.48];
+  const f = freqs[step], a = amps[step];
+  const dur = 0.065, n = Math.floor(dur * SR), out = new Float32Array(n);
+  let lp = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let v = (osc(SINE, t * f) * 0.75 + osc(SQR, t * f) * 0.25) * env(t, dur, 0.001, 3) * a;
+    if (t < 0.004) v += (Math.random() * 2 - 1) * 0.15;
+    lp += k_lp(7000) * (v - lp);
+    out[i] = lp;
+  }
+  return mono(finalize(out, 0.75));
+}
+
+// ---- 3. 碎片熄灭 ----
+function shard_expire() {
+  const dur = 0.42, n = Math.floor(dur * SR), out = new Float32Array(n);
+  let ps = 0, pb = 0, lp = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR, td = t / dur;
+    ps += glide(420, 130, td) / SR;
+    pb += glide(210, 65, td) / SR;
+    let v = osc(SAW, ps) * env(t, dur, 0.006, 1.6) * 0.50;
+    v += osc(SINE, pb) * env(t, dur, 0.006, 1.6) * 0.25;
+    if (t < 0.05) v += (Math.random() * 2 - 1) * (1 - t / 0.05) * 0.10;
+    lp += k_lp(glide(3000, 260, td)) * (v - lp);
+    out[i] = lp;
+  }
+  return mono(finalize(out, 0.85));
+}
+
+// ---- 4. 捕获成功 ----
+function item_get() {
+  const dur = 0.50, n = Math.floor(dur * SR), out = new Float32Array(n);
+  const arp = [523.25, 659.25, 783.99], offs = [0, 0.055, 0.11];
+  let pf = 0, pm = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let v = 0;
+    for (let k = 0; k < 3; k++) {
+      const ta = t - offs[k];
+      if (ta >= 0) {
+        v += (osc(TRI, ta * arp[k]) * 0.7 + osc(SINE, ta * arp[k] * 2) * 0.3)
+             * env(ta, 0.16, 0.002, 3) * 0.42;
+      }
+    }
+    const fc = 1567.98, fm = fc * 3.5;
+    const idx = 5 * Math.pow(Math.max(0, 1 - t / 0.40), 2);
+    pf += fc / SR; pm += fm / SR;
+    v += Math.sin(TAU * pf + idx * Math.sin(TAU * pm)) * env(t, 0.42, 0.002, 2.5) * 0.22;
+    out[i] = v;
+  }
+  return mono(finalize(delayBuf(out, 0.13, 0.30, 0.35), 0.80));
+}
+
+// ---- 5. 风 ----
+function wind_cast() {
+  const dur = 0.62, n = Math.floor(dur * SR);
+  const L = new Float32Array(n), R = new Float32Array(n);
+  let hp = 0, lp = 0, lpPrev = 0, psub = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR, td = t / dur;
+    const fc = td < 0.42 ? glide(320, 5200, td / 0.42) : glide(5200, 650, (td - 0.42) / 0.58);
+    const nz = Math.random() * 2 - 1;
+    hp = nz - lpPrev;
+    lpPrev += k_lp(fc * 0.55) * (nz - lpPrev);
+    lp += k_lp(fc * 1.8) * (hp - lp);
+    const am = 1 + 0.30 * Math.sin(TAU * 10.5 * t) * (t < 0.45 ? 1 : 0);
+    const v = lp * env(t, dur, 0.05, 1.7) * 0.75 * am;
+    psub += glide(240, 430, Math.min(td / 0.35, 1)) / SR;
+    const sub = osc(SINE, psub) * env(t, 0.50, 0.03, 2) * 0.22;
+    const m = v + sub;
+    const g = panGain(clampf(td / 0.34, 0, 1) * 1.8 - 0.9);
+    L[i] = m * g[0]; R[i] = m * g[1];
+  }
+  return { L: finalize(L, 0.82), R: finalize(R, 0.82) };
+}
+
+// ---- 6. 雨（常量与 GDScript 完全一致）----
+const RAIN_T0  = [0.000, 0.035, 0.062, 0.098, 0.131, 0.170, 0.198, 0.235, 0.268, 0.305, 0.337, 0.372, 0.408];
+const RAIN_F0  = [2650, 1410, 2280, 1730, 1320, 2560, 1890, 1490, 2380, 1650, 2030, 2750, 1560];
+const RAIN_AMP = [0.34, 0.22, 0.42, 0.26, 0.48, 0.30, 0.38, 0.24, 0.45, 0.28, 0.36, 0.50, 0.32];
+const RAIN_PAN = [-0.62, 0.38, -0.18, 0.70, -0.75, 0.12, 0.55, -0.45, 0.25, -0.30, 0.66, 0.05, -0.58];
+
+function rain_cast() {
+  const dur = 0.60, n = Math.floor(dur * SR);
+  const L = new Float32Array(n), R = new Float32Array(n);
+  let lc = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    lc += k_lp(900) * ((Math.random() * 2 - 1) - lc);
+    const curtain = lc * env(t, dur, 0.08, 1.4) * 0.13;
+    L[i] = curtain; R[i] = curtain;
+  }
+  for (let k = 0; k < RAIN_T0.length; k++) {
+    const s0 = Math.floor(RAIN_T0[k] * SR);
+    const s1 = Math.min(n, s0 + Math.floor(0.035 * SR));
+    let ph = 0;
+    const g = panGain(RAIN_PAN[k]);
+    for (let i = s0; i < s1; i++) {
+      const tb = (i - s0) / SR;
+      ph += glide(RAIN_F0[k], RAIN_F0[k] * 0.42, clampf(tb / 0.016, 0, 1)) / SR;
+      const v = Math.sin(TAU * ph) * env(tb, 0.03, 0.0008, 2.5) * RAIN_AMP[k];
+      L[i] += v * g[0]; R[i] += v * g[1];
+    }
+  }
+  return { L: finalize(L, 1.05), R: finalize(R, 1.05) };
+}
+
+// ---- 7. 雷电 ----
+function bolt_cast() {
+  const dur = 0.50, n = Math.floor(dur * SR);
+  const L = new Float32Array(n), R = new Float32Array(n), M = new Float32Array(n);
+  let pt = 0, pb = 0, hp = 0, lp = 0, lpPrev = 0, jitter = 1;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    if (i % 32 === 0) jitter = 0.7 + Math.random() * 0.6;
+    const nz = Math.random() * 2 - 1;
+    let v = 0;
+    hp = nz - lpPrev;
+    lpPrev += k_lp(2600) * (nz - lpPrev);
+    v += hp * env(t, 0.09, 0.0008, 4) * 0.85;
+    const tt = t - 0.02;
+    if (tt >= 0 && tt < 0.22) {
+      pt += glide(1900, 280, tt / 0.20) / SR;
+      const tear = osc(SAW, pt) * 0.65 + nz * 0.35;
+      lp += k_lp(glide(6000, 1200, tt / 0.22)) * (tear - lp);
+      v += lp * env(tt, 0.22, 0.002, 2.2) * 0.50 * jitter;
+    }
+    const tb = t - 0.03;
+    if (tb >= 0) {
+      pb += glide(95, 42, clampf(tb / 0.36, 0, 1)) / SR;
+      v += osc(SINE, pb) * env(tb, 0.38, 0.006, 1.8) * 0.50;
+    }
+    M[i] = v;
+  }
+  const W = delayBuf(M, 0.085, 0.32, 0.30);
+  for (let i = 0; i < n; i++) { L[i] = W[i]; R[i] = W[Math.max(0, i - 9)]; }
+  return { L: finalize(L, 0.62), R: finalize(R, 0.62) };
+}
+
+// ---- 8. 道具作废 ----
+function item_fizzle() {
+  const dur = 0.26, n = Math.floor(dur * SR), out = new Float32Array(n);
+  let ph = 0, pb = 0, lp = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR, td = t / dur;
+    ph += glide(340, 150, td) / SR;
+    pb += glide(120, 70, Math.min(t / 0.12, 1)) / SR;
+    let v = osc(SQR, ph) * env(t, 0.24, 0.002, 2) * 0.50;
+    v = Math.round(v * 4) / 4;              // 4bit 量化劣化
+    v += osc(SINE, pb) * env(t, 0.14, 0.002, 2) * 0.30;
+    if (t < 0.04) v += (Math.random() * 2 - 1) * (1 - t / 0.04) * 0.12;
+    lp += k_lp(1500) * (v - lp);
+    out[i] = lp;
+  }
+  return mono(finalize(out, 0.65));
+}
+
+// ---- 9. 消除结算 ----
+function item_clear() {
+  const dur = 0.34, n = Math.floor(dur * SR), out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let v = osc(SINE, t * 1046.5) * env(t, 0.18, 0.003, 2.6) * 0.30;
+    v += osc(SINE, (t - 0.05) * 1568) * env(t - 0.05, 0.24, 0.003, 2.6) * 0.26;
+    if (t < 0.05) v += (Math.random() * 2 - 1) * (1 - t / 0.05) * 0.10;
+    out[i] = v;
+  }
+  return mono(finalize(delayBuf(out, 0.07, 0.22, 0.25), 0.75));
+}
+
+// ============================================================
+// 播放 / UI
+// ============================================================
+const MIX = {
+  shard_spawn: 0, shard_tick0: -6, shard_tick1: -4, shard_tick2: -2,
+  shard_expire: -1, item_get: 1, wind_cast: 0, rain_cast: -1,
+  bolt_cast: 0, item_fizzle: -3, item_clear: -5,
+};
+const BASE_DB = -8;
+
+const SOUNDS = [
+  { id: "shard_spawn",  name: "shard_spawn",  desc: "碎片格出现 · 数据到达", c: "#ffd23f", f: () => shard_spawn() },
+  { id: "shard_tick2",  name: "shard_tick 2", desc: "倒计时 剩1秒 · 最急",   c: "#ffd23f", f: () => shard_tick(2) },
+  { id: "shard_tick1",  name: "shard_tick 1", desc: "倒计时 剩2秒",          c: "#ffd23f", f: () => shard_tick(1) },
+  { id: "shard_tick0",  name: "shard_tick 0", desc: "倒计时 剩3秒",          c: "#ffd23f", f: () => shard_tick(0) },
+  { id: "shard_expire", name: "shard_expire", desc: "碎片格超时熄灭",        c: "#8b90a8", f: () => shard_expire() },
+  { id: "item_get",     name: "item_get",     desc: "捕获道具 · 琶音+亮铃",  c: "#00ff9f", f: () => item_get() },
+  { id: "wind_cast",    name: "wind_cast",    desc: "风 · 噪声扫频 L→R",     c: "#7ef9ff", f: () => wind_cast() },
+  { id: "rain_cast",    name: "rain_cast",    desc: "雨 · 13 滴散点坠落",    c: "#4d7bff", f: () => rain_cast() },
+  { id: "bolt_cast",    name: "bolt_cast",    desc: "雷电 · 爆裂/撕裂/轰鸣", c: "#ffe600", f: () => bolt_cast() },
+  { id: "item_fizzle",  name: "item_fizzle",  desc: "道具作废 · 数据丢失",   c: "#8b90a8", f: () => item_fizzle() },
+  { id: "item_clear",   name: "item_clear",   desc: "消除结算 · 轻脆落点",   c: "#bd00ff", f: () => item_clear() },
+];
+
+let ctx = null, master = null, cache = {}, live = [];
+
+function audio() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    master = ctx.createGain();
+    master.connect(ctx.destination);
+  }
+  if (ctx.state === "suspended") ctx.resume();
+  return ctx;
+}
+
+function build(id) {
+  if (cache[id]) return cache[id];
+  const s = SOUNDS.find(x => x.id === id);
+  const r = s.f();
+  cache[id] = r;
+  return r;
+}
+
+function play(id, when = 0, volExtra = 0) {
+  const c = audio();
+  const r = build(id);
+  const n = r.L.length;
+  const buf = c.createBuffer(2, n, SR);
+  buf.copyToChannel(r.L, 0);
+  buf.copyToChannel(r.R, 1);
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const g = c.createGain();
+  g.gain.value = Math.pow(10, (BASE_DB + (MIX[id] || 0) + volExtra) / 20)
+                 * (document.getElementById("vol").value / 100);
+  src.connect(g); g.connect(master);
+  src.start(c.currentTime + when);
+  live.push(src);
+  src.onended = () => { live = live.filter(x => x !== src); };
+  return n / SR;
+}
+
+function drawWave(r) {
+  const cv = document.getElementById("wave"), g = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = "#080c16"; g.fillRect(0, 0, W, H);
+  g.strokeStyle = "#1e2a4a"; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0, H / 2); g.lineTo(W, H / 2); g.stroke();
+  const n = r.L.length, step = Math.max(1, Math.floor(n / W));
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ch === 0 ? r.L : r.R;
+    g.strokeStyle = ch === 0 ? "#00f0ff" : "#ff2a6d";
+    g.globalAlpha = ch === 0 ? 0.95 : 0.55;
+    g.lineWidth = 1.5;
+    g.beginPath();
+    for (let x = 0; x < W; x++) {
+      let peak = 0;
+      for (let k = 0; k < step; k++) {
+        const v = d[Math.min(n - 1, x * step + k)];
+        if (Math.abs(v) > Math.abs(peak)) peak = v;
+      }
+      const y = H / 2 - peak * (H / 2) * 0.9;
+      x === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+}
+
+// ---- 构建按钮 ----
+const grid = document.getElementById("grid");
+for (const s of SOUNDS) {
+  const b = document.createElement("button");
+  b.className = "snd";
+  b.dataset.id = s.id;
+  b.style.setProperty("--c", s.c);
+  b.innerHTML = `<b>${s.name}</b><span>${s.desc}</span>`;
+  b.onclick = () => {
+    const r = build(s.id);
+    drawWave(r);
+    play(s.id);
+    b.classList.add("playing");
+    setTimeout(() => b.classList.remove("playing"), 250);
+  };
+  grid.appendChild(b);
+}
+
+function stopAll() {
+  for (const s of live) { try { s.stop(); } catch (e) {} }
+  live = [];
+}
+
+let seqTimers = [];
+function clearSeq() { seqTimers.forEach(clearTimeout); seqTimers = []; }
+
+function playSequence() {
+  stopAll(); clearSeq();
+  audio();
+  // 碎片出现 → 3 秒滴答 → 捕获 → 0.35s 预闪 → 雷电冲击 + 结算
+  const plan = [
+    ["shard_spawn", 0.00],
+    ["shard_tick0", 1.05],
+    ["shard_tick1", 2.05],
+    ["shard_tick2", 3.05],
+    ["item_get",    3.75],
+    ["bolt_cast",   4.10],
+    ["item_clear",  4.14],
+  ];
+  for (const [id, t] of plan) {
+    seqTimers.push(setTimeout(() => {
+      drawWave(build(id));
+      const b = document.querySelector('.snd[data-id="' + id + '"]');
+      if (b) { b.classList.add("playing"); setTimeout(() => b.classList.remove("playing"), 220); }
+    }, t * 1000));
+    if (t === 0) play(id); else seqTimers.push(setTimeout(() => play(id), t * 1000));
+  }
+}
+
+function playTrio() {
+  stopAll(); clearSeq();
+  audio();
+  [["wind_cast", 0], ["rain_cast", 0.85], ["bolt_cast", 1.70]].forEach(([id, t]) => {
+    seqTimers.push(setTimeout(() => { drawWave(build(id)); play(id); }, t * 1000));
+  });
+}
+
+// ---- WAV 导出 ----
+function toWav(L, R) {
+  const n = L.length, bytes = 44 + n * 4;
+  const ab = new ArrayBuffer(bytes), dv = new DataView(ab);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, "RIFF"); dv.setUint32(4, bytes - 8, true); str(8, "WAVE");
+  str(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true);
+  dv.setUint32(24, SR, true); dv.setUint32(28, SR * 4, true);
+  dv.setUint16(32, 4, true); dv.setUint16(34, 16, true);
+  str(36, "data"); dv.setUint32(40, n * 4, true);
+  let o = 44;
+  for (let i = 0; i < n; i++) {
+    for (const v of [L[i], R[i]]) {
+      dv.setInt16(o, Math.max(-32768, Math.min(32767, Math.round(v * 32767))), true);
+      o += 2;
+    }
+  }
+  return new Blob([ab], { type: "audio/wav" });
+}
+
+function exportAll() {
+  const info = document.getElementById("expinfo");
+  info.textContent = "生成中…";
+  let i = 0;
+  const tick = () => {
+    if (i >= SOUNDS.length) { info.textContent = `已导出 ${SOUNDS.length} 个文件`; return; }
+    const s = SOUNDS[i++];
+    const r = build(s.id);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(toWav(r.L, r.R));
+    a.download = s.id + ".wav";
+    a.click();
+    setTimeout(tick, 250);
+  };
+  tick();
+}
+</script>
+
+</body>
+</html>

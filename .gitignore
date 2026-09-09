@@ -4,3 +4,7 @@
 
 # ZCode session data
 .zcode/
+
+# 工具本地数据 / 编辑器意外生成的运行时目录
+.workbuddy/
+Godot/
