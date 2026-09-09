@@ -429,6 +429,7 @@ func _execute_item() -> void:
 					item_queue.append(randi() % 3)
 			for r in fx_rows:
 				cleared.append_array(board.collect_row_cells(r))
+				particles.wind_streaks_row(r, 10)
 			board.remove_rows(fx_rows)
 			# 剩余碎片格坐标随下移修正
 			for i in item_cells.size():
@@ -443,9 +444,12 @@ func _execute_item() -> void:
 		DEFS.Item.RAIN:
 			cleared = fx_rain_cells
 			board.clear_cells(fx_rain_cells)
+			for cc in fx_rain_cells:
+				particles.rain_drops(cc.pos, 3)
 		DEFS.Item.BOLT:
 			for c in fx_cols:
 				cleared.append_array(board.collect_column_cells(c))
+				particles.bolt_arcs(c, 16)
 			board.clear_cells(cleared)
 	fx_kind = -1
 	board_view.hide_item_fx()

@@ -26,6 +26,7 @@ var fx_rows: Array[int] = []
 var fx_cols: Array[int] = []
 var fx_cells: Array[Vector2i] = []
 var fx_progress := 0.0             # 0→1,由 tetris_game 每帧同步
+var _bolt_zigzags: Array = []      # 雷电:每列 3 条候选锯齿折线(每次预闪重新生成)
 
 
 func _process(delta: float) -> void:
@@ -76,13 +77,33 @@ func show_item_fx(kind: int, rows: Array, cols: Array, cells: Array) -> void:
 	fx_cells = []
 	for c in cells:
 		fx_cells.append(c)
+	_bolt_zigzags = []
+	if kind == DEFS.Item.BOLT:
+		for c in cols:
+			var zl: Array = []
+			for k in 3:
+				zl.append(_gen_zigzag(int(c)))
+			_bolt_zigzags.append(zl)
 	fx_progress = 0.0
 	queue_redraw()
 
 
 func hide_item_fx() -> void:
 	fx_active = false
+	_bolt_zigzags = []
 	queue_redraw()
+
+
+func _gen_zigzag(col: int) -> PackedVector2Array:
+	## 从可视棋盘顶到底的锯齿折线点集(段高 14~22px,x 抖动 ±9)。
+	var pts := PackedVector2Array()
+	var cx := col * CELL + CELL / 2.0
+	pts.append(Vector2(cx, 0.0))
+	var y := 0.0
+	while y < BOARD_H:
+		y = minf(y + 14.0 + randf() * 8.0, float(BOARD_H))
+		pts.append(Vector2(cx + randf_range(-9.0, 9.0), y))
+	return pts
 
 
 func _draw() -> void:
@@ -217,34 +238,120 @@ func _draw_item_cells(off: Vector2) -> void:
 		draw_line(mid - Vector2(0, d / 2.0), mid + Vector2(0, d / 2.0), Color(col, 0.9), 1.5)
 
 
-## ---- 道具特效预闪(选中区域高亮) ----
+## ---- 道具特效预闪(专属演出,全部由 fx_progress 驱动 → 暂停天然冻结) ----
 func _draw_item_fx(off: Vector2) -> void:
 	var col: Color = DEFS.ITEM_COLORS.get(fx_kind, Color.WHITE)
-	var t := float(Time.get_ticks_msec()) / 1000.0
-	var blink := 0.35 + 0.45 * absf(sin(t * 14.0))
 	match fx_kind:
 		DEFS.Item.WIND:
-			for r in fx_rows:
-				if r < Board.HIDDEN:
-					continue
-				var y := (r - Board.HIDDEN) * CELL
-				draw_rect(Rect2(off + Vector2(0, y + 2), Vector2(BOARD_W, CELL - 4)),
-					Color(col, 0.30 * blink))
-				draw_line(off + Vector2(0, y + 1), off + Vector2(BOARD_W, y + 1),
-					Color(col, blink), 1.5)
-		DEFS.Item.BOLT:
-			for c in fx_cols:
-				var x := c * CELL
-				draw_rect(Rect2(off + Vector2(x + 2, 0), Vector2(CELL - 4, BOARD_H)),
-					Color(col, 0.25 * blink))
-				draw_line(off + Vector2(x + 1, 0), off + Vector2(x + 1, BOARD_H),
-					Color(col, blink), 1.5)
+			_draw_wind_fx(off, col)
 		DEFS.Item.RAIN:
-			for cell in fx_cells:
-				if cell.y < Board.HIDDEN:
-					continue
-				var rect := Rect2(
-					off + Vector2(cell.x * CELL, (cell.y - Board.HIDDEN) * CELL) + Vector2(4, 4),
-					Vector2(CELL - 8, CELL - 8))
-				draw_rect(rect, Color(col, 0.35 * blink))
-				draw_rect(rect, Color(col, 0.9 * blink), false, 1.5)
+			_draw_rain_fx(off, col)
+		DEFS.Item.BOLT:
+			_draw_bolt_fx(off, col)
+
+
+func _draw_wind_fx(off: Vector2, col: Color) -> void:
+	## 风:行青色高亮(0~0.15s) → 左右两条速度线横向扫过。
+	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	for r in fx_rows:
+		if r < Board.HIDDEN:
+			continue
+		var y := (r - Board.HIDDEN) * CELL
+		draw_rect(Rect2(off + Vector2(0, y + 2), Vector2(BOARD_W, CELL - 4)),
+			Color(col, 0.30 * blink))
+		draw_line(off + Vector2(0, y + 1), off + Vector2(BOARD_W, y + 1),
+			Color(col, blink), 1.5)
+	var p2 := clampf(
+		(fx_progress * DEFS.ITEM_FX_TIME - DEFS.ITEM_WIND_HL_TIME)
+		/ (DEFS.ITEM_FX_TIME - DEFS.ITEM_WIND_HL_TIME), 0.0, 1.0)
+	if p2 <= 0.0:
+		return
+	var span := float(BOARD_W) + WIND_STREAK_LEN * 2.0
+	for r in fx_rows:
+		if r < Board.HIDDEN:
+			continue
+		var ym := (r - Board.HIDDEN) * CELL + CELL / 2.0
+		_draw_wind_streak(off + Vector2(-WIND_STREAK_LEN + p2 * span, ym), 1.0, col)
+		_draw_wind_streak(off + Vector2(float(BOARD_W) + WIND_STREAK_LEN - p2 * span, ym),
+			-1.0, col)
+
+
+const WIND_STREAK_LEN := 110.0
+
+
+func _draw_wind_streak(head: Vector2, dir: float, col: Color) -> void:
+	## 单条风痕:头部亮、向后 3 段渐隐渐细。
+	for i in 3:
+		var fi := float(i)
+		var a := 0.85 * (1.0 - fi / 3.0)
+		var x0 := head.x - dir * WIND_STREAK_LEN * (fi / 3.0)
+		var x1 := head.x - dir * WIND_STREAK_LEN * ((fi + 1.0) / 3.0)
+		draw_line(Vector2(x0, head.y), Vector2(x1, head.y),
+			Color(col, a), 3.0 - 0.7 * fi)
+
+
+func _draw_rain_fx(off: Vector2, col: Color) -> void:
+	## 雨:散点格按 30ms 间隔逐个蓝白闪现,已闪现格上方雨滴循环坠落。
+	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	var elapsed := fx_progress * DEFS.ITEM_FX_TIME
+	var lit := clampi(int(elapsed / DEFS.ITEM_RAIN_STEP), 0, fx_cells.size())
+	for i in fx_cells.size():
+		var cell: Vector2i = fx_cells[i]
+		if cell.y < Board.HIDDEN:
+			continue
+		var pos := off + Vector2(cell.x * CELL, (cell.y - Board.HIDDEN) * CELL)
+		var rect := Rect2(pos + Vector2(4, 4), Vector2(CELL - 8, CELL - 8))
+		if i < lit:
+			draw_rect(rect, Color(col, 0.45))
+			draw_rect(rect, Color(1, 1, 1, 0.9 * blink), false, 2.0)
+			for k in 2:
+				var ph := fposmod(fx_progress * 6.0 + float(i) * 0.37 + float(k) * 0.5, 1.0)
+				var drop_y := pos.y + ph * 72.0 - 72.0
+				draw_line(Vector2(pos.x + 8 + k * 12, drop_y),
+					Vector2(pos.x + 8 + k * 12, drop_y + 14.0),
+					Color(col.lightened(0.4), 0.7 * (1.0 - ph)), 1.5)
+		else:
+			draw_rect(rect, Color(col, 0.16), false, 1.2)
+
+
+func _draw_bolt_fx(off: Vector2, col: Color) -> void:
+	## 雷:列高亮 + 锯齿电光自顶部向底部扫描(0.2s) → 整列闪白。
+	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	for c in fx_cols:
+		var x := c * CELL
+		draw_rect(Rect2(off + Vector2(x + 2, 0), Vector2(CELL - 4, BOARD_H)),
+			Color(col, 0.22 * blink))
+	var zig_p := clampf(fx_progress * DEFS.ITEM_FX_TIME / DEFS.ITEM_BOLT_ZIG_TIME,
+		0.0, 1.0)
+	if zig_p < 1.0:
+		var head_y := zig_p * float(BOARD_H)
+		for ci in fx_cols.size():
+			if ci >= _bolt_zigzags.size():
+				continue
+			var zl: Array = _bolt_zigzags[ci]
+			var pts: PackedVector2Array = zl[(int(fx_progress * 24.0) + ci) % zl.size()]
+			_draw_zigzag_to_y(off, pts, head_y, col)
+	else:
+		var flash := 0.5 + 0.5 * sin(fx_progress * TAU * 6.0)
+		for c in fx_cols:
+			var x := c * CELL
+			draw_rect(Rect2(off + Vector2(x + 2, 0), Vector2(CELL - 4, BOARD_H)),
+				Color(1, 1, 1, 0.35 + 0.3 * flash))
+			draw_rect(Rect2(off + Vector2(x + 1, 0), Vector2(CELL - 2, BOARD_H)),
+				Color(col, blink), false, 2.0)
+
+
+func _draw_zigzag_to_y(off: Vector2, pts: PackedVector2Array, head_y: float,
+		col: Color) -> void:
+	## 绘制锯齿折线到 head_y 为止(电光下扫),黄粗白细双层 + 头部亮点。
+	for i in pts.size() - 1:
+		var a := pts[i]
+		var b := pts[i + 1]
+		if a.y >= head_y:
+			break
+		var b2 := b
+		if b.y > head_y:
+			b2.y = head_y
+		draw_line(off + a, off + b2, Color(col.lightened(0.3), 0.95), 2.5)
+		draw_line(off + a, off + b2, Color(1, 1, 1, 0.6), 1.0)
+	draw_circle(off + Vector2(pts[0].x, head_y), 3.0, Color(1, 1, 1, 0.9))

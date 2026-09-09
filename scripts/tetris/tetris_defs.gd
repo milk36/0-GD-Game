@@ -89,6 +89,13 @@ const ITEM_FX_TIME := 0.35
 const RAIN_MAX_CELLS := 10
 const ITEM_SCORE_PER_CELL := 5
 
+## 道具专属演出分段(基于 ITEM_FX_TIME 内的进度切分):
+## 风:行高亮时长,之后左右速度线扫过;雷:锯齿电光扫描时长,之后整列闪白;
+## 雨:散点格逐个闪现的时间间隔。
+const ITEM_WIND_HL_TIME := 0.15
+const ITEM_BOLT_ZIG_TIME := 0.2
+const ITEM_RAIN_STEP := 0.03
+
 
 static func shape(type_index: int, rot: int) -> Array:
 	return SHAPES[TYPES[type_index]][wrapi(rot, 0, 4)]

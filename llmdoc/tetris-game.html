@@ -108,6 +108,11 @@
         (首版遗漏此行导致 debugger break,已修复并加 null 保护)。</li>
     <li><b>menu 内 UI 路径</b>:覆盖层按钮在 <code>_ready()</code> 用绝对路径连接信号,
         场景节点改名需同步 <code>@onready</code> 列表。</li>
+    <li><b>Godot 4.7 无全局 <code>fract()</code></b>(Parser Error: not found in base self),
+        取小数部分用 <code>fposmod(x, 1.0)</code> 或 <code>x - floorf(x)</code>。</li>
+    <li><b>静态类型变量调用脚本方法会编译失败</b>:<code>var bv: Control</code> 后调
+        <code>bv.show_item_fx()</code> 报 not found;需去掉类型标注(动态派发)或
+        <code>as</code> 到具体脚本类。</li>
   </ol>
 </div>
 
@@ -178,6 +183,27 @@
 </ul>
 <p>验证:多格上限/唯一性/视图同步、双道具队列连发(其一执行后清空棋盘、其二自动作废)、
 标准模式回归(单格/15s/标签)全部通过。</p>
+
+<h3>7.5 道具专属使用特效(2026-09-08 增量)</h3>
+
+<p>实现需求文档 3.2 节的三道具专属演出(此前仅有统一色块高亮):</p>
+<pre>tetris_defs.gd     + ITEM_WIND_HL_TIME(0.15) / ITEM_BOLT_ZIG_TIME(0.2) / ITEM_RAIN_STEP(0.03)
+board_view.gd      + _draw_wind_fx: 行高亮(0~0.15s) → 左右两条速度线横向扫过(头部亮/3段渐隐)
+                   + _draw_rain_fx: 散点格按 30ms 逐个蓝白闪现 + 已闪格上方循环坠落雨滴指示线
+                   + _draw_bolt_fx: 锯齿电光自顶向底扫描(0.2s,黄粗白细双层+头部亮点) → 整列闪白
+                   + _gen_zigzag: 每列预生成 3 条锯齿折线,绘制时按进度轮换(电光抖动感)
+particle_layer.gd  + 粒子结构增加 kind(dot/trail) 与 grav(重力系数);trail=沿速度方向拖尾线
+                   + wind_streaks_row(行内横向高速风痕,免重力) / rain_drops(自上坠落蓝白雨滴)
+                   + bolt_arcs(列内随机高度黄白电弧)
+tetris_game.gd     + _execute_item 消除瞬间按道具调用对应粒子接口</pre>
+
+<ul>
+  <li>预闪动画全部由 <code>fx_progress</code> 驱动(不再读 <code>Time.get_ticks_msec()</code>),
+      暂停 / Game Over 时 progress 不更新 → 演出天然冻结,符合设计决策 D5。</li>
+  <li>锯齿电光与风痕均在 ITEM_FX_TIME=0.35s 内分阶段完成,数值集中在 defs 可调。</li>
+  <li>验证:三类预闪逐一定格截图通过(风痕扫过/雨滴逐格闪现/锯齿电光+列闪白);
+      三种拖尾粒子经运行时同帧落盘截图确认(方向/配色正确);全程无脚本报错。</li>
+</ul>
 
 <h2>8. 后续可扩展</h2>
 <ul>
