@@ -75,34 +75,26 @@ static func _build_mesh(blocks: Dictionary) -> ArrayMesh:
 			if blocks.has(pos + d):
 				continue  # 内面剔除：被邻居贴住的面不生成
 			var verts: Array = FACE_VERTS[d]
+			# 绕序：Godot 的 generate_normals() 取 (p1-p3)×(p1-p2)，故按 0-2-1 / 0-3-2 排列
+			# 才让法线朝外（顺序反了会导致顶面被背面剔除、看到内部底面 → 观感"上下颠倒"）
 			st.set_color(col)
 			st.add_vertex(c + verts[0])
+			st.add_vertex(c + verts[2])
 			st.add_vertex(c + verts[1])
-			st.add_vertex(c + verts[2])
 			st.set_color(col)
 			st.add_vertex(c + verts[0])
-			st.add_vertex(c + verts[2])
 			st.add_vertex(c + verts[3])
+			st.add_vertex(c + verts[2])
 	st.generate_normals()
 	var mesh := st.commit()
 	return mesh
 
 
-## 受光顶点色材质（机体/敌人/地形共用，配 material_override）
+## 受光顶点色材质（机体/敌人/地形/玩家机共用，配 material_override）
 static func shaded_material() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
 	m.roughness = 0.85
-	return m
-
-
-## 金属质感顶点色材质（玩家机等主角单位：低粗糙度高金属度，方向光下有高光）
-static func metal_material() -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.metallic = 0.55
-	m.roughness = 0.35
-	m.metallic_specular = 0.6
 	return m
 
 

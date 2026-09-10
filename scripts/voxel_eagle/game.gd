@@ -3,7 +3,7 @@ extends Node3D
 ## M0 基础 + M2 系统 + M3 内容：三关卡主题地形、选关面板（奖牌解锁）、
 ## E6 精英炮舰、炸弹补给掉落、程序化音效、按关结算与存档。
 ## 调试键：F1/F2 相机 68°/90°，F3 阴影，F4 弹幕压测；H 机库；S 选关；Esc 暂停。
-## M3.9：高度分层——玩家 4.5 格飞行层 + 机体视觉 0.6 缩放，地貌防重叠摆放。
+## M3.12：玩家机移除金属材质层，统一使用普通受光材质。
 
 const VoxelModel = preload("res://scripts/voxel_eagle/voxel_model.gd")
 const VoxelPool = preload("res://scripts/voxel_eagle/pools.gd")
@@ -41,50 +41,8 @@ const COL_PINK := Color("ff2a6d")
 const COL_YELLOW := Color("ffe600")
 const COL_WHITE := Color("f5f9ff")
 
-# 玩家机三层细节建模（金属枪灰 + 红色涂装）：机翼平面 / 机身+翼面 / 座舱脊线（9 宽 × 11 长）
-const ART_PLAYER_WING := "
-    D
-    D
-   DGD
-   DGD
-  DGGGD
- DGGGGGD
-RRGGGGGRR
- DGGGGGD
-  DGGGD
-   DGD
-  DD DD
-"
-const ART_PLAYER_BODY := "
-    W
-    R
-   GRG
-   GRG
-  GGCGG
- GGCCCGG
-HGGCCCGGH
- GGRCCRG
-  GGRGG
-   RRR
-  BY YB
-"
-const ART_PLAYER_TOP := "
-    W
-    C
-    C
-    C
-    C
-    C
-    C
-    C
-    C
-    C
-    Y
-"
-const PAL_PLAYER := {
-	"G": Color("6a7484"), "D": Color("384048"), "R": Color("e8323e"),
-	"C": COL_CYAN, "W": Color("f5f9ff"), "Y": COL_YELLOW, "H": Color("8a94a8"),
-}
+# 玩家机与 Boss 造型已迁移至 MagicaVoxel 资产（assets/vox/units/*.vox），
+# 经 tools/vox/gen_units.py 生成，可在 MagicaVoxel 中继续编辑后直接生效。
 
 const ART_TURRET := "
 GGG
@@ -145,15 +103,6 @@ GHHHHHHHG
 GHHRHRHHG
 GHHHHHHHG
 GGGGGGGGG
-"
-const ART_BOSS := "
-DDDDDDDDDDDDD
-DHHHHHHHHHHHD
-DHHHHRRRHHHHD
-DHHTHHHHHTHHD
-DHHHHRRRHHHHD
-DHHHHHHHHHHHD
-DDDDDDDDDDDDD
 "
 const ART_SURVIVOR_LEG := "D"
 const ART_SURVIVOR_TORSO := "O"
@@ -296,7 +245,6 @@ func _ready() -> void:
 			{"art": ART_RAIDER_TOP, "pal": PAL_ENEMY, "y": 1, "layers": 1},
 		]),
 		"E6": VoxelModel.build(ART_ELITE, PAL_ENEMY, 3),
-		"BOSS": VoxelModel.build(ART_BOSS, PAL_ENEMY, 3),
 		"SURV": VoxelModel.build_multi([
 			{"art": ART_SURVIVOR_LEG, "pal": {"D": Color("3a3a4a")}, "y": 0, "layers": 1},
 			{"art": ART_SURVIVOR_TORSO, "pal": {"O": Color("ffa03c")}, "y": 1, "layers": 2},
@@ -572,13 +520,10 @@ func _build_player() -> void:
 	player.name = "Player"
 	add_child(player)
 	player_mesh = MeshInstance3D.new()
-	player_mesh.mesh = VoxelModel.build_multi([
-		{"art": ART_PLAYER_WING, "pal": PAL_PLAYER, "y": 0, "layers": 1},
-		{"art": ART_PLAYER_BODY, "pal": PAL_PLAYER, "y": 1, "layers": 1},
-		{"art": ART_PLAYER_TOP, "pal": PAL_PLAYER, "y": 2, "layers": 1},
-	])
-	player_mesh.material_override = VoxelModel.metal_material()  # 金属质感
-	player_mesh.scale = Vector3.ONE * 0.6  # 视觉缩小一号（判定盒不变），减少与地貌的屏幕重叠
+	# MagicaVoxel 体素机（.vox 运行时解析，顶点色与材质体系一致）
+	player_mesh.mesh = VoxReader.read_mesh("res://assets/vox/units/player.vox")
+	player_mesh.scale = Vector3.ONE * 0.3  # 15×19×6 体素 × 0.3 ≈ 4.5×5.7×1.8
+	player_mesh.material_override = VoxelModel.shaded_material()  # 普通受光材质（同敌人/地貌）
 	player.add_child(player_mesh)
 	player.position = Vector3(0, PLAYER_Y, 6)
 
@@ -1223,7 +1168,16 @@ func _spawn_survivor(x: float) -> void:
 
 func _spawn_boss() -> void:
 	var n := MeshInstance3D.new()
-	n.mesh = _meshes["BOSS"]
+	# MagicaVoxel 体素舰（.vox 运行时解析）；缺失时退化为占位方块保持流程可跑
+	var vox_mesh := VoxReader.read_mesh("res://assets/vox/units/boss.vox")
+	if vox_mesh != null and vox_mesh.get_surface_count() > 0:
+		n.mesh = vox_mesh
+		n.scale = Vector3.ONE * 0.5  # 17×24×6 体素 × 0.5 ≈ 8.5×12×3
+	else:
+		push_warning("Boss .vox 加载失败，使用占位方块")
+		var fm := BoxMesh.new()
+		fm.size = Vector3(8.5, 3.0, 12.0)
+		n.mesh = fm
 	boss_mat = VoxelModel.shaded_material()
 	n.material_override = boss_mat
 	add_child(n)
