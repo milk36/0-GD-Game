@@ -1,11 +1,13 @@
 extends Node3D
-## 方块雄鹰 M0 快速验证原型：体素纵版弹幕射击。
-## 玩家 WASD/方向键移动 + 自动射击 + 空格炸弹；敌波循环刷出 5 类敌人。
-## 调试键：F1/F2 相机 68°/90° A/B 对比，F3 阴影开关，F4 弹幕压测（300 发）。
-## 一切视觉资源由代码生成（字符画体素 + 纯色材质），零外部资源依赖。
+## 方块雄鹰 M2：体素纵版弹幕射击（Sky Force 类）。
+## M0 基础（玩家/敌波/弹幕/星星）+ M2 系统：关卡波次脚本、幸存者救援、
+## Boss 三阶段战、四奖牌判定、结算面板、机库五线升级、JSON 存档。
+## 调试键：F1/F2 相机 68°/90°，F3 阴影，F4 弹幕压测；H 机库；Esc 暂停。
+## M2 系统均已接入：关卡脚本、幸存者、Boss、奖牌、结算、机库、存档。
 
 const VoxelModel = preload("res://scripts/voxel_eagle/voxel_model.gd")
 const VoxelPool = preload("res://scripts/voxel_eagle/pools.gd")
+const SaveManager = preload("res://scripts/voxel_eagle/save_manager.gd")
 
 # ---- 数值 ----
 const SCROLL := 7.0            # 世界滚动速度 VU/s
@@ -13,10 +15,18 @@ const PLAYER_SPEED := 24.0
 const ARENA_HALF_W := 15.0     # 玩家横移边界
 const PLAYER_Z_MIN := -8.0
 const PLAYER_Z_MAX := 10.0
-const FIRE_INTERVAL := 0.11
 const BULLET_SPEED := 46.0
 const ENEMY_BULLET_Y := 1.0    # 敌弹飞行高度（与玩家判定平面一致）
 const STAR_LIFE := 9.0
+const SURVIVOR_TOTAL := 3      # 本关幸存者数
+const BOSS_HP := 1600
+
+# 阶段机
+const PH_WAVES := 0
+const PH_BOSSENTER := 1
+const PH_BOSS := 2
+const PH_VICTORY := 3
+const PH_OVER := 4
 
 const COL_CYAN := Color("00f0ff")
 const COL_PINK := Color("ff2a6d")
@@ -60,10 +70,53 @@ const ART_RAIDER := "
 DDDDD
   D
 "
+const ART_BOSS := "
+DDDDDDDDDDDDD
+DHHHHHHHHHHHD
+DHHHHRRRHHHHD
+DHHTHHHHHTHHD
+DHHHHRRRHHHHD
+DHHHHHHHHHHHD
+DDDDDDDDDDDDD
+"
+const ART_SURVIVOR := "
+W
+W
+"
 const PAL_ENEMY := {
 	"G": Color("6a7488"), "R": Color("ff2a6d"), "S": Color("8a7a52"),
 	"M": Color("ff2a6d"), "C": Color("ffb0c8"), "D": Color("b03050"),
+	"T": Color("3a4254"), "H": Color("8a94aa"),
 }
+
+# 关 1「碧海突袭」波次脚本：t = 关卡开始后秒数，地面为主保证歼灭奖牌可达
+const STAGE_WAVES := [
+	{"t": 6.0, "spawn": [{"t": "E1", "x": -8.0}, {"t": "E1", "x": 8.0}]},
+	{"t": 16.0, "spawn": [{"t": "E3", "x": -12.0, "vx": 3.0}, {"t": "E3", "x": -4.0, "vx": -3.0}, {"t": "E3", "x": 4.0, "vx": 3.0}, {"t": "E3", "x": 12.0, "vx": -3.0}]},
+	{"t": 28.0, "spawn": [{"t": "E2", "x": 0.0}, {"t": "E1", "x": -9.0}, {"t": "E1", "x": 9.0}]},
+	{"t": 42.0, "spawn": [{"t": "E4", "x": -8.0}, {"t": "E4", "x": -4.0}, {"t": "E4", "x": 0.0}, {"t": "E4", "x": 4.0}, {"t": "E4", "x": 8.0}]},
+	{"t": 56.0, "spawn": [{"t": "E1", "x": -10.0}, {"t": "E1", "x": 0.0}, {"t": "E1", "x": 10.0}, {"t": "E2", "x": -5.0}]},
+	{"t": 70.0, "spawn": [{"t": "E5", "x": -8.0}, {"t": "E5", "x": 8.0}]},
+	{"t": 84.0, "spawn": [{"t": "E2", "x": -6.0}, {"t": "E2", "x": 6.0}, {"t": "E1", "x": 0.0}]},
+	{"t": 98.0, "spawn": [{"t": "E3", "x": -12.0, "vx": 4.0}, {"t": "E3", "x": 0.0, "vx": -4.0}, {"t": "E3", "x": 12.0, "vx": 4.0}, {"t": "E1", "x": -6.0}, {"t": "E1", "x": 6.0}]},
+	{"t": 114.0, "spawn": [{"t": "E5", "x": -10.0}, {"t": "E2", "x": 8.0}, {"t": "E1", "x": -4.0}]},
+	{"t": 128.0, "spawn": [{"t": "E4", "x": -8.0}, {"t": "E4", "x": -4.0}, {"t": "E4", "x": 0.0}, {"t": "E4", "x": 4.0}, {"t": "E4", "x": 8.0}]},
+	{"t": 140.0, "spawn": [{"t": "E1", "x": -8.0}, {"t": "E1", "x": 8.0}, {"t": "E2", "x": 0.0}]},
+]
+const SURVIVOR_SPOTS := [
+	{"t": 36.0, "x": -6.0},
+	{"t": 78.0, "x": 9.0},
+	{"t": 120.0, "x": 2.0},
+]
+
+# 机库升级线定义（数值曲线见 save_manager.upgrade_cost）
+const UPGRADES := [
+	{"k": "main", "name": "主炮", "fx": "火力密度/弹列提升"},
+	{"k": "wing", "name": "僚机导弹", "fx": "追踪弹 +1 枚（每 3s）"},
+	{"k": "magnet", "name": "磁铁", "fx": "星星吸取半径 +2"},
+	{"k": "shield", "name": "护盾", "fx": "出击护甲 +1（上限 +2）"},
+	{"k": "bomb", "name": "炸弹", "fx": "携带上限 +1 / 威力提升"},
+]
 
 # ---- 场景节点 ----
 var world: Node3D
@@ -76,48 +129,105 @@ var pb: MultiMeshInstance3D   # 自机弹
 var eb: MultiMeshInstance3D   # 敌弹
 var pickups: MultiMeshInstance3D  # 星星
 var fx: MultiMeshInstance3D    # 碎片/闪光
-var enemies: Array = []        # [{n,t,hp,ft,age,x0,...}]
-var waves: Array = []         # 波浪装饰 Node3D
-var islands: Array = []       # 岛 Node3D
+var enemies: Array = []        # 敌人 dict 列表（含 Boss）
+var waves: Array = []          # 波浪装饰 Node3D
+var islands: Array = []        # 岛 Node3D
+var survivors: Array = []      # 幸存者 dict 列表
+var missiles: Array = []       # 僚机追踪弹 dict 列表
+var rope: MeshInstance3D       # 救援绳索（细长方块）
+var laser_warn: MeshInstance3D
+var laser_beam: MeshInstance3D
+var boss_mat: StandardMaterial3D
 
 # ---- HUD ----
 var hud_score: Label
 var hud_armor: Label
 var hud_info: Label
 var hud_center: Label
+var hud_boss: Label
 
-# ---- 状态 ---- （M0 原型：全部状态集中在根脚本，M1 拆分）
+# ---- 结算 / 机库面板 ----
+var settle_root: Control
+var settle_title: Label
+var settle_lines: Label
+var settle_medals: Label
+var hangar_root: Control
+var hangar_balance: Label
+var hangar_lv := {}    # key → Label（等级显示）
+var hangar_buy := {}   # key → Button
+var hangar_from := ""  # 打开来源："pause" / "settle"
+
+# ---- 存档与局内状态 ----
+var save: Dictionary
+var phase := PH_WAVES
 var score := 0
-var star_cnt := 0
+var star_cnt := 0          # 本局已拾取星星
+var stars_spawned := 0     # 本局已产出星星（奖牌分母）
 var armor := 3
 var bombs := 2
+var escaped := 0           # 逃逸敌机数（歼灭奖牌用）
+var rescued := 0
+var damage_taken := 0
 var invuln := 0.0
 var dead := false
 var paused := false
 var fire_cd := 0.0
 var elapsed := 0.0
-var wave_t := 0.0
-var wave_idx := 0
+var stage_t := 0.0         # 关卡脚本时钟
+var wave_i := 0
+var surv_i := 0
+var waves_done := false
+var boss_delay := 0.0
+var settle_t := 0.0
+var victory := false
 var shake := 0.0
-var cam_mode := 0             # 0=68° 斜俯视 1=90° 纯俯视
+var cam_mode := 0          # 0=68° 斜俯视 1=90° 纯俯视
 var stress := false
 var hud_cd := 0.0
-var _meshes := {}             # 敌型号 → 共享 ArrayMesh
+var wing_t := 3.0
+var laser := {"st": 0, "t": 0.0, "org": Vector3.ZERO, "dir": Vector3.FORWARD, "len": 60.0}
+
+# 升级快照（出击时从存档套用）
+var fire_int := 0.11
+var magnet_r := 3.0
+var armor_max := 3
+var bombs_max := 2
+var boss := {}             # Boss dict（也在 enemies 中）
+var _meshes := {}          # 敌型号 → 共享 ArrayMesh
 
 
 func _ready() -> void:
+	save = SaveManager.load_data()
+	_apply_upgrades()
 	_build_env()
 	_build_ground()
 	_build_player()
 	_build_pools()
 	_build_hud()
+	_build_overlays()
 	_meshes = {
 		"E1": VoxelModel.build(ART_TURRET, PAL_ENEMY, 2),
 		"E2": VoxelModel.build(ART_RING, PAL_ENEMY, 3),
 		"E3": VoxelModel.build(ART_DRONE, PAL_ENEMY, 1),
 		"E4": VoxelModel.build(ART_WING, PAL_ENEMY, 2),
 		"E5": VoxelModel.build(ART_RAIDER, PAL_ENEMY, 2),
+		"BOSS": VoxelModel.build(ART_BOSS, PAL_ENEMY, 3),
+		"SURV": VoxelModel.build(ART_SURVIVOR, {"W": COL_WHITE}, 1),
 	}
+
+
+func _apply_upgrades() -> void:
+	var up: Dictionary = save["upgrades"]
+	var main_lv: int = up.get("main", 1)
+	var mag_lv: int = up.get("magnet", 0)
+	var sh_lv: int = up.get("shield", 0)
+	var bo_lv: int = up.get("bomb", 0)
+	fire_int = maxf(0.12 - 0.004 * float(main_lv), 0.085)
+	magnet_r = 3.0 + 2.0 * float(mag_lv)
+	armor_max = 3 + mini(sh_lv, 2)
+	armor = armor_max
+	bombs_max = mini(2 + bo_lv, 5)
+	bombs = bombs_max
 
 
 # ================= 场景构建 =================
@@ -230,12 +340,45 @@ func _build_player() -> void:
 	flame.position = Vector3(0, 0, 3.2)
 	player.add_child(flame)
 
+	# 救援绳索（细长白方块，救援时显示）
+	rope = MeshInstance3D.new()
+	var rm := BoxMesh.new()
+	rm.size = Vector3(0.16, 0.16, 1.0)
+	var rmat := StandardMaterial3D.new()
+	rmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rmat.albedo_color = COL_WHITE
+	rm.material = rmat
+	rope.mesh = rm
+	rope.visible = false
+	add_child(rope)
+
+	# Boss 激光：预警细线 + 光束粗梁
+	laser_warn = MeshInstance3D.new()
+	var wm := BoxMesh.new()
+	wm.size = Vector3(0.14, 0.14, 1.0)
+	wm.material = rmat
+	laser_warn.mesh = wm
+	laser_warn.visible = false
+	add_child(laser_warn)
+	laser_beam = MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1.2, 0.6, 1.0)
+	var bmat := StandardMaterial3D.new()
+	bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bmat.albedo_color = COL_PINK
+	bm.material = bmat
+	laser_beam.mesh = bm
+	laser_beam.visible = false
+	add_child(laser_beam)
+
+	boss_mat = VoxelModel.shaded_material()
+
 
 func _build_pools() -> void:
 	var unshaded := VoxelModel.unshaded_material()
 	pb = VoxelPool.new()
 	add_child(pb)
-	pb.setup(64, unshaded)
+	pb.setup(96, unshaded)
 	eb = VoxelPool.new()
 	add_child(eb)
 	eb.setup(512, unshaded)
@@ -254,6 +397,8 @@ func _build_hud() -> void:
 	hud_armor = _mk_label(layer, Vector2(24, 52), 18, COL_PINK)
 	hud_info = _mk_label(layer, Vector2(24, 690), 14, Color("8a93b8"))
 	hud_center = _mk_label(layer, Vector2(360, 300), 30, COL_YELLOW)
+	hud_boss = _mk_label(layer, Vector2(820, 16), 20, COL_PINK)
+	hud_boss.visible = false
 
 
 func _mk_label(parent: Node, pos: Vector2, size: int, col: Color) -> Label:
@@ -265,10 +410,152 @@ func _mk_label(parent: Node, pos: Vector2, size: int, col: Color) -> Label:
 	return l
 
 
+# ================= 覆盖层（结算 / 机库） =================
+
+func _make_overlay() -> Array:
+	var layer := CanvasLayer.new()
+	layer.layer = 2
+	add_child(layer)
+	var root := Control.new()
+	root.set_anchors_preset(15)  # FULL_RECT
+	layer.add_child(root)
+	var dim := ColorRect.new()
+	dim.color = Color(0.01, 0.02, 0.06, 0.86)
+	dim.set_anchors_preset(15)
+	root.add_child(dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(15)
+	root.add_child(cc)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	cc.add_child(box)
+	root.visible = false
+	return [root, box]
+
+
+func _mk_olabel(box: VBoxContainer, size: int, col: Color) -> Label:
+	var l := Label.new()
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", col)
+	l.horizontal_alignment = 1  # 居中
+	box.add_child(l)
+	return l
+
+
+func _mk_obutton(box: VBoxContainer, text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(200, 44)
+	b.pressed.connect(cb)
+	box.add_child(b)
+	return b
+
+
+func _build_overlays() -> void:
+	var sr := _make_overlay()
+	settle_root = sr[0]
+	var sbox: VBoxContainer = sr[1]
+	settle_title = _mk_olabel(sbox, 34, COL_YELLOW)
+	settle_lines = _mk_olabel(sbox, 20, COL_WHITE)
+	settle_medals = _mk_olabel(sbox, 20, COL_CYAN)
+	_mk_olabel(sbox, 14, Color("8a93b8")).text = " "
+	_mk_obutton(sbox, "H 机库", _open_hangar_from_settle)
+	_mk_obutton(sbox, "R 重打", restart)
+	_mk_obutton(sbox, "Q 返回大厅", _go_menu)
+
+	var hr := _make_overlay()
+	hangar_root = hr[0]
+	var hbox: VBoxContainer = hr[1]
+	hangar_balance = _mk_olabel(hbox, 30, COL_YELLOW)
+	_mk_olabel(hbox, 16, Color("8a93b8")).text = "机库 · 星星升级（下次出击生效）"
+	for u in UPGRADES:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 14)
+		hbox.add_child(row)
+		var name_l := Label.new()
+		name_l.text = u["name"]
+		name_l.custom_minimum_size = Vector2(120, 0)
+		name_l.add_theme_font_size_override("font_size", 19)
+		name_l.add_theme_color_override("font_color", COL_CYAN)
+		row.add_child(name_l)
+		var lv_l := Label.new()
+		lv_l.text = "Lv 1/8"
+		lv_l.custom_minimum_size = Vector2(90, 0)
+		lv_l.add_theme_font_size_override("font_size", 19)
+		row.add_child(lv_l)
+		hangar_lv[u["k"]] = lv_l
+		var fx_l := Label.new()
+		fx_l.text = u["fx"]
+		fx_l.custom_minimum_size = Vector2(230, 0)
+		fx_l.add_theme_font_size_override("font_size", 15)
+		fx_l.add_theme_color_override("font_color", Color("8a93b8"))
+		row.add_child(fx_l)
+		var btn := Button.new()
+		btn.text = "★0 升级"
+		btn.custom_minimum_size = Vector2(130, 40)
+		btn.pressed.connect(_buy.bind(u["k"]))
+		row.add_child(btn)
+		hangar_buy[u["k"]] = btn
+	_mk_olabel(hbox, 14, Color("8a93b8")).text = " "
+	_mk_obutton(hbox, "Esc/H 关闭", _close_hangar)
+	_refresh_hangar()
+
+
+func _refresh_hangar() -> void:
+	hangar_balance.text = "★ %d" % int(save["stars"])
+	for u in UPGRADES:
+		var k: String = u["k"]
+		var lv: int = save["upgrades"].get(k, 0)
+		if k == "main":
+			lv = maxi(lv, 1)
+		var lv_l: Label = hangar_lv[k]
+		lv_l.text = "Lv %d/8" % lv
+		var btn: Button = hangar_buy[k]
+		if lv >= 8:
+			btn.text = "已满级"
+			btn.disabled = true
+		else:
+			var cost := SaveManager.upgrade_cost(lv + 1)
+			btn.text = "★%d 升级" % cost
+			btn.disabled = int(save["stars"]) < cost
+
+
+func _buy(k: String) -> void:
+	var lv: int = save["upgrades"].get(k, 0)
+	if k == "main":
+		lv = maxi(lv, 1)
+	if lv >= 8:
+		return
+	var cost := SaveManager.upgrade_cost(lv + 1)
+	if int(save["stars"]) < cost:
+		return
+	save["stars"] = int(save["stars"]) - cost
+	save["upgrades"][k] = lv + 1
+	SaveManager.save_data(save)
+	_refresh_hangar()
+
+
+func _open_hangar_from_settle() -> void:
+	hangar_from = "settle"
+	settle_root.visible = false
+	_refresh_hangar()
+	hangar_root.visible = true
+
+
+func _close_hangar() -> void:
+	hangar_root.visible = false
+	if hangar_from == "settle":
+		settle_root.visible = true
+
+
+func _go_menu() -> void:
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+
 # ================= 主循环 =================
 
 func _process(delta: float) -> void:
-	if paused:
+	if paused or hangar_root.visible or phase == PH_OVER:
 		return
 	elapsed += delta
 	shake = maxf(0.0, shake - delta)
@@ -285,10 +572,25 @@ func _process(delta: float) -> void:
 			isl.position.z -= 230.0
 			isl.position.x = randf_range(-22, 22)
 
-	if not dead:
+	if dead:
+		settle_t -= delta
+		if settle_t <= 0.0:
+			_show_settlement(false)
+	else:
 		_update_player(delta)
-		_update_waves(delta)
+		match phase:
+			PH_WAVES:
+				_update_stage_script(delta)
+			PH_VICTORY:
+				settle_t -= delta
+				if settle_t <= 0.0:
+					_show_settlement(true)
+			_:
+				pass
+		_update_survivors(delta)
 		_update_enemies(delta)
+		_update_missiles(delta)
+		_update_laser(delta)
 	_update_bullets(delta)
 	_update_pickups(delta)
 	fx.update(delta)
@@ -298,6 +600,25 @@ func _process(delta: float) -> void:
 	if hud_cd <= 0.0:
 		hud_cd = 0.15
 		_refresh_hud()
+
+
+## 关卡脚本：按 stage_t 触发波次与幸存者，全部触发后延时进 Boss
+func _update_stage_script(delta: float) -> void:
+	stage_t += delta
+	while wave_i < STAGE_WAVES.size() and stage_t >= float(STAGE_WAVES[wave_i]["t"]):
+		_spawn_group(STAGE_WAVES[wave_i]["spawn"])
+		wave_i += 1
+	while surv_i < SURVIVOR_SPOTS.size() and stage_t >= float(SURVIVOR_SPOTS[surv_i]["t"]):
+		_spawn_survivor(float(SURVIVOR_SPOTS[surv_i]["x"]))
+		surv_i += 1
+	if wave_i >= STAGE_WAVES.size():
+		if not waves_done:
+			waves_done = true
+			boss_delay = 6.0
+		boss_delay -= delta
+		if boss_delay <= 0.0:
+			phase = PH_BOSSENTER
+			_spawn_boss()
 
 
 # ================= 玩家 =================
@@ -325,12 +646,37 @@ func _update_player(delta: float) -> void:
 	# 无敌闪烁
 	player_mesh.visible = invuln <= 0.0 or fmod(invuln, 0.24) < 0.12
 
-	# 自动射击（双列）
+	# 主炮：弹列数与射速由机库「主炮」等级决定
+	var main_lv: int = maxi(int(save["upgrades"].get("main", 1)), 1)
 	fire_cd -= delta
 	if fire_cd <= 0.0:
-		fire_cd = FIRE_INTERVAL
-		for sx in [-0.75, 0.75]:
-			pb.spawn(player.position + Vector3(sx, 0.2, -3.0), Vector3(0, 0, -BULLET_SPEED), COL_CYAN, 0.42, 1.4)
+		fire_cd = fire_int
+		var cols: Array = []
+		if main_lv == 1:
+			cols = [0.0]
+		elif main_lv <= 3:
+			cols = [-0.75, 0.75]
+		elif main_lv <= 5:
+			cols = [-0.9, 0.0, 0.9]
+		elif main_lv <= 7:
+			cols = [-1.2, -0.4, 0.4, 1.2]
+		else:
+			cols = [-1.6, -0.8, 0.0, 0.8, 1.6]
+		for off in cols:
+			pb.spawn(player.position + Vector3(float(off), 0.2, -3.0), Vector3(0, 0, -BULLET_SPEED), COL_CYAN, 0.42, 1.4)
+		if main_lv >= 5:  # 两翼斜射
+			for s in [-1.0, 1.0]:
+				var v := Vector3(0, 0, -BULLET_SPEED).rotated(Vector3.UP, s * 0.18)
+				pb.spawn(player.position + Vector3(s * 1.1, 0.2, -2.4), v, COL_CYAN, 0.38, 1.4)
+
+	# 僚机追踪弹
+	var wing_lv: int = int(save["upgrades"].get("wing", 0))
+	if wing_lv > 0:
+		wing_t -= delta
+		if wing_t <= 0.0:
+			wing_t = 3.0
+			for i in mini(wing_lv, 4):
+				_spawn_missile(Vector3(player.position.x - 1.6 + 3.2 * float(i), 0.8, player.position.z))
 
 	if stress and eb.count < 300:
 		for i in 6:
@@ -338,19 +684,81 @@ func _update_player(delta: float) -> void:
 			_spawn_enemy_bullet(p, Vector3(randf_range(-4, 4), 0, randf_range(4, 9)), COL_PINK)
 
 
+func _spawn_missile(at: Vector3) -> void:
+	if missiles.size() >= 6:
+		return
+	var n := MeshInstance3D.new()
+	var m := BoxMesh.new()
+	m.size = Vector3(0.5, 0.5, 0.9)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = COL_YELLOW
+	m.material = mat
+	n.mesh = m
+	add_child(n)
+	n.position = at
+	missiles.append({"n": n, "vel": Vector3(randf_range(-3, 3), 4.0, -10.0), "life": 4.0})
+
+
+func _update_missiles(delta: float) -> void:
+	var i := 0
+	while i < missiles.size():
+		var ms: Dictionary = missiles[i]
+		ms["life"] = float(ms["life"]) - delta
+		var n: Node3D = ms["n"]
+		if float(ms["life"]) <= 0.0:
+			n.queue_free()
+			missiles.remove_at(i)
+			continue
+		# 追踪最近敌人
+		var tgt := Vector3.ZERO
+		var best := 1e9
+		for e in enemies:
+			var gp: Vector3 = e["n"].global_position
+			var d := gp.distance_to(n.global_position)
+			if d < best:
+				best = d
+				tgt = gp
+		var vel: Vector3 = ms["vel"]
+		if best < 1e8:
+			var desired := (tgt - n.global_position).normalized() * 26.0
+			vel = (vel + (desired - vel) * minf(8.0 * delta, 1.0)).normalized() * 26.0
+		ms["vel"] = vel
+		n.position += vel * delta
+		n.look_at(n.position + vel)
+		# 命中检测
+		var hit := false
+		for e in enemies:
+			var gp: Vector3 = e["n"].global_position
+			var r := _hit_radius(e["t"])
+			if absf(n.position.x - gp.x) < r.x + 0.6 and absf(n.position.z - gp.z) < r.y + 0.6 and absf(n.position.y - gp.y) < 2.5:
+				_damage_enemy(e, 3)
+				_burst(n.position, COL_YELLOW, 5)
+				hit = true
+				break
+		if hit:
+			n.queue_free()
+			missiles.remove_at(i)
+			continue
+		i += 1
+
+
 func hit_player() -> void:
 	if invuln > 0.0 or dead:
 		return
 	armor -= 1
+	damage_taken += 1
 	invuln = 1.5
 	shake = 0.35
 	_burst(player.position, COL_CYAN, 8)
 	if armor <= 0:
 		dead = true
+		settle_t = 1.3
 		_burst(player.position, COL_WHITE, 24)
 		_burst(player.position, COL_PINK, 18)
 		player.visible = false
-		hud_center.text = "坠机！  R 重开 · Q 返回大厅"
+		rope.visible = false
+		hud_center.text = "坠机！"
 
 
 func use_bomb() -> void:
@@ -361,8 +769,9 @@ func use_bomb() -> void:
 	shake = 0.4
 	for i in range(eb.count):
 		eb.kill(0)
-	for e in enemies:
-		_damage_enemy(e, 6)
+	var bomb_dmg := 6 + int(save["upgrades"].get("bomb", 0))
+	for e in enemies.duplicate():
+		_damage_enemy(e, bomb_dmg)
 	for i in 26:  # 冲击环
 		var a := TAU * float(i) / 26.0
 		fx.spawn(player.position + Vector3(0, 0.5, 0), Vector3(cos(a) * 22.0, 0.5, sin(a) * 22.0), COL_CYAN, 0.8, 0.55, 0.0, Vector3.ZERO, true)
@@ -372,38 +781,17 @@ func restart() -> void:
 	get_tree().reload_current_scene()
 
 
-# ================= 敌波 =================
+# ================= 波次生成 =================
 
-func _update_waves(_delta: float) -> void:
-	wave_t -= _delta
-	if wave_t <= 0.0:
-		wave_t = 3.4
-		_spawn_wave(wave_idx % 6)
-		wave_idx += 1
-
-
-func _spawn_wave(idx: int) -> void:
-	match idx:
-		0:
-			for i in 6:
-				_spawn_air("E3", -14.0 + 5.6 * float(i), 3, randf_range(2.5, 4.0) * (1.0 if i % 2 == 0 else -1.0))
-		1:
-			_spawn_ground("E1", -8.0)
-			_spawn_ground("E1", 8.0)
-		2:
-			for i in 3:
-				_spawn_air("E5", -10.0 + 10.0 * float(i), 5)
-		3:
-			_spawn_ground("E2", 0.0)
-			_spawn_ground("E1", 10.0)
-			_spawn_ground("E1", -10.0)
-		4:
-			for i in 5:
-				_spawn_air("E4", -8.0 + 4.0 * float(i), 4)
-		5:
-			for i in 4:
-				_spawn_air("E3", -12.0 + 8.0 * float(i), 3, randf_range(-4.0, 4.0))
-			_spawn_air("E5", 12.0, 5)
+func _spawn_group(list: Array) -> void:
+	for ent in list:
+		var t: String = ent["t"]
+		var x: float = float(ent["x"])
+		if t == "E1" or t == "E2":
+			_spawn_ground(t, x)
+		else:
+			var hp: int = {"E3": 3, "E4": 4, "E5": 5}.get(t, 3)
+			_spawn_air(t, x, int(hp), float(ent.get("vx", 0.0)))
 
 
 func _spawn_ground(type: String, x: float) -> void:
@@ -412,77 +800,340 @@ func _spawn_ground(type: String, x: float) -> void:
 	n.material_override = VoxelModel.shaded_material()
 	world.add_child(n)
 	n.position = Vector3(x, 0.05, -58.0 - world.position.z)
-	enemies.append({"n": n, "t": type, "hp": 4 if type == "E2" else 3, "ft": randf_range(0.8, 1.6), "age": 0.0, "ground": true})
+	enemies.append({"n": n, "t": type, "hp": 4 if type == "E2" else 3, "ft": randf_range(0.8, 1.6), "age": 0.0})
 
 
-func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> void:
+func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 	var n := MeshInstance3D.new()
 	n.mesh = _meshes[type]
 	n.material_override = VoxelModel.shaded_material()
 	add_child(n)
 	var vz := SCROLL + (10.0 if type == "E3" else 5.0 if type == "E4" else 3.0)
 	n.position = Vector3(x, 1.6, -46.0)
-	enemies.append({"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "ground": false, "vx": vx, "vz": vz, "x0": x})
+	var e := {"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "vx": vx, "vz": vz, "x0": x}
+	enemies.append(e)
+	return e
 
+
+func _spawn_survivor(x: float) -> void:
+	var n := MeshInstance3D.new()
+	n.mesh = _meshes["SURV"]
+	n.material_override = VoxelModel.shaded_material()
+	world.add_child(n)
+	n.position = Vector3(x, 0.5, -50.0)
+	# 头顶气泡（靠近时显示）
+	var bub := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.55, 0.55, 0.55)
+	var bmat := StandardMaterial3D.new()
+	bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bmat.albedo_color = COL_WHITE
+	bm.material = bmat
+	bub.mesh = bm
+	bub.position = Vector3(0, 2.3, 0)
+	bub.visible = false
+	n.add_child(bub)
+	survivors.append({"n": n, "bub": bub, "roping": false, "prog": 0.0})
+
+
+func _spawn_boss() -> void:
+	var n := MeshInstance3D.new()
+	n.mesh = _meshes["BOSS"]
+	boss_mat = VoxelModel.shaded_material()
+	n.material_override = boss_mat
+	add_child(n)
+	n.position = Vector3(0, 0.12, -46.0)
+	boss = {"n": n, "t": "BOSS", "hp": BOSS_HP, "hp_max": BOSS_HP, "age": 0.0, "phase": 1, "entering": true, "mode": 0, "act_t": 2.5, "burst_left": 0, "burst_t": 0.0, "sp_t": 0.0, "spiral_a": 0.0, "ring_t": 2.0, "add_t": 5.0, "laser_t": 4.0}
+	enemies.append(boss)
+
+
+# ================= 敌人更新 =================
 
 func _update_enemies(delta: float) -> void:
 	var i := 0
 	while i < enemies.size():
 		var e: Dictionary = enemies[i]
-		e.age += delta
-		var n: Node3D = e.n
+		e["age"] = float(e["age"]) + delta
+		var n: Node3D = e["n"]
 		var gp := n.global_position
-		if gp.z > 26.0 or gp.z < -70.0:  # 逃逸/异常回收
+		if float(e["age"]) > 2.0 and (gp.z > 26.0 or gp.z < -70.0):  # 逃逸/异常回收
+			if not bool(e.get("add", false)):
+				escaped += 1  # 计入歼灭奖牌（Boss 战增援除外）
 			n.queue_free()
 			enemies.remove_at(i)
 			continue
-		match e.t:
+		match e["t"]:
 			"E1":
 				n.look_at(Vector3(player.position.x, n.global_position.y, player.position.z))
-				e.ft -= delta
-				if gp.z > -34.0 and gp.z < 6.0 and e.ft <= 0.0:
-					e.ft = 2.2
+				e["ft"] = float(e["ft"]) - delta
+				if gp.z > -34.0 and gp.z < 6.0 and float(e["ft"]) <= 0.0:
+					e["ft"] = 2.2
 					_fire_aimed(gp, 8.0, 3, 14.0)
 			"E2":
-				e.ft -= delta
-				if gp.z > -34.0 and e.ft <= 0.0:
-					e.ft = 2.7
-					_fire_ring(gp, 14, 6.2, e.age)
-					_fire_ring(gp, 14, 7.6, e.age + 0.22)
+				e["ft"] = float(e["ft"]) - delta
+				if gp.z > -34.0 and float(e["ft"]) <= 0.0:
+					e["ft"] = 2.7
+					_fire_ring(gp, 14, 6.2, float(e["age"]))
+					_fire_ring(gp, 14, 7.6, float(e["age"]) + 0.22)
 			"E3":
-				n.position += Vector3(e.vx, 0, e.vz) * delta
+				n.position += Vector3(float(e["vx"]), 0, float(e["vz"])) * delta
 				n.rotate_y(delta * 7.0)
 			"E4":
-				n.position += Vector3(e.vx * 0.2 + sin(e.age * 2.0) * 1.5, 0, e.vz) * delta
-				e.ft -= delta
-				if e.ft <= 0.0:
-					e.ft = 2.6
+				n.position += Vector3(float(e["vx"]) * 0.2 + sin(float(e["age"]) * 2.0) * 1.5, 0, float(e["vz"])) * delta
+				e["ft"] = float(e["ft"]) - delta
+				if float(e["ft"]) <= 0.0:
+					e["ft"] = 2.6
 					_fire_aimed(n.global_position, 7.0, 1, 0.0)
 			"E5":
-				n.position.x = e.x0 + sin(e.age * 1.35) * 7.0
-				n.position.z += e.vz * delta
-				e.ft -= delta
-				if e.ft <= 0.0:
-					e.ft = 1.9
+				n.position.x = float(e["x0"]) + sin(float(e["age"]) * 1.35) * 7.0
+				n.position.z += float(e["vz"]) * delta
+				e["ft"] = float(e["ft"]) - delta
+				if float(e["ft"]) <= 0.0:
+					e["ft"] = 1.9
 					_fire_aimed(n.global_position, 7.5, 5, 42.0)
+			"BOSS":
+				_update_boss(e, n, delta)
 		i += 1
 
 
+func _update_boss(e: Dictionary, n: Node3D, delta: float) -> void:
+	if bool(e["entering"]):
+		n.position.z = move_toward(n.position.z, -16.0, 12.0 * delta)
+		if n.position.z >= -16.0:
+			e["entering"] = false
+			hud_boss.visible = true
+		return
+	e["age"] = float(e["age"]) + delta
+	n.position.x = sin(float(e["age"]) * 0.5) * 6.0
+	var frac := float(e["hp"]) / float(e["hp_max"])
+	var ph := 1
+	if frac <= 0.33:
+		ph = 3
+	elif frac <= 0.66:
+		ph = 2
+	if ph != int(e["phase"]):
+		_boss_phase_change(e, ph)
+		return
+	var bp := n.global_position
+	match ph:
+		1:  # 5 向扇形 ×3 波 ↔ 自机狙 3 连，4s 交替
+			e["act_t"] = float(e["act_t"]) - delta
+			if float(e["act_t"]) <= 0.0 and int(e["burst_left"]) <= 0:
+				e["act_t"] = 4.0
+				e["burst_left"] = 3
+				e["burst_t"] = 0.0
+			if int(e["burst_left"]) > 0:
+				e["burst_t"] = float(e["burst_t"]) - delta
+				if float(e["burst_t"]) <= 0.0:
+					e["burst_t"] = 0.38
+					e["burst_left"] = int(e["burst_left"]) - 1
+					if int(e["mode"]) == 0:
+						_fire_aimed(bp, 7.5, 5, 46.0)
+					else:
+						_fire_aimed(bp, 8.0, 3, 14.0)
+		2:  # 无人机增援 + 横扫激光 + 轻自机狙
+			e["add_t"] = float(e["add_t"]) - delta
+			if float(e["add_t"]) <= 0.0:
+				e["add_t"] = 6.0
+				for s in [-1.0, 1.0]:
+					var add := _spawn_air("E3", bp.x + s * 4.0, 3, s * randf_range(2.0, 4.0))
+					add["add"] = true
+			e["laser_t"] = float(e["laser_t"]) - delta
+			if float(e["laser_t"]) <= 0.0 and int(laser["st"]) == 0:
+				e["laser_t"] = 5.0
+				_fire_laser(bp)
+			e["act_t"] = float(e["act_t"]) - delta
+			if float(e["act_t"]) <= 0.0:
+				e["act_t"] = 2.4
+				_fire_aimed(bp, 8.0, 1, 0.0)
+		3:  # 双螺旋 + 环形
+			e["sp_t"] = float(e["sp_t"]) - delta
+			if float(e["sp_t"]) <= 0.0:
+				e["sp_t"] = 0.12
+				var a0 := float(e["spiral_a"])
+				for arm in 2:
+					var a := a0 + PI * float(arm)
+					_spawn_enemy_bullet(Vector3(bp.x, ENEMY_BULLET_Y, bp.z), Vector3(sin(a) * 6.5, 0, cos(a) * 6.5), COL_PINK)
+				e["spiral_a"] = a0 + 0.38
+			e["ring_t"] = float(e["ring_t"]) - delta
+			if float(e["ring_t"]) <= 0.0:
+				e["ring_t"] = 3.0
+				_fire_ring(bp, 16, 7.5, float(e["age"]))
+
+
+func _boss_phase_change(e: Dictionary, ph: int) -> void:
+	e["phase"] = ph
+	e["act_t"] = 1.6
+	e["burst_left"] = 0
+	for i in range(eb.count):  # 阶段切换清屏
+		eb.kill(0)
+	_burst(e["n"].global_position, COL_WHITE, 16)
+	_burst(e["n"].global_position, COL_PINK, 12)
+	shake = 0.4
+	# 毁伤外观：材质逐渐泛红
+	var tint := 1.0 - 0.22 * float(ph - 1)
+	boss_mat.albedo_color = Color(1.0, tint, tint * 0.95)
+
+
+func _fire_laser(from: Vector3) -> void:
+	var org := from + Vector3(0, 0.5, 0)
+	var dir := (player.position + Vector3(0, -0.4, 0) - org).normalized()
+	laser["org"] = org
+	laser["dir"] = dir
+	laser["st"] = 1
+	laser["t"] = 0.7
+	var ln: float = laser["len"]
+	laser_warn.visible = true
+	_laser_pose(laser_warn, org, dir, ln)
+	laser_beam.visible = false
+
+
+func _laser_pose(node: MeshInstance3D, org: Vector3, dir: Vector3, ln: float) -> void:
+	node.position = org + dir * (ln * 0.5)
+	node.look_at(org + dir * ln)
+
+
+func _update_laser(delta: float) -> void:
+	var st := int(laser["st"])
+	if st == 0:
+		return
+	laser["t"] = float(laser["t"]) - delta
+	if st == 1:
+		if float(laser["t"]) <= 0.0:
+			laser["st"] = 2
+			laser["t"] = 0.8
+			laser_warn.visible = false
+			laser_beam.visible = true
+			_laser_pose(laser_beam, laser["org"], laser["dir"], laser["len"])
+	elif st == 2:
+		if not dead and invuln <= 0.0:
+			var p_rel: Vector3 = player.position - laser["org"]
+			var dir: Vector3 = laser["dir"]
+			var tt: float = clampf(p_rel.dot(dir), 0.0, laser["len"])
+			var closest: Vector3 = laser["org"] + dir * tt
+			if player.position.distance_to(closest) < 1.2:
+				hit_player()
+		if float(laser["t"]) <= 0.0:
+			laser["st"] = 0
+			laser_beam.visible = false
+
+
+func _hit_radius(t: String) -> Vector2:
+	if t == "BOSS":
+		return Vector2(7.0, 3.4)
+	if t == "E5" or t == "E2":
+		return Vector2(1.7, 1.7)
+	return Vector2(1.3, 1.3)
+
+
 func _damage_enemy(e: Dictionary, dmg: int) -> void:
-	e.hp -= dmg
-	if e.hp <= 0:
-		var n: Node3D = e.n
+	if e["t"] == "BOSS":
+		if bool(e["entering"]) or phase == PH_VICTORY:
+			return
+		e["hp"] = int(e["hp"]) - dmg
+		if int(e["hp"]) <= 0:
+			_boss_die(e)
+		return
+	e["hp"] = int(e["hp"]) - dmg
+	if e["hp"] <= 0:
+		var n: Node3D = e["n"]
 		var gp := n.global_position
 		_burst(gp, COL_PINK, 12)
 		_burst(gp, COL_WHITE, 6)
-		var reward: int = {"E1": 5, "E2": 8, "E3": 3, "E4": 3, "E5": 10}.get(e.t, 5)
-		var pts: int = {"E1": 50, "E2": 80, "E3": 30, "E4": 50, "E5": 100}.get(e.t, 50)
+		var reward: int = {"E1": 5, "E2": 8, "E3": 3, "E4": 3, "E5": 10}.get(e["t"], 5)
+		var pts: int = {"E1": 50, "E2": 80, "E3": 30, "E4": 50, "E5": 100}.get(e["t"], 50)
 		score += pts
 		for s in reward:
 			var v := Vector3(randf_range(-6, 6), randf_range(3, 8), randf_range(-4, 4))
 			pickups.spawn(gp + Vector3(0, 0.5, 0), v, COL_YELLOW, 0.85, STAR_LIFE, 16.0)
+		stars_spawned += reward
 		n.queue_free()
 		enemies.erase(e)
+
+
+func _boss_die(e: Dictionary) -> void:
+	var gp: Vector3 = e["n"].global_position
+	_burst(gp, COL_WHITE, 26)
+	_burst(gp, COL_PINK, 22)
+	_burst(gp, COL_YELLOW, 18)
+	score += 2000
+	for s in 100:  # 星星喷泉
+		var v := Vector3(randf_range(-10, 10), randf_range(6, 14), randf_range(-8, 8))
+		pickups.spawn(gp + Vector3(0, 1.0, 0), v, COL_YELLOW, 0.85, STAR_LIFE, 16.0)
+	stars_spawned += 100
+	e["n"].queue_free()
+	enemies.erase(e)
+	boss = {}
+	hud_boss.visible = false
+	laser_beam.visible = false
+	laser_warn.visible = false
+	laser["st"] = 0
+	shake = 0.5
+	phase = PH_VICTORY
+	settle_t = 1.8
+
+
+# ================= 幸存者救援 =================
+
+func _xz_dist(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+
+func _update_survivors(delta: float) -> void:
+	var i := 0
+	while i < survivors.size():
+		var s: Dictionary = survivors[i]
+		var n: Node3D = s["n"]
+		var gp := n.global_position
+		if gp.z > 24.0:  # 滚出屏幕 = 错过
+			n.queue_free()
+			survivors.remove_at(i)
+			continue
+		var d := _xz_dist(gp, player.position)
+		var bub: MeshInstance3D = s["bub"]
+		bub.visible = d < 8.0 and not bool(s["roping"])
+		bub.position.y = 2.3 + sin(elapsed * 4.0) * 0.15
+		if bool(s["roping"]):
+			if d > 2.8 or dead:  # 离开范围 → 绳索收回（不惩罚）
+				s["roping"] = false
+				s["prog"] = 0.0
+				n.position.y = 0.5
+				n.scale = Vector3.ONE
+				rope.visible = false
+			else:
+				s["prog"] = float(s["prog"]) + delta / 0.8
+				var prog := float(s["prog"])
+				n.position.y = 0.5 + prog * 3.0
+				n.scale = Vector3.ONE * (1.0 - prog * 0.75)
+				_rope_pose(gp)
+				if prog >= 1.0:
+					rescued += 1
+					score += 1000
+					_burst(gp, COL_WHITE, 10)
+					rope.visible = false
+					n.queue_free()
+					survivors.remove_at(i)
+					continue
+		else:
+			if d < 2.2 and not dead:
+				s["roping"] = true
+				s["prog"] = 0.0
+		i += 1
+
+
+func _rope_pose(sur_gp: Vector3) -> void:
+	var top := sur_gp + Vector3(0, 0.5, 0)
+	var bot := player.position
+	var dz := bot - top
+	# 绳索近乎垂直，不能用 look_at（方向与 UP 平行会报错），手动构建正交基
+	var zz := dz.normalized()
+	var xx := zz.cross(Vector3.FORWARD)
+	if xx.length_squared() < 0.001:
+		xx = zz.cross(Vector3.RIGHT)
+	xx = xx.normalized()
+	var yy := zz.cross(xx)
+	rope.global_transform = Transform3D(Basis(xx, yy, zz), (top + bot) * 0.5)
+	rope.scale = Vector3(1, 1, dz.length())
 
 
 # ================= 弹型库 =================
@@ -502,9 +1153,9 @@ func _fire_aimed(from: Vector3, speed: float, n: int, spread_deg: float) -> void
 		_spawn_enemy_bullet(Vector3(from.x, ENEMY_BULLET_Y, from.z), Vector3(sin(a) * speed, 0, -cos(a) * speed), COL_PINK)
 
 
-func _fire_ring(from: Vector3, n: int, speed: float, phase := 0.0) -> void:
+func _fire_ring(from: Vector3, n: int, speed: float, phase_off := 0.0) -> void:
 	for k in n:
-		var a := TAU * float(k) / float(n) + phase
+		var a := TAU * float(k) / float(n) + phase_off
 		_spawn_enemy_bullet(Vector3(from.x, ENEMY_BULLET_Y, from.z), Vector3(sin(a) * speed, 0, cos(a) * speed), COL_PINK)
 
 
@@ -519,9 +1170,9 @@ func _update_bullets(_delta: float) -> void:
 	while i < pb.count:
 		var hit := false
 		for e in enemies:
-			var gp: Vector3 = e.n.global_position
-			var r := 1.7 if e.t == "E5" or e.t == "E2" else 1.3
-			if absf(pb.pos[i].x - gp.x) < r and absf(pb.pos[i].z - gp.z) < r and absf(pb.pos[i].y - gp.y) < 2.5:
+			var gp: Vector3 = e["n"].global_position
+			var r := _hit_radius(e["t"])
+			if absf(pb.pos[i].x - gp.x) < r.x and absf(pb.pos[i].z - gp.z) < r.y and absf(pb.pos[i].y - gp.y) < 2.5:
 				_damage_enemy(e, 1)
 				fx.spawn(pb.pos[i], Vector3(0, 2, 4), COL_WHITE, 0.3, 0.14, 0.0, Vector3.ZERO, true)
 				hit = true
@@ -545,11 +1196,12 @@ func _update_bullets(_delta: float) -> void:
 				i += 1
 
 	# 敌机撞击
-	for e in enemies:
-		if e.t == "E3":
-			var gp: Vector3 = e.n.global_position
-			if absf(gp.x - player.position.x) < 1.6 and absf(gp.z - player.position.z) < 1.6:
-				hit_player()
+	if not dead:
+		for e in enemies:
+			if e["t"] == "E3":
+				var gp3: Vector3 = e["n"].global_position
+				if absf(gp3.x - player.position.x) < 1.6 and absf(gp3.z - player.position.z) < 1.6:
+					hit_player()
 
 
 func _update_pickups(delta: float) -> void:
@@ -562,10 +1214,10 @@ func _update_pickups(delta: float) -> void:
 			if pickups.vel[i].y < 1.0:
 				pickups.vel[i].y = 0.0
 				pickups.vel[i].z = SCROLL
-		# 磁吸
+		# 磁吸（半径由机库「磁铁」等级决定）
 		var d: Vector3 = player.position - pickups.pos[i]
 		var dist: float = d.length()
-		if dist < 7.5 and not dead:
+		if dist < magnet_r and not dead:
 			pickups.vel[i] = d.normalized() * clampf(26.0 - dist * 2.0, 8.0, 26.0)
 			pickups.vel[i].y *= 0.4
 		if dist < 1.7 and not dead:
@@ -585,6 +1237,50 @@ func _burst(at: Vector3, col: Color, n: int) -> void:
 		fx.spawn(at + Vector3(0, 0.4, 0), v, col, randf_range(0.35, 0.65), randf_range(0.4, 0.7), 24.0, Vector3(2, 3, 0), true)
 
 
+# ================= 结算 =================
+
+func _show_settlement(p_victory: bool) -> void:
+	phase = PH_OVER
+	victory = p_victory
+	hud_center.text = ""
+	# 星星入账：场上剩余星星一并回收，通关全额入账，坠机折半
+	star_cnt += pickups.count
+	var banked := int(star_cnt * 0.5) if not p_victory else star_cnt
+	save["stars"] = int(save["stars"]) + banked
+	var medals: Array = []
+	if p_victory:
+		if escaped == 0:
+			medals.append("kill")
+		if rescued >= SURVIVOR_TOTAL:
+			medals.append("rescue")
+		if stars_spawned > 0 and float(star_cnt) >= float(stars_spawned) * 0.95:
+			medals.append("star")
+		if damage_taken == 0:
+			medals.append("perfect")
+		var got: Array = save["medals"].get("1", [])
+		for m in medals:
+			if not got.has(m):
+				got.append(m)
+		save["medals"]["1"] = got
+	var prev_best: int = save["best"].get("1", 0)
+	if score > prev_best:
+		save["best"]["1"] = score
+		prev_best = score
+	SaveManager.save_data(save)
+
+	settle_title.text = "任务完成！" if p_victory else "任务失败"
+	var ratio := 100.0 if stars_spawned == 0 else float(star_cnt) / float(stars_spawned) * 100.0
+	settle_lines.text = "得分 %d    最高 %d\n星星收益 +%d ★（%s）\n逃逸敌机 %d    幸存者 %d/%d    星星 %.0f%%" % [
+		score, prev_best, banked, "通关全额" if p_victory else "坠机折半", escaped, rescued, SURVIVOR_TOTAL, ratio]
+	settle_medals.text = "[歼灭者] %s    [救援英雄] %s\n[星光收集者] %s    [完璧] %s" % [
+		"达成" if medals.has("kill") else "未达成",
+		"达成" if medals.has("rescue") else "未达成",
+		"达成" if medals.has("star") else "未达成",
+		"达成" if medals.has("perfect") else "未达成"]
+	settle_root.visible = true
+	_refresh_hangar()
+
+
 # ================= 相机 / HUD / 输入 =================
 
 func _update_camera(_delta: float) -> void:
@@ -602,15 +1298,24 @@ func _update_camera(_delta: float) -> void:
 
 
 func _refresh_hud() -> void:
-	hud_score.text = "SCORE %d    ★ %d    BOMB ×%d" % [score, star_cnt, bombs]
-	hud_armor.text = "护甲 " + "■".repeat(maxi(armor, 0)) + "□".repeat(maxi(3 - armor, 0))
-	hud_info.text = "FPS %d  敌弹 %d  F1/F2 相机[68°/90°]  F3 阴影[%s]  F4 压测[%s]  Esc 暂停" % [
+	hud_score.text = "SCORE %d    ★ %d（+%d）    BOMB %d/%d" % [score, int(save["stars"]), star_cnt, bombs, bombs_max]
+	hud_armor.text = "护甲 " + "■".repeat(maxi(armor, 0)) + "□".repeat(maxi(armor_max - armor, 0)) + "    救援 %d/%d    歼灭 %d" % [rescued, SURVIVOR_TOTAL, escaped]
+	hud_info.text = "FPS %d  敌弹 %d  F1/F2 相机[68°/90°]  F3 阴影[%s]  F4 压测[%s]  Esc 暂停  H 机库" % [
 		Engine.get_frames_per_second(), eb.count, "开" if sun.shadow_enabled else "关", "开" if stress else "关"]
+	if boss.is_empty() or bool(boss.get("entering", true)):
+		hud_boss.visible = false
+	else:
+		hud_boss.visible = true
+		var frac := float(boss["hp"]) / float(boss["hp_max"])
+		var bars := int(ceil(frac * 12.0))
+		hud_boss.text = "方舟战舰 " + "■".repeat(bars) + "□".repeat(12 - bars) + " %d%%" % int(frac * 100.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key: int = event.keycode
+		var settle_open := settle_root.visible
+		var hangar_open := hangar_root.visible
 		match key:
 			KEY_F1:
 				cam_mode = 0
@@ -620,18 +1325,32 @@ func _unhandled_input(event: InputEvent) -> void:
 				sun.shadow_enabled = not sun.shadow_enabled
 			KEY_F4:
 				stress = not stress
+			KEY_H:
+				if hangar_open:
+					_close_hangar()
+				else:
+					hangar_from = "settle" if settle_open else "pause"
+					if settle_open:
+						settle_root.visible = false
+					paused = true
+					_refresh_hangar()
+					hangar_root.visible = true
 			KEY_ESCAPE:
-				if dead:
-					get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+				if hangar_open:
+					_close_hangar()
+				elif settle_open:
+					pass  # 结算层 Esc 不响应（用 Q/R/H）
+				elif dead or phase == PH_OVER:
+					_go_menu()
 				else:
 					paused = not paused
-					hud_center.text = "已暂停  Esc 继续 · R 重开 · Q 返回大厅" if paused else ""
+					hud_center.text = "已暂停  Esc 继续 · R 重开 · H 机库 · Q 返回大厅" if paused else ""
 			KEY_R:
-				if paused or dead:
+				if settle_open or paused:
 					restart()
 			KEY_Q:
-				if paused or dead:
-					get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+				if settle_open or paused:
+					_go_menu()
 			KEY_SPACE:
-				if not paused:
+				if not paused and not hangar_open and not settle_open:
 					use_bomb()
