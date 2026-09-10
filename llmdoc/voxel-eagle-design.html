@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方块雄鹰 · 游戏设计规划（Sky Force 类体素弹幕射击）</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 960px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.9em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.45);
+  }
+  h2 {
+    color: #ff2a6d; margin-top: 40px; letter-spacing: 1px;
+    text-shadow: 0 0 14px rgba(255, 42, 109, 0.4);
+  }
+  h3 { color: #ffe600; margin-top: 24px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  pre {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; color: #b7c4ef; line-height: 1.5;
+  }
+  pre.voxel { font-size: 0.82em; line-height: 1.28; color: #7ee7ff; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #2a3554; padding: 8px 14px; text-align: left; }
+  th { background: #131a2e; color: #00f0ff; }
+  .note {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .risk {
+    background: #1c1020; border-left: 4px solid #ff2a6d;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 8px; vertical-align: -2px; border: 1px solid #33406b; }
+  .toc { background: #10182c; border: 1px solid #2a3554; border-radius: 10px; padding: 16px 24px; }
+  .toc a { color: #7ee7ff; text-decoration: none; }
+  .toc a:hover { color: #ff2a6d; }
+</style>
+</head>
+<body>
+
+<h1>▚ 方块雄鹰 · 游戏设计规划</h1>
+<p style="color:#7ee7ff">Sky Force 类纵版弹幕射击 ×「我的世界」式 3D 体素建模 · 零外部美术资源</p>
+
+<div class="toc">
+<b>目录</b>：
+1. <a href="#overview">项目概述</a> ·
+2. <a href="#rules">玩法规则与机制</a> ·
+3. <a href="#visual">视觉设计规范（体素）</a> ·
+4. <a href="#ui">UI 布局设计</a> ·
+5. <a href="#input">输入映射</a> ·
+6. <a href="#tech">技术实现方案</a> ·
+7. <a href="#milestones">里程碑拆分</a> ·
+8. <a href="#acceptance">验收标准</a> ·
+9. <a href="#risks">风险与待确认决策点</a> ·
+10. <a href="#m0-log">M0 原型实施记录</a>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="overview">1. 项目概述</h2>
+
+<p><b>定位</b>：demo-game 游戏大厅第二款可玩小游戏。纵版滚动飞行弹幕射击，
+玩法蓝本为《傲气雄鹰（Sky Force）》系列——「关卡任务奖牌制 + 星星经济局外升级 + 绳索悬停救幸存者」；
+视觉与建模参考「我的世界」：所有场景、单位、特效全部由 <b>3D 方块（体素）程序化拼装</b>，
+<b>不依赖任何外部美术资源</b>（贴图、模型、AI 生图均不需要），从根上降低 AI 开发渠道的美术门槛。</p>
+
+<table>
+  <tr><th>项目</th><th>内容</th></tr>
+  <tr><td>玩法类型</td><td>纵版滚动弹幕射击（STG）· 关卡任务制 · 局外成长</td></tr>
+  <tr><td>玩法蓝本</td><td>Sky Force Reloaded（奖牌目标 / 星星经济 / 救幸存者）</td></tr>
+  <tr><td>视觉风格</td><td>体素（Voxel / Minecraft-like）：3D 方块拼装 + 纯色材质 + 霓虹点缀，延续系列赛博色板</td></tr>
+  <tr><td>平台</td><td>Godot 4.7.2 桌面端（GL Compatibility 渲染器，与大厅一致，支持 3D）</td></tr>
+  <tr><td>美术原则</td><td><b>零外部资源</b>：一切模型 = 方块坐标表 + 调色板，代码生成 ArrayMesh</td></tr>
+  <tr><td>目标版本</td><td>M0 技术验证 → M3 交付版：3 条正式关卡 + Boss + 存档 + 机库升级</td></tr>
+</table>
+
+<h3>1.1 核心体验一句话</h3>
+<p>驾驶体素战机在方块海洋与岛屿上空推进：自动开火清剿敌阵、走位穿弹幕、
+俯冲到幸存者头顶<b>悬停放绳救人</b>、捡星星回机库升级火力——用四枚奖牌（全歼 / 全救 / 全星 / 无伤）证明完美通关。</p>
+
+<h3>1.2 与大厅现有游戏的差异</h3>
+<table>
+  <tr><th>维度</th><th>俄罗斯方块（已有）</th><th>方块雄鹰（本作）</th></tr>
+  <tr><td>渲染维度</td><td>2D Canvas 自绘</td><td>3D（体素网格 + 正交俯视相机）</td></tr>
+  <tr><td>会话结构</td><td>单局无尽</td><td>分关卡 + 奖牌目标 + 重复刷取</td></tr>
+  <tr><td>持久化</td><td>仅最高分</td><td>星星货币 / 升级等级 / 奖牌 / 解锁进度（本作引入首个完整存档系统）</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="rules">2. 玩法规则与机制</h2>
+
+<h3>2.1 核心循环</h3>
+<pre>大厅 → 选关 → 关内：滚动推进 → 敌波 & 弹幕 → 击杀掉星星 → 悬停救幸存者
+                    ↓
+              关底 Boss 多阶段战
+                    ↓
+        结算：四奖牌判定 + 星星入账 → 机库升级火力 → 挑战下一关 / 刷奖牌</pre>
+
+<h3>2.2 玩家机体与操作</h3>
+<table>
+  <tr><th>机制</th><th>规则</th></tr>
+  <tr><td>移动</td><td>屏幕平面 8 向（WASD/方向键/手柄左摇杆），带短促加减速（加速 0.08s 到全速，松手 0.12s 停），移动时机体朝移动方向<b>倾斜（Roll ±18°）</b>增强体素立体感</td></tr>
+  <tr><td>射击</td><td><b>自动开火</b>（Sky Force 模式），无需按键；主炮射速 8 发/s，火力形态随升级扩展</td></tr>
+  <tr><td>炸弹</td><td>空格：全屏敌弹清除 + 全屏伤害 + 1.5s 无敌；初始 2 枚，机库可提升携带上限</td></tr>
+  <tr><td>护甲</td><td>3 格。被弹/撞击 −1 格 + 1.5s 无敌闪烁 + 屏幕震动；0 格坠机</td></tr>
+  <tr><td>坠机</td><td>本关失败：结算界面保留 <b>已得星星的 50%</b> 入账（鼓励边打边攒），可重开本关</td></tr>
+  <tr><td>判定点</td><td>机体视觉约 5×7 方块，但<b>碰撞盒仅 1.2×1.2 方块</b>（XZ 平面中心）——弹幕公平性前提</td></tr>
+</table>
+
+<h3>2.3 火力系统（局外升级 · 机库）</h3>
+<p>升级项共 5 条线，等级 1~8，价格曲线 <code>cost(n) = 200 × n^1.6</code>（取整到 50），
+星星为唯一货币。等级效果：</p>
+<table>
+  <tr><th>升级线</th><th>Lv1（初始）</th><th>中段形态</th><th>Lv8（满级）</th></tr>
+  <tr><td>主炮</td><td>单发直线弹</td><td>Lv3 双列 · Lv5 三列+斜向</td><td>五列扇面 + 两翼斜射</td></tr>
+  <tr><td>僚机导弹</td><td>无</td><td>Lv2 追踪弹×1（3s 冷却）</td><td>追踪弹×4，命中溅射</td></tr>
+  <tr><td>磁铁</td><td>吸取半径 3 格</td><td>每级 +2 格</td><td>半径 17 格（近全屏）</td></tr>
+  <tr><td>护盾</td><td>无</td><td>Lv2 开局附赠 1 层额外护甲（挡 1 次）</td><td>2 层 + 受击后 3s 减伤</td></tr>
+  <tr><td>炸弹</td><td>携带上限 2</td><td>每 2 级 +1 上限</td><td>上限 5 + 爆炸范围 +40%</td></tr>
+</table>
+<div class="note">设计意图：满级前「卡关 → 回低难度关刷星 → 升级 → 再战」是 Sky Force 的核心粘性循环，
+数值上保证 3 关全通约需主炮 Lv4~5，刷关收益不衰减（星星掉落与表现挂钩，见 2.7）。</div>
+
+<h3>2.4 敌人图鉴（首发 6 类 + Boss）</h3>
+<table>
+  <tr><th>编号</th><th>单位</th><th>所属</th><th>行为</th><th>弹型</th><th>掉落</th></tr>
+  <tr><td>E1</td><td>转管炮塔</td><td>地面</td><td>固定方位，缓慢转向玩家</td><td>自机狙 3 连发（弹速慢）</td><td>星×5</td></tr>
+  <tr><td>E2</td><td>防空环炮</td><td>地面</td><td>固定，周期开火</td><td>16 向环形弹 ×2 波</td><td>星×8</td></tr>
+  <tr><td>E3</td><td>自杀无人机</td><td>空中</td><td>直线俯冲（生成时已锁定玩家横坐标）</td><td>无（撞击伤害）</td><td>星×3</td></tr>
+  <tr><td>E4</td><td>V 字编队机 ×5</td><td>空中</td><td>编队匀速通过，<b>10s 内全歼额外奖励</b></td><td>单发自机狙</td><td>星×3/机 + 编队奖星×20</td></tr>
+  <tr><td>E5</td><td>正弦巡航机</td><td>空中</td><td>横向正弦横穿屏幕</td><td>5 向扇形 ×3 波</td><td>星×10</td></tr>
+  <tr><td>E6</td><td>精英炮舰</td><td>空中</td><td>缓慢推进，血量高，濒死加速</td><td>自机狙 + 环形组合</td><td>星×40 + 必掉炸弹补给</td></tr>
+  <tr><td>B1</td><td>方舟战舰（Boss）</td><td>地面+空中</td><td>三阶段，见 2.8</td><td>多弹型编排</td><td>星×200</td></tr>
+</table>
+
+<h3>2.5 弹型库（数据驱动发射器）</h3>
+<table>
+  <tr><th>弹型</th><th>参数</th><th>用途</th></tr>
+  <tr><td>直线弹 <code>straight</code></td><td>方向 / 速度</td><td>基础弹、Boss 弹幕原料</td></tr>
+  <tr><td>自机狙 <code>aimed</code></td><td>层数 n / 张角 / 速度 / 连发数</td><td>所有地面炮塔主力，制造走位压力</td></tr>
+  <tr><td>扇形 <code>fan</code></td><td>弹数 / 张角 / 速度 / 波数 / 波间隔</td><td>巡航机、Boss 阶段 1</td></tr>
+  <tr><td>环形 <code>ring</code></td><td>弹数 / 速度 / 相位 / 波数</td><td>环炮、Boss 阶段 3</td></tr>
+  <tr><td>螺旋 <code>spiral</code></td><td>臂数 / 角速度 / 发射间隔</td><td>精英炮舰、Boss 华丽段</td></tr>
+  <tr><td>激光 <code>laser</code></td><td>预警 0.7s → 光束持续 0.8s</td><td>仅 Boss / 精英，破"站桩"策略</td></tr>
+</table>
+<ul>
+  <li>敌弹统一弹速分档：<b>慢速 6 格/s / 中速 9 / 快速 13</b>；同屏敌弹上限 300（超过时新弹延迟发射，不叠加）。</li>
+  <li>所有弹型参数进波次表，禁止写死在敌人脚本里——调难度只改数据文件。</li>
+</ul>
+
+<h3>2.6 救幸存者（本作招牌机制）</h3>
+<table>
+  <tr><th>阶段</th><th>规则</th></tr>
+  <tr><td>① 发现</td><td>幸存者（体素小人，1×2×1 格）站在地面，玩家接近 8 格内 → 头顶白色对话气泡 + 提示音</td></tr>
+  <tr><td>② 放绳</td><td>玩家飞至其头顶正上方（XZ 偏差 ≤ 2 格）→ 垂下霓虹绳索（细长发光方块串）</td></tr>
+  <tr><td>③ 攀爬</td><td><b>玩家须悬停保持</b> 0.8s，小人沿绳上升到机腹；期间离开范围 → 绳索收回，可重来（不惩罚）</td></tr>
+  <tr><td>④ 完成</td><td>+1000 分，HUD 奖牌图标进度 +1，小人收进机舱（缩放消失动画）</td></tr>
+</table>
+<ul>
+  <li>每关幸存者数量：关 1 × 3、关 2 × 5、关 3 × 7。</li>
+  <li>MVP 设定：<b>幸存者不会被敌弹杀死</b>，只会因镜头滚过而错过（与关卡节奏解耦，降低挫败）；「敌人火力可击杀幸存者」列入 Hard 难度候选改动。</li>
+  <li>关卡设计准则：幸存者置于<b>轻度危险位</b>（炮塔射界边缘、编队航线下方），救援即战术决策。</li>
+</ul>
+
+<h3>2.7 星星经济</h3>
+<ul>
+  <li>敌人死亡掉落星星（0.8~1.2 格黄色旋转方块），受重力抛散落地后随地形滚动，<b>离开屏幕下缘即消失</b>；磁铁范围内持续被吸向玩家。</li>
+  <li>拾取 +10 分 + 星星货币 +1；奖牌「全星」要求本关收集率 ≥ 95%（含编队奖星）。</li>
+  <li>坠机保留 50%，通关保留 100%——「刷关」永远正收益，但不通过奖牌无法解锁后续关卡。</li>
+</ul>
+
+<h3>2.8 奖牌与解锁</h3>
+<table>
+  <tr><th>奖牌</th><th>名称</th><th>条件</th></tr>
+  <tr><td>⚔</td><td>歼灭者</td><td>本关击毁率 100%（可选编队计入；装饰建筑不计）</td></tr>
+  <tr><td>🚁</td><td>救援英雄</td><td>救出本关全部幸存者</td></tr>
+  <tr><td>★</td><td>星光收集者</td><td>收集本关星星 ≥ 95%</td></tr>
+  <tr><td>🛡</td><td>完璧</td><td>全程未受任何伤害（炸弹无敌期间不算受伤）</td></tr>
+</table>
+<ul>
+  <li>解锁规则：第 N 关解锁需前 N−1 关累计奖牌 ≥ (N−1)×2 枚（关 2 需 2 枚，关 3 需 4 枚）。</li>
+  <li>结算界面逐枚判定（达成点亮动画）；已获奖牌在选关界面常亮显示。</li>
+</ul>
+
+<h3>2.9 Boss 战：方舟战舰（关 3）</h3>
+<table>
+  <tr><th>阶段</th><th>血量</th><th>弹幕编排</th><th>演出</th></tr>
+  <tr><td>P1</td><td>100%~66%</td><td>5 向扇形 ×3 波 ↔ 自机狙 3 连（交替 4s）</td><td>甲板炮塔逐座激活</td></tr>
+  <tr><td>P2</td><td>66%~33%</td><td>放 E3 无人机群 + 横扫激光（预警线）</td><td>舰艏开裂，高度下降 2 格</td></tr>
+  <tr><td>P3</td><td>33%~0</td><td>双螺旋 + 16 向环形，节奏 ×1.25</td><td>泛红闪烁，方块碎屑持续剥落</td></tr>
+</table>
+<ul>
+  <li>阶段切换：清空全屏敌弹 + 1s 无敌演出 + 血条分段闪烁；总时长设计目标 90~120s。</li>
+  <li>击破：全舰方块逐块爆散（自上而下 0.6s）+ 星星喷泉 + 结算。</li>
+</ul>
+
+<h3>2.10 关卡结构（首发 3 关）</h3>
+<table>
+  <tr><th>关</th><th>主题地形</th><th>时长</th><th>教学/重点</th><th>幸存者</th></tr>
+  <tr><td>1 碧海突袭</td><td>深蓝海面 + 草绿小岛 + 沙滩</td><td>~3 min</td><td>移动/自动射击/磁吸星星；首次救人引导</td><td>3</td></tr>
+  <tr><td>2 群岛要塞</td><td>岛屿群 + 体素军事建筑（雷达/油罐）</td><td>~3.5 min</td><td>编队全歼奖励、环炮走位、连续救人</td><td>5</td></tr>
+  <tr><td>3 黄昏防线</td><td>橙色黄昏海 + 要塞走廊 → Boss</td><td>~4 min</td><td>精英混编、弹幕峰值、Boss 战</td><td>7</td></tr>
+</table>
+<ul>
+  <li>难度分级：首发仅 <b>Normal</b>；Hard（弹速 +15%、弹数 +30%、幸存者可被击杀）列入 M3 后扩展。</li>
+  <li>波次结构（每关）：杂兵波(松) → 精英+救援点(紧) → 呼吸段(奖励星链) → 密集波 → Boss。</li>
+</ul>
+
+<h3>2.11 计分</h3>
+<ul>
+  <li>击杀分（E1~E6：50/80/30/50/100/500）+ 救人 1000 + 星星 10/颗 + 关底无伤奖 5000。</li>
+  <li>每关独立最高分与累计最高分，存档记录。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="visual">3. 视觉设计规范（体素）</h2>
+
+<h3>3.1 基本度量与色板</h3>
+<ul>
+  <li><b>体素单位 VU</b>：1.0 世界单位 = 1 方块。战斗平面为 XZ，滚动方向 +Z（敌人/地形向玩家镜头方向移动）。</li>
+  <li>战斗区域宽 40 VU（玩家可动范围 X ∈ [−16, 16]，两侧留 4 VU 出界缓冲）。</li>
+  <li>延续系列赛博色板，地面低饱和、战斗单位高饱和：</li>
+</ul>
+<table>
+  <tr><th>用途</th><th>色值</th><th>示例</th><th>用途</th><th>色值</th><th>示例</th></tr>
+  <tr><td>环境雾/天空</td><td><code>#050810</code></td><td><span class="swatch" style="background:#050810"></span></td>
+      <td>自机弹/友方</td><td><code>#00f0ff</code> 青</td><td><span class="swatch" style="background:#00f0ff"></span></td></tr>
+  <tr><td>海面</td><td><code>#0a2540</code> 深蓝</td><td><span class="swatch" style="background:#0a2540"></span></td>
+      <td>敌弹/敌方强调</td><td><code>#ff2a6d</code> 品红</td><td><span class="swatch" style="background:#ff2a6d"></span></td></tr>
+  <tr><td>草地岛</td><td><code>#1f6f3f</code> 草绿</td><td><span class="swatch" style="background:#1f6f3f"></span></td>
+      <td>星星/得分</td><td><code>#ffe600</code> 黄</td><td><span class="swatch" style="background:#ffe600"></span></td></tr>
+  <tr><td>沙/建筑</td><td><code>#8a7a52</code> 沙色</td><td><span class="swatch" style="background:#8a7a52"></span></td>
+      <td>幸存者/绳索</td><td><code>#ffffff</code> 白</td><td><span class="swatch" style="background:#ffffff"></span></td></tr>
+  <tr><td>机体装甲</td><td><code>#2979ff</code> 亮蓝</td><td><span class="swatch" style="background:#2979ff"></span></td>
+      <td>黄昏关天空(关3)</td><td><code>#ff9100</code> 橙</td><td><span class="swatch" style="background:#ff9100"></span></td></tr>
+</table>
+
+<h3>3.2 体素建模规范</h3>
+<ul>
+  <li>模型 = <b>方块表</b>：相对坐标 + 调色板索引。代码内以字符画定义（见 6.3），构建时合并为单个 <code>ArrayMesh</code>。</li>
+  <li>面剔除优化：被 6 邻居包围的面不生成顶点（模型加载时一次性烘焙）。</li>
+  <li>自发光：敌弹/绳索/星星用 <code>BaseMaterial3D.emission</code> 全亮纯色（GL Compatibility 无 Bloom，以高饱和纯色 + 深色地面拉开对比，不追求辉光）。</li>
+  <li>敌弹视觉规格：<b>0.7 VU 品红方块 + 白色内核 0.35 VU</b>（双层叠加提升可读性），缓慢自转。</li>
+</ul>
+
+<h3>3.3 玩家机体造型（俯视字符画，■=装甲蓝 ◆=青色驾驶舱 ▲=机翼）</h3>
+<pre class="voxel">俯视图（7宽×9长，厚度3层：中层机身、上下各1层机脊）
+   · ▲ ▲ ·
+  ▲ ◆ ◆ ▲
+ ▲ ■ ◆ ■ ▲
+▲ ■ ◆ ◆ ■ ▲
+▲ ■ ◆ ◆ ■ ▲
+ ▲ ■ ◆ ■ ▲
+  ▲ ■ ■ ▲
+   ■ · ■
+   · ● ·      ●=尾焰(喷射动画：黄→橙循环闪烁)</pre>
+<ul>
+  <li>引擎尾焰：2×2 黄色方块，逐帧缩放脉动 + 随移动方向偏摆。</li>
+  <li>受击反馈：整机 1.5s 白色闪烁（材质 albedo 调制）。</li>
+</ul>
+
+<h3>3.4 敌人造型速写</h3>
+<table>
+  <tr><th>单位</th><th>体素构成</th><th>识别特征</th></tr>
+  <tr><td>E1 炮塔</td><td>灰色基座 3×1×3 + 竖立炮管</td><td>炮管指向玩家（可转向）</td></tr>
+  <tr><td>E2 环炮</td><td>沙色圆台（方块堆叠近似）+ 顶部红芯</td><td>开火前红芯脉冲 0.4s</td></tr>
+  <tr><td>E3 无人机</td><td>2×2 品红方块 + 单螺旋桨</td><td>俯冲时拖尾残影</td></tr>
+  <tr><td>E4 编队机</td><td>3×4 小型箭形，灰蓝</td><td>五机 V 字，全歼时集体闪光</td></tr>
+  <tr><td>E5 巡航机</td><td>5×4 扁平机，暗红</td><td>横向正弦飞行</td></tr>
+  <tr><td>E6 精英炮舰</td><td>9×5×12 大型舰体，双色装甲</td><td>多炮位、血条顶显</td></tr>
+  <tr><td>B1 方舟战舰</td><td>16×6×26 巨舰，甲板建筑群</td><td>三段毁伤外观（见 2.9）</td></tr>
+</table>
+
+<h3>3.5 相机与光照</h3>
+<table>
+  <tr><th>项</th><th>方案</th><th>说明</th></tr>
+  <tr><td>相机</td><td><b>正交（Orthographic），size 24 VU，俯角 68°</b>，位于玩家后上方，镜头微向前下压</td><td>既看到方块侧面立体感，又保证弹幕落点可读；M0 用 90° 纯俯视做 A/B 对比后定稿</td></tr>
+  <tr><td>判定映射</td><td>碰撞一律在 <b>XZ 平面</b>计算，忽略 Y（高度只做视觉）</td><td>斜视角下"子弹看起来在哪"与"判定在哪"必须一致，靠正交+固定俯角规避透视误差</td></tr>
+  <tr><td>主光</td><td>DirectionalLight3D，暖白，从相机侧前方入射，开阴影</td><td>地面单位投影是高度与位置的核心可读性来源；若 M0 性能不达标则关闭阴影改用深色"假阴影"贴方块</td></tr>
+  <tr><td>环境</td><td>WorldEnvironment：深蓝雾（距离淡出）+ 低强度环境光</td><td>屏幕上缘用雾吞没出生点，敌机"从雾中现身"</td></tr>
+</table>
+
+<h3>3.6 特效（全部方块化）</h3>
+<ul>
+  <li><b>爆炸</b>：6~14 个 0.5 VU 方块碎片抛物线飞散 + 旋转 + 缩放消失（0.6s），颜色取自被毁单位调色板；大单位爆两次（外壳+内核）。</li>
+  <li><b>救援绳索</b>：0.3×0.3 VU 白色发光方块串（8 节），逐节垂下/收回；小人攀爬为匀速上移。</li>
+  <li><b>星星</b>：绕 Y 轴旋转的 1 VU 黄色方块，落地弹跳两次后静止轻浮动。</li>
+  <li><b>炸弹</b>：全屏白色闪光 0.2s + 从玩家位置扩散的青色方块冲击环。</li>
+  <li><b>中弹</b>：屏幕边缘品红 vignette + 相机震动 0.25s。</li>
+  <li><b>海面波纹</b>：海面由 4×4 VU 大方块拼成，shader 按 UV 相位做明暗波动（无贴图，纯顶点/片元色计算）。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="ui">4. UI 布局设计</h2>
+
+<pre>┌──────────────────────────────────────────────────────┐
+│ SCORE 128,500    ★×146        🚁2/5  ☠78%      ⬛⬛□ │
+│ (左·分数)      (星星计数)    (奖牌进度条)   (护甲3格) │
+│                                                      │
+│                    ·  ·  ·                           │
+│                  ·  敌弹域  ·        ← 3D 战斗视口    │
+│                    ▲玩家机                            │
+│                                                      │
+│ BOMB ×2 (炸弹图标+数量, 左下)         [BOSS血条(顶部)] │
+└──────────────────────────────────────────────────────┘</pre>
+<ul>
+  <li>HUD 用 <code>CanvasLayer</code>（3D 场景上叠 2D UI），延续 <code>main_theme.tres</code> 按钮样式。</li>
+  <li>奖牌进度条：四枚小图标（⚔🚁★🛡）实时显示达成状态（已达成=霓虹点亮，未达成=暗灰）。</li>
+  <li>Boss 血条：顶部通栏，三阶段分段刻度，切换阶段时闪烁。</li>
+  <li>结算面板：奖牌逐枚判定动画（0.4s/枚）→ 星星入账滚动数字 → 按钮（机库/重打/选关）。</li>
+  <li>机库（升级商店）面板：五条升级线（当前等级/下一级效果/价格/购买），顶部星星余额；买不起时按钮置灰。</li>
+  <li>选关面板：3 关卡片（锁定/解锁/奖牌 4 格显示/最高分），Normal 难度徽章。</li>
+  <li>暂停覆盖层：继续/重开/返回大厅（Esc），同 tetris 交互习惯。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="input">5. 输入映射（注册为 InputMap Action）</h2>
+<table>
+  <tr><th>Action</th><th>默认键</th><th>说明</th></tr>
+  <tr><td><code>eagle_move_left/right/up/down</code></td><td>WASD / 方向键 / 左摇杆</td><td>屏幕 8 向移动（映射到 XZ 平面）</td></tr>
+  <tr><td><code>eagle_bomb</code></td><td>空格 / 手柄 A</td><td>炸弹</td></tr>
+  <tr><td><code>eagle_pause</code></td><td>P / Esc</td><td>暂停（结算时 Esc=返回大厅，与 tetris 一致）</td></tr>
+</table>
+<div class="note">射击为自动开火，无按键；MVP 不做"低速精确移动"键（弹幕密度未到需要 focus 的程度），保留为后续扩展。</div>
+
+<!-- ============================================================ -->
+<h2 id="tech">6. 技术实现方案</h2>
+
+<h3>6.1 文件结构</h3>
+<pre>res://
+├── scenes/
+│   ├── main_menu.tscn            # 已有，GAME_SCENES 增加条目
+│   └── voxel_eagle/
+│       ├── voxel_eagle.tscn      # 游戏主场景（根 Node3D + 状态机脚本）
+│       ├── stage_select.tscn     # 选关 + 机库面板（CanvasLayer 组合）
+│       └── entities/             # player / enemy_*.tscn / survivor / pickup
+├── scripts/
+│   └── voxel_eagle/
+│       ├── game.gd               # 根节点：状态机、关卡流程、结算
+│       ├── voxel_model.gd        # 体素建模：字符画→方块表→ArrayMesh 烘焙
+│       ├── bullet_pool.gd        # 双 MultiMesh 子弹池（自机/敌方）+ 命中检测
+│       ├── wave_director.gd      # 波次表调度（按滚动距离触发）
+│       ├── enemy_base.gd         # 敌人基类：HP/掉落/弹幕参数
+│       ├── boss.gd               # Boss 三阶段状态机
+│       ├── survivor.gd           # 气泡/绳索/攀爬状态机
+│       ├── save_manager.gd       # user:// JSON 存档（读/写/版本迁移）
+│       └── sfx.gd                # 程序化音效（复用 tetris 方案）
+├── data/voxel_eagle/
+│   ├── models.gd                 # 全部体素字符画定义（纯数据）
+│   ├── stages/stage_1..3.json    # 波次表 + 地形块序列 + 幸存者点位
+│   └── upgrades.json             # 升级数值表
+└── saves/ (user://) voxel_eagle_save.json</pre>
+
+<h3>6.2 场景树（voxel_eagle.tscn）</h3>
+<pre>VoxelEagle (Node3D, game.gd)
+├─ WorldEnv (WorldEnvironment: 深蓝雾) + SunLight (DirectionalLight3D, 阴影)
+├─ Camera (Camera3D: 正交 size 24, 俯角 68°)
+├─ World (Node3D)                 # 每帧整体 +Z 位移 speed(6 VU/s)
+│   ├─ GroundChunks (Node3D)      # 地形块池：预生成 8 块循环回收
+│   ├─ GroundUnits (Node3D)       # 地面敌人（随地形速度移动）
+│   ├─ AirUnits (Node3D)          # 空中敌人（自带速度 = 地形速度 + 自机速度）
+│   ├─ Survivors (Node3D)         # 幸存者（随地形移动）
+│   └─ Pickups (Node3D)           # 星星/炸弹补给
+├─ Player (Area3D: 判定盒 1.2×1.2, 体素模型)
+├─ PlayerBullets / EnemyBullets (MultiMeshInstance3D ×2)
+├─ Fx (Node3D: 碎片粒子池)
+├─ WaveDirector (Node)
+└─ HUD (CanvasLayer: 分数/星星/奖牌/护甲/Boss血条/暂停与结算覆盖层)</pre>
+<div class="note"><b>滚动模型</b>：采用「世界后移」而非相机前移——玩家 Z 固定，World 容器整体向 +Z 移动。
+实现简单、无浮点精度问题（累计位移取模回绕即可），敌人/地形/人质统一挂 World 下随波逐流。</div>
+
+<h3>6.3 体素建模管线（核心降本设计）</h3>
+<pre># models.gd —— 字符画即模型，一个字符 = 调色板一个颜色
+const PLAYER_TOP := """
+   · ▲ ▲ ·
+  ▲ ◆ ◆ ▲
+ ▲ ■ ◆ ■ ▲
+▲ ■ ◆ ◆ ■ ▲
+▲ ■ ◆ ◆ ■ ▲
+ ▲ ■ ◆ ■ ▲
+  ▲ ■ ■ ▲
+   ■ · ■
+"""
+# 每层一张字符画 + 层高表 → 方块表 [(x,y,z,palette_idx), ...]
+# voxel_model.gd 构建：遍历方块 → 6 邻居剔除内面 → 同色段合并 → SurfaceTool → ArrayMesh
+# 运行时只 new MeshInstance3D 共享 mesh，零每次构造成本</pre>
+<ul>
+  <li>所有单位模型集中在 <code>models.gd</code>，修改造型 = 改字符画，无任何外部文件依赖。</li>
+  <li>地形块：预生成若干 40×24 VU 的"地形图案"（海面/岛/建筑），按关卡表顺序循环拼接。</li>
+</ul>
+
+<h3>6.4 子弹与性能预算</h3>
+<ul>
+  <li>自机弹/敌弹各一个 <code>MultiMeshInstance3D</code>（容量 256/512），子弹数据存扁平数组（pos/vel/ttl/type），每帧批量写 <code>instance_transform</code>。</li>
+  <li>碰撞：敌弹→玩家 O(n)；自机弹→敌人 空间网格分桶（敌人活跃数 &lt; 40，桶宽 8 VU）；判定均用 XZ 平面 AABB/圆。</li>
+  <li><b>性能目标：60 FPS @1080p（GL Compatibility）</b>；压测基准：同屏敌弹 300 + 自机弹 150 + 碎片 200 + 阴影开启，M0 验证不过则降级顺序：关阴影 → 降碎片上限 → 敌弹纹理合并。</li>
+</ul>
+
+<h3>6.5 波次与弹幕数据格式</h3>
+<pre>// stage_1.json（节选）
+{ "scroll_speed": 6.0,
+  "chunks": ["sea_a","sea_a","island_s","sea_b", ...],     // 循环地形
+  "waves": [
+    { "at": 120.0, "type": "E3", "count": 6, "pattern": "line", "params": {...} },
+    { "at": 160.0, "type": "E1", "count": 2, "pattern": "ground_pair", "params": {...} },
+    { "at": 200.0, "survivors": [ {"x": -6, "z": 260}, ... ] }
+  ] }
+// at = 世界滚动距离(VU)，wave_director.gd 逐条触发；弹型参数同 2.5 表</pre>
+
+<h3>6.6 存档（大厅内首个完整存档系统）</h3>
+<pre>// user://voxel_eagle_save.json
+{ "version": 1,
+  "stars": 1240,
+  "upgrades": { "main":3, "wing":1, "magnet":2, "shield":0, "bomb":1 },
+  "medals": { "1": ["kill","rescue"], "2": [], "3": null },
+  "unlocked_stage": 2,
+  "best_scores": { "1": 88200, "2": 0, "3": 0 } }</pre>
+<ul>
+  <li>写入时机：结算返回 / 机库购买 / 退出关卡时；原子写（先 tmp 后 rename）。</li>
+  <li><code>version</code> 字段 + 迁移函数，为后续难度/新关卡扩展留位。</li>
+</ul>
+
+<h3>6.7 音效</h3>
+<ul>
+  <li>复用 tetris 的程序化音效方案（AudioStreamGenerator / 预生成 WAV）：射击"哒"(高通短脉冲)、命中"嗒"、爆炸(噪声+低通衰减)、拾星(上扬双音)、救援成功(大三和弦琶音)、受击警报、Boss 阶段切换低鸣。</li>
+  <li>BGM：M3 可选（程序化四小节循环 Bass+琶音），不阻塞交付。</li>
+</ul>
+
+<h3>6.8 主菜单接入</h3>
+<pre># main_menu.gd 的 GAME_SCENES 增加：
+"方块雄鹰": "res://scenes/voxel_eagle/voxel_eagle.tscn"</pre>
+
+<!-- ============================================================ -->
+<h2 id="milestones">7. 里程碑拆分</h2>
+<table>
+  <tr><th>里程碑</th><th>内容</th><th>产出 / 通过条件</th></tr>
+  <tr><td><b>M0 技术验证</b><br>(0.5~1d)</td>
+      <td>3D 场景骨架、正交相机 68° 与 90° A/B 对比、体素玩家机建模/移动手感（含倾斜动画）、MultiMesh 敌弹 300 发压测、开/关阴影帧率对比</td>
+      <td>相机方案定稿；1080p 下压测 ≥ 55 FPS；<b>不达标则触发 6.4 降级路径并复测</b></td></tr>
+  <tr><td><b>M1 核心可玩</b><br>(~2d)</td>
+      <td>自动射击、6 类敌人、5 种弹型库、爆炸方块碎片、护甲/炸弹/坠机重开、1 条测试波次关（无正式地形）、HUD 基础层</td>
+      <td>测试关可完整跑通：打怪→掉星→被弹→坠机→重开</td></tr>
+  <tr><td><b>M2 系统完整</b><br>(~2d)</td>
+      <td>星星经济+磁铁、幸存者救援全流程、四奖牌判定、结算面板、机库五线升级、JSON 存档、Boss 三阶段战</td>
+      <td>刷关-升级-再战循环闭环；存档重启无损</td></tr>
+  <tr><td><b>M3 内容打磨</b><br>(~2d)</td>
+      <td>3 条正式关（地形块+波次表+幸存者点位）、选关面板、特效/音效补全、性能优化、主菜单接入、llmdoc 文档</td>
+      <td>交付版：大厅可进、3 关全通、全奖牌可达成</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="acceptance">8. 验收标准</h2>
+<ul>
+  <li>大厅点击「方块雄鹰」进入选关，Esc 返回大厅；首次进入解锁关 1。</li>
+  <li>移动/倾斜/自动射击/炸弹/护甲/坠机规则符合 2.2；判定盒明显小于机体视觉（弹幕公平）。</li>
+  <li>6 类敌人与 5 种弹型行为符合 2.4/2.5，参数全部来自波次表数据文件。</li>
+  <li>救人流程：气泡→悬停放绳→0.8s 攀爬→+1000 分；中断可重试；错过即损失。</li>
+  <li>四奖牌判定正确（含 100% 歼灭的分母口径：敌人滚出屏幕计为未击毁）。</li>
+  <li>星星收集/磁铁/坠机折半/结算入账正确；机库购买即时生效并持久化。</li>
+  <li>Boss 三阶段弹幕编排、阶段清弹演出、毁伤外观变化、击破动画符合 2.9。</li>
+  <li>3 关地形主题差异可见（碧海/群岛/黄昏）；关 3 结束出通关结算。</li>
+  <li>性能：1080p 稳定 60 FPS（含 Boss 战峰值段）；无报错无脚本警告。</li>
+  <li>所有模型/特效零外部资源：仅字符画+调色板+纯色材质。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="risks">9. 风险与待确认决策点</h2>
+
+<div class="risk"><b>① 相机俯角 vs 弹幕可读性（M0 必须先定）</b><br>
+68° 斜俯视体素立体感强，但斜视角下"子弹看着在 A 判定在 B"是弹幕游戏大忌。
+对策：正交相机 + 固定俯角 + 碰撞只算 XZ 平面，把透视误差压到可忽略；M0 做黑白弹可读性实测，
+不达标退回 90° 纯俯视（立体感改由方块高度差与阴影表达）。</div>
+
+<div class="risk"><b>② GL Compatibility 的 3D 阴影开销</b><br>
+本作是大厅第一个 3D 游戏，方向光阴影在低端机的开销未知。降级路径已定（假阴影贴片），
+M0 压测数据说话，不猜测。</div>
+
+<div class="risk"><b>③ 体素风格的"廉价感"风险</b><br>
+纯方块拼装容易显单调。对策：强轮廓色对比（深地面/亮单位）、全员待机动画（浮动/自转/尾焰）、
+爆炸碎片与救生绳索两个"高辨识度方块特效"撑住观感下限；不追求 Minecraft 官方素材相似度（避免商标/素材风险，用通用体素风）。</div>
+
+<div class="risk"><b>④ 「100% 歼灭」奖牌的体验强度</b><br>
+敌人滚出屏幕即损失奖牌，对新手压力大（Sky Force 同款设计）。首发 3 关里仅关 2、3 有高逃逸敌人，
+关 1 敌人以地面固定为主，保证首关奖牌可达性。若实测挫败感过强，备选方案：逃逸敌人计入分母但允许 1 个容错。</div>
+
+<div class="risk"><b>⑤ 数值平衡依赖试玩</b><br>
+升级价格曲线、Boss 血量、弹幕密度在纸面上只能给初值，验收后需要 2~3 轮试玩调参——
+波次表/弹型参数/升级表已全部数据化，调参不动代码。</div>
+
+<div class="note"><b>待确认项（实现前与需求方对齐）</b>：
+(a) 游戏名「方块雄鹰」是否采用；(b) 机体 3 格护甲制（非 Sky Force 原版的一击坠机）是否符合预期；
+(c) 幸存者 MVP 不可被击杀的取舍；(d) 双人同屏（Sky Force 特色）是否列入后续版本。</div>
+
+<!-- ============================================================ -->
+<h2 id="m0-log">10. M0 原型实施记录（2026-09-10 完成）</h2>
+
+<h3>10.1 交付文件</h3>
+<pre>res://
+├── scenes/voxel_eagle.tscn          # 根 Node3D + game.gd（其余节点全部代码动态构建）
+├── scripts/voxel_eagle/
+│   ├── voxel_model.gd               # 字符画→方块表→ArrayMesh（顶点色+内面剔除）
+│   ├── pools.gd                     # 通用 MultiMesh 方块池（子弹/星星/碎片共用，swap-remove）
+│   └── game.gd                      # M0 全部逻辑：玩家/波次/弹型/碰撞/HUD/相机/调试键
+└── main_menu 接入：EagleButton + GAME_SCENES["方块雄鹰"]</pre>
+
+<h3>10.2 验证结果（截图 + 压测实测）</h3>
+<ul>
+  <li>✅ 体素玩家机（蓝青箭形 + 黄色脉动尾焰 + 地面投影）、5 类敌人、海面 + 波浪块 + 体素小岛渲染正常；</li>
+  <li>✅ 弹型库工作：自机瞄 3 连 / 14 向双环 / 5 向扇形 / E4 编队 / E3 俯冲撞击；</li>
+  <li>✅ 玩法循环：击杀 → 掉星（抛散/落海弹跳/磁吸/拾取）→ 爆炸碎片 → 被弹减甲 → 坠机 → R 重开 / Q 返回大厅；</li>
+  <li>✅ 相机 F1(68°)/F2(90°) 实时切换，阴影 F3 开关；</li>
+  <li><b>✅ 压测：296 发敌弹满屏 + 阴影开启，FPS 稳定 60（1080p，GL Compatibility）</b>——MultiMesh 池方案成立，M0 性能验收通过。</li>
+</ul>
+
+<h3>10.3 M0 相对设计的简化（待 M1/M2 补齐）</h3>
+<ul>
+  <li>逻辑集中在单脚本 game.gd（M1 拆 enemy_base / wave_director）；输入为键盘直接轮询，未注册 InputMap action；无音效；</li>
+  <li>未实现：幸存者救援、奖牌判定、星星经济/机库升级、Boss、存档（属 M1/M2 范围）。</li>
+</ul>
+
+<h3>10.4 踩坑记录（Godot 4.7.2 GDScript）</h3>
+<ul>
+  <li>部分枚举常量在脚本解析器中不可直接引用（<code>GeometryInstance3D.SHADOW_CASTING_OFF</code>、<code>HorizontalAlignment.CENTER</code>），改用数值 + 注释；而 <code>Environment.fog_mode</code>、<code>Camera3D.projection</code> 赋数值运行时通过，但 <code>Label.alignment</code> 赋 int 运行时报错——枚举属性行为不一致，逐个实测为准；</li>
+  <li><code>PackedByteArray</code> 不能赋 bool（<code>shrink[i] = 1 if b else 0</code>）；</li>
+  <li>Packed 数组索引返回 Variant，<code>:=</code> 推断失败必须显式类型（<code>var d: Vector3 = eb.pos[i] - p</code>）；</li>
+  <li><code>Basis.rotated()</code> 是实例方法，<code>Basis.rotated(Basis.IDENTITY, ...)</code> 静态式调用会报错；</li>
+  <li>MultiMesh 未用实例必须初始化零缩放 transform，swap-remove 后死亡位也要置零，否则残影。</li>
+</ul>
+
+<p style="margin-top:40px;color:#5a6486">— 设计定稿于 2026-09-10 · M0 原型交付于 2026-09-10 · demo-game 项目 · Godot 4.7.2 · 玩法蓝本 Sky Force Reloaded / 建模风格 Minecraft-like 体素</p>
+
+</body>
+</html>

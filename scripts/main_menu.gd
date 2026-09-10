@@ -6,6 +6,7 @@ const TetrisDefs := preload("res://scripts/tetris/tetris_defs.gd")
 const GAME_SCENES := {
 	"俄罗斯方块": "res://scenes/tetris.tscn",
 	"俄罗斯方块·欢乐模式": "res://scenes/tetris.tscn",
+	"方块雄鹰": "res://scenes/voxel_eagle.tscn",
 }
 
 

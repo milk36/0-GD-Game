@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://doiqxgc1hfh3j"]
+
+[ext_resource type="Script" uid="uid://cqqldu24n6155" path="res://scripts/voxel_eagle/game.gd" id="1_ouxcv"]
+
+[node name="VoxelEagle" type="Node3D" unique_id=53277055]
+script = ExtResource("1_ouxcv")
