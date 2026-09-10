@@ -61,12 +61,6 @@ horizontal_alignment = 1
 [node name="Sep" type="HSeparator" parent="UILayer/Center/Panel/Margin/List" unique_id=1990868437]
 layout_mode = 2
 
-[node name="SnakeButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=1966304133]
-custom_minimum_size = Vector2(0, 46)
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "贪吃蛇"
-
 [node name="TetrisButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=1952141438]
 custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
@@ -78,24 +72,6 @@ custom_minimum_size = Vector2(0, 46)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "俄罗斯方块·欢乐模式"
-
-[node name="G2048Button" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=2096444458]
-custom_minimum_size = Vector2(0, 46)
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "2048"
-
-[node name="BreakoutButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=1046029037]
-custom_minimum_size = Vector2(0, 46)
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "打砖块"
-
-[node name="MineButton" type="Button" parent="UILayer/Center/Panel/Margin/List" unique_id=462814541]
-custom_minimum_size = Vector2(0, 46)
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "扫雷"
 
 [node name="StatusLabel" type="Label" parent="UILayer/Center/Panel/Margin/List" unique_id=561755763]
 layout_mode = 2

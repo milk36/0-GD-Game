@@ -53,9 +53,15 @@
                     ├── Title (Label 「游戏大厅」 36px)
                     ├── Subtitle (Label 「选择一个游戏开始」 15px 灰色)
                     ├── Sep (HSeparator)
-                    ├── SnakeButton / TetrisButton / G2048Button / BreakoutButton / MineButton
-                    │   （贪吃蛇 / 俄罗斯方块 / 2048 / 打砖块 / 扫雷，高 46px，字号 18）
+                    ├── TetrisButton / TetrisFunButton
+                    │   （俄罗斯方块 / 俄罗斯方块·欢乐模式，高 46px，字号 18）
                     └── StatusLabel (点击反馈文字，绿色 14px，默认为空)</pre>
+
+<div class="note">
+  2026-09-10：移除未实现玩法的占位按钮（贪吃蛇 / 2048 / 打砖块 / 扫雷），
+  仅保留已实现入口。<code>GAME_SCENES</code> 表与「开发中」提示逻辑保留，
+  后续新增玩法时在场景加 Button 并在表中登记场景路径即可。
+</div>
 
 <h2>脚本逻辑（main_menu.gd）</h2>
 <p><code>_ready()</code> 遍历 <code>List</code> 下所有 <code>Button</code>，
