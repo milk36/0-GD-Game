@@ -32,6 +32,7 @@ const MIX := {
 	"eagle_boss_phase": 0.0,
 	"eagle_win": 1.0,
 	"eagle_lose": 0.0,
+	"eagle_shot": -8.0,
 }
 
 var _players: Array[AudioStreamPlayer] = []
@@ -109,7 +110,7 @@ func _all_ids(ids: Array[String]) -> Array[String]:
 		"bolt_cast", "item_fizzle", "item_clear",
 		"eagle_star", "eagle_boom", "eagle_hurt", "eagle_bomb",
 		"eagle_rescue", "eagle_laser", "eagle_boss_phase",
-		"eagle_win", "eagle_lose",
+		"eagle_win", "eagle_lose", "eagle_shot", "eagle_bgm",
 	]
 
 

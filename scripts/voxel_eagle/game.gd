@@ -3,7 +3,7 @@ extends Node3D
 ## M0 基础 + M2 系统 + M3 内容：三关卡主题地形、选关面板（奖牌解锁）、
 ## E6 精英炮舰、炸弹补给掉落、程序化音效、按关结算与存档。
 ## 调试键：F1/F2 相机 68°/90°，F3 阴影，F4 弹幕压测；H 机库；S 选关；Esc 暂停。
-## M3 已接入：三关卡主题、选关面板、E6 精英炮舰、炸弹补给、程序化音效。
+## M3.9：高度分层——玩家 4.5 格飞行层 + 机体视觉 0.6 缩放，地貌防重叠摆放。
 
 const VoxelModel = preload("res://scripts/voxel_eagle/voxel_model.gd")
 const VoxelPool = preload("res://scripts/voxel_eagle/pools.gd")
@@ -16,7 +16,8 @@ const ARENA_HALF_W := 15.0     # 玩家横移边界
 const PLAYER_Z_MIN := -8.0
 const PLAYER_Z_MAX := 10.0
 const BULLET_SPEED := 46.0
-const ENEMY_BULLET_Y := 1.0    # 敌弹飞行高度（与玩家判定平面一致）
+const PLAYER_Y := 4.5          # 玩家飞行高度（高于岛屿/炮台/沉船顶部，避免穿模）
+const ENEMY_BULLET_Y := 4.5    # 敌弹飞行高度（与玩家判定平面一致）
 const STAR_LIFE := 9.0
 
 # 阶段机
@@ -31,19 +32,63 @@ const COL_PINK := Color("ff2a6d")
 const COL_YELLOW := Color("ffe600")
 const COL_WHITE := Color("f5f9ff")
 
-const ART_PLAYER := "
-   W
-  BCB
- BCCCB
-BCCCCCB
- BCCCB
-  BBB
-  B B
+# 玩家机三层细节建模（金属枪灰 + 红色涂装）：机翼平面 / 机身+翼面 / 座舱脊线（9 宽 × 11 长）
+const ART_PLAYER_WING := "
+    D
+    D
+   DGD
+   DGD
+  DGGGD
+ DGGGGGD
+RRGGGGGRR
+ DGGGGGD
+  DGGGD
+   DGD
+  DD DD
 "
-const PAL_PLAYER := {"B": Color("2979ff"), "C": COL_CYAN, "W": COL_WHITE}
+const ART_PLAYER_BODY := "
+    W
+    R
+   GRG
+   GRG
+  GGCGG
+ GGCCCGG
+HGGCCCGGH
+ GGRCCRG
+  GGRGG
+   RRR
+  BY YB
+"
+const ART_PLAYER_TOP := "
+    W
+    C
+    C
+    C
+    C
+    C
+    C
+    C
+    C
+    C
+    Y
+"
+const PAL_PLAYER := {
+	"G": Color("6a7484"), "D": Color("384048"), "R": Color("e8323e"),
+	"C": COL_CYAN, "W": Color("f5f9ff"), "Y": COL_YELLOW, "H": Color("8a94a8"),
+}
 
 const ART_TURRET := "
 GGG
+GRG
+GGG
+"
+const ART_TURRET_BASE := "
+TTT
+TTT
+TTT
+"
+const ART_TURRET_HEAD := "
+TTT
 GRG
 GGG
 "
@@ -52,9 +97,14 @@ SSS
 SRS
 SSS
 "
-const ART_DRONE := "
+const ART_DRONE_BODY := "
 MM
 MM
+"
+const ART_DRONE_ROTOR := "
+W W
+ W
+W W
 "
 const ART_WING := "
  G
@@ -62,10 +112,22 @@ GCG
  G
  G
 "
+const ART_WING_TOP := "
+ C
+ C
+ C
+ G
+"
 const ART_RAIDER := "
   D
  DDD
 DDDDD
+  D
+"
+const ART_RAIDER_TOP := "
+  C
+ DTD
+ DDD
   D
 "
 const ART_ELITE := "
@@ -84,14 +146,13 @@ DHHHHRRRHHHHD
 DHHHHHHHHHHHD
 DDDDDDDDDDDDD
 "
-const ART_SURVIVOR := "
-W
-W
-"
+const ART_SURVIVOR_LEG := "D"
+const ART_SURVIVOR_TORSO := "O"
+const ART_SURVIVOR_HEAD := "S"
 const PAL_ENEMY := {
 	"G": Color("6a7488"), "R": Color("ff2a6d"), "S": Color("8a7a52"),
 	"M": Color("ff2a6d"), "C": Color("ffb0c8"), "D": Color("b03050"),
-	"T": Color("3a4254"), "H": Color("8a94aa"),
+	"T": Color("3a4254"), "H": Color("8a94aa"), "W": Color("dfe6f5"),
 }
 
 # 机库升级线定义（数值曲线见 save_manager.upgrade_cost）
@@ -116,8 +177,12 @@ var pickups: MultiMeshInstance3D  # 星星
 var supplies: MultiMeshInstance3D # 炸弹补给
 var fx: MultiMeshInstance3D    # 碎片/闪光
 var enemies: Array = []        # 敌人 dict 列表（含 Boss）
-var waves: Array = []          # 波浪装饰 Node3D
-var islands: Array = []        # 岛 Node3D
+var waves: Array = []          # 波浪装饰 dict 列表（含相位）
+var islands: Array = []        # 草岛 Node3D
+var reefs: Array = []          # 暗礁岩石 Node3D
+var wrecks: Array = []         # 燃烧沉船 Node3D
+var fires: Array = []          # 火焰动画 dict 列表
+var clouds: Array = []         # 云朵 dict 列表（视差）
 var survivors: Array = []      # 幸存者 dict 列表
 var missiles: Array = []       # 僚机追踪弹 dict 列表
 var rope: MeshInstance3D       # 救援绳索（细长方块）
@@ -178,6 +243,9 @@ var hud_cd := 0.0
 var wing_t := 3.0
 var laser := {"st": 0, "t": 0.0, "org": Vector3.ZERO, "dir": Vector3.FORWARD, "len": 60.0}
 
+var rescue_hint_done := false
+var hint_t := 0.0
+
 # 关卡参数（来自 stage_def）
 var scroll_spd := 7.0
 var survivor_total := 3
@@ -203,17 +271,48 @@ func _ready() -> void:
 	_build_hud()
 	_build_overlays()
 	_meshes = {
-		"E1": VoxelModel.build(ART_TURRET, PAL_ENEMY, 2),
+		"E1": VoxelModel.build(ART_TURRET_BASE, PAL_ENEMY, 1),
+		"E1H": VoxelModel.build(ART_TURRET_HEAD, PAL_ENEMY, 2),
 		"E2": VoxelModel.build(ART_RING, PAL_ENEMY, 3),
-		"E3": VoxelModel.build(ART_DRONE, PAL_ENEMY, 1),
-		"E4": VoxelModel.build(ART_WING, PAL_ENEMY, 2),
-		"E5": VoxelModel.build(ART_RAIDER, PAL_ENEMY, 2),
+		"E3": VoxelModel.build_multi([
+			{"art": ART_DRONE_BODY, "pal": PAL_ENEMY, "y": 0, "layers": 1},
+			{"art": ART_DRONE_ROTOR, "pal": PAL_ENEMY, "y": 1, "layers": 1},
+		]),
+		"E4": VoxelModel.build_multi([
+			{"art": ART_WING, "pal": PAL_ENEMY, "y": 0, "layers": 1},
+			{"art": ART_WING_TOP, "pal": PAL_ENEMY, "y": 1, "layers": 1},
+		]),
+		"E5": VoxelModel.build_multi([
+			{"art": ART_RAIDER, "pal": PAL_ENEMY, "y": 0, "layers": 1},
+			{"art": ART_RAIDER_TOP, "pal": PAL_ENEMY, "y": 1, "layers": 1},
+		]),
 		"E6": VoxelModel.build(ART_ELITE, PAL_ENEMY, 3),
 		"BOSS": VoxelModel.build(ART_BOSS, PAL_ENEMY, 3),
-		"SURV": VoxelModel.build(ART_SURVIVOR, {"W": COL_WHITE}, 1),
+		"SURV": VoxelModel.build_multi([
+			{"art": ART_SURVIVOR_LEG, "pal": {"D": Color("3a3a4a")}, "y": 0, "layers": 1},
+			{"art": ART_SURVIVOR_TORSO, "pal": {"O": Color("ffa03c")}, "y": 1, "layers": 2},
+			{"art": ART_SURVIVOR_HEAD, "pal": {"S": Color("e8b88a")}, "y": 3, "layers": 1},
+		]),
 	}
 	if Stages.selected == 0:
 		select_root.visible = true  # 从大厅进入：先选关
+	_start_bgm()
+
+
+## 背景音乐：程序化四小节循环，按关变调；随场景退出自动停止
+func _start_bgm() -> void:
+	var bstream := SFX.stream_for("eagle_bgm")
+	if bstream == null:
+		return
+	bstream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	bstream.loop_begin = 0
+	bstream.loop_end = bstream.data.size() / 4  # 16bit 立体声帧数
+	var bgm := AudioStreamPlayer.new()
+	bgm.stream = bstream
+	bgm.volume_db = -16.0
+	bgm.pitch_scale = [1.0, 1.05, 1.1][stage_id - 1]
+	add_child(bgm)
+	bgm.play()
 
 
 func _load_stage_def() -> void:
@@ -254,8 +353,8 @@ func _build_env() -> void:
 	env.fog_enabled = true
 	env.fog_mode = 1  # DEPTH
 	env.fog_light_color = Color(stage_def["fog"])
-	env.fog_depth_begin = 46.0
-	env.fog_depth_end = 120.0
+	env.fog_depth_begin = 60.0
+	env.fog_depth_end = 170.0
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -271,9 +370,9 @@ func _build_env() -> void:
 
 	cam = Camera3D.new()
 	cam.projection = 1  # ORTHOGONAL
-	cam.size = 26.0
+	cam.size = 34.0     # M3.5 拉高视野：26 → 34，展示更多场景
 	cam.near = 0.5
-	cam.far = 260.0
+	cam.far = 300.0
 	add_child(cam)
 	cam.position = Vector3(0, 30, 12)
 	cam.look_at(Vector3.ZERO)
@@ -296,7 +395,7 @@ func _build_ground() -> void:
 	sea.position = Vector3(0, 0, -110)
 	add_child(sea)
 
-	# 波浪装饰块：挂 World 随滚动流动，滚出下缘后回绕
+	# 波浪装饰块：挂 World 随滚动流动 + 起伏呼吸，滚出下缘后回绕
 	var wave_box := BoxMesh.new()
 	wave_box.size = Vector3(2.0, 0.14, 2.0)
 	wave_box.material = VoxelModel.shaded_material()
@@ -305,11 +404,35 @@ func _build_ground() -> void:
 		w.mesh = wave_box
 		w.position = Vector3(randf_range(-26, 26), 0.07, randf_range(-200, 24))
 		world.add_child(w)
-		waves.append(w)
+		waves.append({"n": w, "ph": randf() * TAU})
 
-	# 体素小岛：草块 + 二层 + 沙边（数量按关卡）
+	# 地貌：草岛 / 暗礁岩石 / 燃烧沉船（按关卡数量，元素差异参照需求截图）
 	for i in int(stage_def["islands"]):
 		islands.append(_make_island())
+	for i in int(stage_def["reefs"]):
+		reefs.append(_make_reef())
+	for i in int(stage_def["wrecks"]):
+		wrecks.append(_make_wreck())
+
+	# 天空云朵：4~6 块相互重叠拼成蓬松云团，高空慢速飘过战场（半透明、不投影）
+	var cloud_mat := StandardMaterial3D.new()
+	cloud_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cloud_mat.albedo_color = Color(1, 1, 1, 0.34)
+	cloud_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	for i in 5:
+		var cloud := Node3D.new()
+		for k in randi_range(4, 6):
+			var cm := MeshInstance3D.new()
+			var box := BoxMesh.new()
+			box.size = Vector3(randf_range(2.6, 5.5), randf_range(0.7, 1.2), randf_range(2.0, 3.6))
+			box.material = cloud_mat
+			cm.mesh = box
+			cm.position = Vector3(randf_range(-1.5, 1.5), randf_range(-0.35, 0.35), randf_range(-1.0, 1.0))
+			cm.cast_shadow = 0  # 云不投影
+			cloud.add_child(cm)
+		cloud.position = Vector3(randf_range(-26, 26), randf_range(13.0, 19.0), randf_range(-200, 24))
+		add_child(cloud)
+		clouds.append({"n": cloud, "spd": randf_range(0.22, 0.42)})
 
 
 func _make_island() -> Node3D:
@@ -331,9 +454,79 @@ func _make_island() -> Node3D:
 	var n := MeshInstance3D.new()
 	n.mesh = VoxelModel.build_blocks(blocks)
 	n.material_override = VoxelModel.shaded_material()
-	n.position = Vector3(randf_range(-22, 22), 0, randf_range(-200, 24))
+	n.position = _decor_spot(22.0, 0.0)
 	world.add_child(n)
 	return n
+
+
+## 暗礁岩石：浅灰色不规则石堆，随机缺角与凸起
+func _make_reef() -> Node3D:
+	var blocks := {}
+	var rx := randi_range(1, 2)
+	var rz := randi_range(1, 2)
+	for x in range(-rx - 1, rx + 2):
+		for z in range(-rz - 1, rz + 2):
+			if randf() < 0.18:
+				continue  # 不规则边缘
+			blocks[Vector3i(x, 0, z)] = Color("7d7d88") if randf() < 0.5 else Color("93939e")
+	for k in randi_range(1, 3):
+		blocks[Vector3i(randi_range(-rx, rx), 1, randi_range(-rz, rz))] = Color("a8a8b4")
+	var n := MeshInstance3D.new()
+	n.mesh = VoxelModel.build_blocks(blocks)
+	n.material_override = VoxelModel.shaded_material()
+	n.position = _decor_spot(22.0, 0.02)
+	world.add_child(n)
+	return n
+
+
+## 燃烧沉船：深色断成两截的船体 + 两团闪烁火焰（参照需求截图中的燃烧舰船）
+func _make_wreck() -> Node3D:
+	var blocks := {}
+	for z in 6:
+		if z == 3:
+			continue  # 中段断裂缺口
+		for x in 2:
+			blocks[Vector3i(x, 0, z)] = Color("3a3230") if (x + z) % 2 == 0 else Color("463c38")
+	blocks[Vector3i(0, 1, 1)] = Color("2a2422")  # 舰桥残骸
+	blocks[Vector3i(1, 1, 1)] = Color("2a2422")
+	var n := MeshInstance3D.new()
+	n.mesh = VoxelModel.build_blocks(blocks)
+	n.material_override = VoxelModel.shaded_material()
+	n.rotation.y = randf_range(-0.4, 0.4)
+	# 火焰：橙黄双团，无光照闪烁
+	for k in 2:
+		var f := MeshInstance3D.new()
+		var fm := BoxMesh.new()
+		fm.size = Vector3(0.55, 0.55, 0.55)
+		var fmat := StandardMaterial3D.new()
+		fmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		fmat.albedo_color = COL_YELLOW if k == 0 else Color("ff9020")
+		fm.material = fmat
+		f.mesh = fm
+		f.position = Vector3(randf_range(0.2, 0.8), 0.8, float(k) * 1.6)
+		n.add_child(f)
+		fires.append({"n": f, "y0": 0.8, "ph": randf() * TAU})
+	n.position = _decor_spot(20.0, 0.08)
+	world.add_child(n)
+	return n
+
+
+## 地貌摆放：避开已有岛屿/礁石/沉船（最小间距 7），防止物件相互穿模
+func _decor_spot(xr: float, y: float) -> Vector3:
+	var p := Vector3(randf_range(-xr, xr), y, randf_range(-200.0, 24.0))
+	for attempt in 8:
+		p = Vector3(randf_range(-xr, xr), y, randf_range(-200.0, 24.0))
+		var ok := true
+		for arr in [islands, reefs, wrecks]:
+			for d in arr:
+				if Vector2(d.position.x - p.x, d.position.z - p.z).length() < 7.0:
+					ok = false
+					break
+			if not ok:
+				break
+		if ok:
+			break
+	return p
 
 
 func _build_player() -> void:
@@ -341,10 +534,15 @@ func _build_player() -> void:
 	player.name = "Player"
 	add_child(player)
 	player_mesh = MeshInstance3D.new()
-	player_mesh.mesh = VoxelModel.build(ART_PLAYER, PAL_PLAYER, 3)
-	player_mesh.material_override = VoxelModel.shaded_material()
+	player_mesh.mesh = VoxelModel.build_multi([
+		{"art": ART_PLAYER_WING, "pal": PAL_PLAYER, "y": 0, "layers": 1},
+		{"art": ART_PLAYER_BODY, "pal": PAL_PLAYER, "y": 1, "layers": 1},
+		{"art": ART_PLAYER_TOP, "pal": PAL_PLAYER, "y": 2, "layers": 1},
+	])
+	player_mesh.material_override = VoxelModel.metal_material()  # 金属质感
+	player_mesh.scale = Vector3.ONE * 0.6  # 视觉缩小一号（判定盒不变），减少与地貌的屏幕重叠
 	player.add_child(player_mesh)
-	player.position = Vector3(0, 1.4, 6)
+	player.position = Vector3(0, PLAYER_Y, 6)
 
 	flame = MeshInstance3D.new()
 	var fm := BoxMesh.new()
@@ -639,16 +837,47 @@ func _process(delta: float) -> void:
 	shake = maxf(0.0, shake - delta)
 	invuln = maxf(0.0, invuln - delta)
 
-	# 世界滚动 + 地面装饰回绕
+	# 世界滚动 + 地貌回绕与动画
 	world.position.z += scroll_spd * delta
-	for w in waves:
-		if world.position.z + w.position.z > 26.0:
-			w.position.z -= 224.0
-			w.position.x = randf_range(-26, 26)
+	var decor: Array = islands + reefs + wrecks
+	for wd in waves:
+		var wn: Node3D = wd["n"]
+		wn.position.y = 0.07 + 0.045 * sin(elapsed * 2.2 + float(wd["ph"]))
+		if world.position.z + wn.position.z > 26.0:
+			wn.position.z -= 224.0
+			wn.position.x = randf_range(-26, 26)
+		# 波浪穿模剔除：靠近岛屿/礁石/沉船时隐藏
+		var wgp := wn.global_position
+		var blocked := false
+		for d in decor:
+			var dp: Vector3 = d.position
+			if absf(dp.x - wgp.x) < 5.0 and absf(world.position.z + dp.z - wgp.z) < 5.0:
+				blocked = true
+				break
+		wn.visible = not blocked
 	for isl in islands:
 		if world.position.z + isl.position.z > 30.0:
 			isl.position.z -= 230.0
 			isl.position.x = randf_range(-22, 22)
+	for rf in reefs:
+		if world.position.z + rf.position.z > 30.0:
+			rf.position.z -= 230.0
+			rf.position.x = randf_range(-22, 22)
+	for wk in wrecks:
+		if world.position.z + wk.position.z > 30.0:
+			wk.position.z -= 230.0
+			wk.position.x = randf_range(-20, 20)
+	for fr in fires:  # 火焰闪烁
+		var fl := 1.0 + 0.35 * sin(elapsed * 13.0 + float(fr["ph"]))
+		fr["n"].scale = Vector3(fl, fl, fl)
+		fr["n"].position.y = float(fr["y0"]) + 0.12 * sin(elapsed * 9.0 + float(fr["ph"]))
+	for cl in clouds:  # 云朵慢速视差
+		var cn: Node3D = cl["n"]
+		cn.position.z += scroll_spd * float(cl["spd"]) * delta
+		if cn.position.z > 28.0:
+			cn.position.z -= 230.0
+			cn.position.x = randf_range(-26, 26)
+			cn.position.y = randf_range(13.0, 19.0)
 
 	if dead:
 		settle_t -= delta
@@ -679,6 +908,11 @@ func _process(delta: float) -> void:
 	if hud_cd <= 0.0:
 		hud_cd = 0.15
 		_refresh_hud()
+
+	if hint_t > 0.0:  # 救援提示到期清除（不覆盖坠机/暂停文案）
+		hint_t -= delta
+		if hint_t <= 0.0 and hud_center.text.begins_with("飞到"):
+			hud_center.text = ""
 
 
 ## 关卡脚本：按 stage_t 触发波次与幸存者，全部触发后延时进 Boss
@@ -718,10 +952,11 @@ func _update_player(delta: float) -> void:
 	player.position.x = clampf(player.position.x + dir.x * PLAYER_SPEED * delta, -ARENA_HALF_W, ARENA_HALF_W)
 	player.position.z = clampf(player.position.z + dir.y * PLAYER_SPEED * delta, PLAYER_Z_MIN, PLAYER_Z_MAX)
 
-	# 机身倾斜 + 尾焰脉动
+	# 机身倾斜 + 尾焰脉动（尾焰随视觉缩放 0.6）
 	player.rotation.z = lerp(player.rotation.z, -dir.x * 0.32, 10.0 * delta)
 	player.rotation.x = lerp(player.rotation.x, dir.y * 0.12, 10.0 * delta)
-	flame.scale.z = 1.0 + 0.45 * sin(elapsed * 31.0) + dir.y * 0.4
+	var fs := 0.6 * (1.0 + 0.45 * sin(elapsed * 31.0) + dir.y * 0.4)
+	flame.scale = Vector3(0.6, 0.6, maxf(fs, 0.1))
 	flame.position.y = sin(elapsed * 17.0) * 0.05
 
 	# 无敌闪烁
@@ -749,6 +984,7 @@ func _update_player(delta: float) -> void:
 			for s in [-1.0, 1.0]:
 				var v := Vector3(0, 0, -BULLET_SPEED).rotated(Vector3.UP, s * 0.18)
 				pb.spawn(player.position + Vector3(s * 1.1, 0.2, -2.4), v, COL_CYAN, 0.38, 1.4)
+		SFX.play("eagle_shot", -6.0)
 
 	# 僚机追踪弹
 	var wing_lv: int = int(save["upgrades"].get("wing", 0))
@@ -757,7 +993,7 @@ func _update_player(delta: float) -> void:
 		if wing_t <= 0.0:
 			wing_t = 3.0
 			for i in mini(wing_lv, 4):
-				_spawn_missile(Vector3(player.position.x - 1.6 + 3.2 * float(i), 0.8, player.position.z))
+				_spawn_missile(Vector3(player.position.x - 1.6 + 3.2 * float(i), player.position.y, player.position.z))
 
 	if stress and eb.count < 300:
 		for i in 6:
@@ -812,7 +1048,7 @@ func _update_missiles(delta: float) -> void:
 		for e in enemies:
 			var gp: Vector3 = e["n"].global_position
 			var r := _hit_radius(e["t"])
-			if absf(n.position.x - gp.x) < r.x + 0.6 and absf(n.position.z - gp.z) < r.y + 0.6 and absf(n.position.y - gp.y) < 2.5:
+			if absf(n.position.x - gp.x) < r.x + 0.6 and absf(n.position.z - gp.z) < r.y + 0.6 and absf(n.position.y - gp.y) < 6.0:
 				_damage_enemy(e, 3)
 				_burst(n.position, COL_YELLOW, 5)
 				hit = true
@@ -883,7 +1119,15 @@ func _spawn_ground(type: String, x: float) -> void:
 	n.material_override = VoxelModel.shaded_material()
 	world.add_child(n)
 	n.position = Vector3(x, 0.05, -58.0 - world.position.z)
-	enemies.append({"n": n, "t": type, "hp": 4 if type == "E2" else 3, "ft": randf_range(0.8, 1.6), "age": 0.0})
+	var e := {"n": n, "t": type, "hp": 4 if type == "E2" else 3, "ft": randf_range(0.8, 1.6), "age": 0.0}
+	if type == "E1":  # 炮台：底座 + 可旋转炮头（含炮管，指向玩家）
+		var head := MeshInstance3D.new()
+		head.mesh = _meshes["E1H"]
+		head.material_override = VoxelModel.shaded_material()
+		head.position = Vector3(0, 1.1, 0)
+		n.add_child(head)
+		e["head"] = head
+	enemies.append(e)
 
 
 func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
@@ -892,7 +1136,7 @@ func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 	n.material_override = VoxelModel.shaded_material()
 	add_child(n)
 	var vz := scroll_spd + (10.0 if type == "E3" else 5.0 if type == "E4" else 1.5 if type == "E6" else 3.0)
-	n.position = Vector3(x, 1.6, -46.0)
+	n.position = Vector3(x, 4.3, -46.0)  # 空中单位与玩家同一飞行高度层
 	var e := {"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "vx": vx, "vz": vz, "x0": x, "mode": 0}
 	enemies.append(e)
 	return e
@@ -901,22 +1145,42 @@ func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 func _spawn_survivor(x: float) -> void:
 	var n := MeshInstance3D.new()
 	n.mesh = _meshes["SURV"]
-	n.material_override = VoxelModel.shaded_material()
+	n.material_override = VoxelModel.unshaded_material()  # 无光照高亮：远视角可读
 	world.add_child(n)
 	n.position = Vector3(x, 0.5, -50.0)
-	# 头顶气泡（靠近时显示）
-	var bub := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.55, 0.55, 0.55)
-	var bmat := StandardMaterial3D.new()
-	bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bmat.albedo_color = COL_WHITE
-	bm.material = bmat
-	bub.mesh = bm
-	bub.position = Vector3(0, 2.3, 0)
-	bub.visible = false
-	n.add_child(bub)
-	survivors.append({"n": n, "bub": bub, "roping": false, "prog": 0.0})
+	n.scale = Vector3.ONE * 0.6  # 小人比战机小一号（0.6 倍，高约 2.7 格）
+	# 双臂：肩部支点 + 上举手臂，待救时高举挥动呼叫
+	var arms := {}
+	for s in [-1.0, 1.0]:
+		var piv := Node3D.new()
+		piv.position = Vector3(s * 0.62, 3.1, 0.0)
+		n.add_child(piv)
+		var arm := MeshInstance3D.new()
+		var am := BoxMesh.new()
+		am.size = Vector3(0.34, 1.2, 0.34)
+		var amat := StandardMaterial3D.new()
+		amat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		amat.albedo_color = COL_WHITE
+		am.material = amat
+		arm.mesh = am
+		arm.position = Vector3(0, 0.55, 0)  # 网格上移半格 → 支点在肩部
+		piv.add_child(arm)
+		arms["L" if s < 0.0 else "R"] = piv
+	# 头顶红色叹号（竖条 + 间隙 + 点，远视角醒目）
+	var ex := MeshInstance3D.new()
+	ex.mesh = VoxelModel.build_multi([
+		{"art": "R", "pal": {"R": COL_PINK}, "y": 2, "layers": 3},
+		{"art": "R", "pal": {"R": COL_PINK}, "y": 0, "layers": 1},
+	])
+	ex.material_override = VoxelModel.unshaded_material()
+	ex.scale = Vector3(0.55, 0.55, 0.55)
+	ex.position = Vector3(0, 6.4, 0)
+	ex.visible = false
+	n.add_child(ex)
+	rescue_hint_done = true
+	hint_t = 3.5
+	hud_center.text = "飞到幸存者上方悬停即可施救"
+	survivors.append({"n": n, "ex": ex, "arm_l": arms["L"], "arm_r": arms["R"], "roping": false, "prog": 0.0})
 
 
 func _spawn_boss() -> void:
@@ -948,11 +1212,12 @@ func _update_enemies(delta: float) -> void:
 			continue
 		match e["t"]:
 			"E1":
-				n.look_at(Vector3(player.position.x, n.global_position.y, player.position.z))
+				var head: Node3D = e["head"]
+				head.look_at(Vector3(player.position.x, head.global_position.y, player.position.z))
 				e["ft"] = float(e["ft"]) - delta
 				if gp.z > -34.0 and gp.z < 6.0 and float(e["ft"]) <= 0.0:
 					e["ft"] = 2.2
-					_fire_aimed(gp, 8.0, 3, 14.0)
+					_fire_aimed(head.global_position + Vector3(0, 1.0, 0), 8.0, 3, 14.0)
 			"E2":
 				e["ft"] = float(e["ft"]) - delta
 				if gp.z > -34.0 and float(e["ft"]) <= 0.0:
@@ -1195,21 +1460,33 @@ func _update_survivors(delta: float) -> void:
 			survivors.remove_at(i)
 			continue
 		var d := _xz_dist(gp, player.position)
-		var bub: MeshInstance3D = s["bub"]
-		bub.visible = d < 8.0 and not bool(s["roping"])
-		bub.position.y = 2.3 + sin(elapsed * 4.0) * 0.15
+		var ex: MeshInstance3D = s["ex"]
+		ex.visible = d < 8.0 and not bool(s["roping"])
+		ex.position.y = 6.4 + sin(elapsed * 4.0) * 0.25
+		# 双手高举挥动呼叫（攀爬时停止挥手改为抱绳姿态）
+		var wob := sin(elapsed * 8.0)
+		var arm_l: Node3D = s["arm_l"]
+		var arm_r: Node3D = s["arm_r"]
 		if bool(s["roping"]):
-			if d > 2.8 or dead:  # 离开范围 → 绳索收回（不惩罚）
+			arm_l.rotation.z = 0.5
+			arm_r.rotation.z = -0.5
+		else:
+			arm_l.rotation.z = 2.4 + wob * 0.45
+			arm_r.rotation.z = -2.4 + wob * 0.45
+		if bool(s["roping"]):
+			if d > 3.4 or dead:  # 离开范围 → 绳索收回（不惩罚）
 				s["roping"] = false
 				s["prog"] = 0.0
 				n.position.y = 0.5
-				n.scale = Vector3.ONE
+				n.scale = Vector3.ONE * 0.6
 				rope.visible = false
 			else:
-				s["prog"] = float(s["prog"]) + delta / 0.8
+				# 幸存者停止随地面滚动，原地等玩家悬停拉起
+				n.position.z -= scroll_spd * delta
+				s["prog"] = float(s["prog"]) + delta / 0.6
 				var prog := float(s["prog"])
-				n.position.y = 0.5 + prog * 3.0
-				n.scale = Vector3.ONE * (1.0 - prog * 0.75)
+				n.position.y = 0.5 + prog * 2.2
+				n.scale = Vector3.ONE * (0.6 * (1.0 - prog * 0.75))
 				_rope_pose(gp)
 				if prog >= 1.0:
 					rescued += 1
@@ -1221,14 +1498,14 @@ func _update_survivors(delta: float) -> void:
 					survivors.remove_at(i)
 					continue
 		else:
-			if d < 2.2 and not dead:
+			if d < 2.6 and not dead:
 				s["roping"] = true
 				s["prog"] = 0.0
 		i += 1
 
 
 func _rope_pose(sur_gp: Vector3) -> void:
-	var top := sur_gp + Vector3(0, 0.5, 0)
+	var top := sur_gp + Vector3(0, 2.7, 0)  # 小人头顶（举手高度，0.6 缩放）
 	var bot := player.position
 	var dz := bot - top
 	# 绳索近乎垂直，不能用 look_at（方向与 UP 平行会报错），手动构建正交基
@@ -1278,7 +1555,7 @@ func _update_bullets(_delta: float) -> void:
 		for e in enemies:
 			var gp: Vector3 = e["n"].global_position
 			var r := _hit_radius(e["t"])
-			if absf(pb.pos[i].x - gp.x) < r.x and absf(pb.pos[i].z - gp.z) < r.y and absf(pb.pos[i].y - gp.y) < 2.5:
+			if absf(pb.pos[i].x - gp.x) < r.x and absf(pb.pos[i].z - gp.z) < r.y:
 				_damage_enemy(e, 1)
 				fx.spawn(pb.pos[i], Vector3(0, 2, 4), COL_WHITE, 0.3, 0.14, 0.0, Vector3.ZERO, true)
 				hit = true
@@ -1320,13 +1597,13 @@ func _update_pickups(delta: float) -> void:
 			if pickups.vel[i].y < 1.0:
 				pickups.vel[i].y = 0.0
 				pickups.vel[i].z = scroll_spd
-		# 磁吸（半径由机库「磁铁」等级决定）
+		# 磁吸（半径由机库「磁铁」等级决定；按 XZ 平面距离，星星会飞升到飞行高度）
 		var d: Vector3 = player.position - pickups.pos[i]
-		var dist: float = d.length()
-		if dist < magnet_r and not dead:
-			pickups.vel[i] = d.normalized() * clampf(26.0 - dist * 2.0, 8.0, 26.0)
+		var dist_xz: float = Vector2(d.x, d.z).length()
+		if dist_xz < magnet_r and not dead:
+			pickups.vel[i] = d.normalized() * clampf(26.0 - dist_xz * 2.0, 8.0, 26.0)
 			pickups.vel[i].y *= 0.4
-		if dist < 1.7 and not dead:
+		if dist_xz < 1.7 and not dead:
 			pickups.kill(i)
 			star_cnt += 1
 			score += 10
@@ -1348,10 +1625,10 @@ func _update_supplies(delta: float) -> void:
 				supplies.vel[i].y = 0.0
 				supplies.vel[i].z = scroll_spd
 		var d: Vector3 = player.position - supplies.pos[i]
-		var dist: float = d.length()
-		if dist < magnet_r + 2.0 and not dead:
-			supplies.vel[i] = d.normalized() * clampf(24.0 - dist, 8.0, 24.0)
-		if dist < 2.0 and not dead:
+		var dist_xz: float = Vector2(d.x, d.z).length()
+		if dist_xz < magnet_r + 2.0 and not dead:
+			supplies.vel[i] = d.normalized() * clampf(24.0 - dist_xz, 8.0, 24.0)
+		if dist_xz < 2.0 and not dead:
 			supplies.kill(i)
 			if bombs < bombs_max:
 				bombs += 1
@@ -1427,9 +1704,9 @@ func _update_camera(_delta: float) -> void:
 	var off: Vector3
 	if cam_mode == 0:
 		var pitch := deg_to_rad(68.0)
-		off = Vector3(0, 30.0 * sin(pitch), 30.0 * cos(pitch))
+		off = Vector3(0, 40.0 * sin(pitch), 40.0 * cos(pitch))
 	else:
-		off = Vector3(0, 32.0, 0.01)
+		off = Vector3(0, 42.0, 0.01)
 	cam.position = target + off
 	if shake > 0.0:
 		cam.position += Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * shake * 1.6

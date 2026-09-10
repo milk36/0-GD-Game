@@ -469,6 +469,11 @@ static func build(id: String) -> AudioStreamWAV:
 			return _to_mono(eagle_win())
 		"eagle_lose":
 			return _to_mono(eagle_lose())
+		"eagle_shot":
+			return _to_mono(eagle_shot())
+		"eagle_bgm":
+			var m: Dictionary = eagle_bgm()
+			return _to_stereo(m.l, m.r)
 	return null
 
 
@@ -667,3 +672,69 @@ static func eagle_lose() -> PackedFloat32Array:
 		out[i] = v
 	out = delay(out, 0.12, 0.26, 0.30)
 	return _finalize(out, 0.78)
+
+
+## 机炮：短促软 pew（方波快速下滑，音量轻，连发不吵）
+static func eagle_shot() -> PackedFloat32Array:
+	var dur := 0.055
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ph := 0.0
+	for i in n:
+		var t := float(i) / SR
+		ph += glide(990.0, 494.0, t / dur) / SR
+		var v := osc(W.SQR, ph) * 0.35 + osc(W.TRI, ph * 0.5) * 0.25
+		out[i] = v * env(t, dur, 0.001, 3.0)
+	return _finalize(out, 0.55)
+
+
+## 背景音乐：132 BPM 四小节 Am–F–C–G 循环（bass + 十六分琶音 + offbeat hat + 长音铺底）。
+## 供 AudioStreamWAV.LOOP_FORWARD 无缝循环，游戏内按关变调（pitch_scale）。
+static func eagle_bgm() -> Dictionary:
+	var bpm := 132.0
+	var beat := 60.0 / bpm
+	var dur := beat * 16.0  # 4 小节 × 4 拍
+	var n := int(dur * SR)
+	var L := PackedFloat32Array()
+	var R := PackedFloat32Array()
+	L.resize(n)
+	R.resize(n)
+	# Am F C G（根音三和弦）
+	var chords: Array = [
+		[220.00, 261.63, 329.63],
+		[174.61, 220.00, 261.63],
+		[130.81, 164.81, 196.00],
+		[196.00, 246.94, 293.66],
+	]
+	var ph_b := 0.0
+	for i in n:
+		var t := float(i) / SR
+		var ch: Array = chords[int(t / (beat * 4.0)) % 4]
+		var v := 0.0
+		# bass：八分音符根音，第 4 个八分降七度制造推进
+		var tb := fmod(t, beat * 0.5)
+		var bi := int(t / (beat * 0.5)) % 4
+		var bf: float = ch[0] * 0.5 * (0.75 if bi == 3 else 1.0)
+		ph_b += bf / SR
+		v += osc(W.SAW, ph_b) * env(tb, beat * 0.5, 0.004, 1.6) * 0.30
+		# arp：十六分上行琶音（后 8 个翻高八度）
+		var ta := fmod(t, beat * 0.25)
+		var ai := int(t / (beat * 0.25)) % 8
+		var af: float = ch[ai % 3] * (2.0 if ai >= 3 else 1.0)
+		v += osc(W.SQR, ta * af) * env(ta, beat * 0.25, 0.002, 2.2) * 0.09
+		# hat：每半拍反拍噪声点
+		var th := fmod(t + beat * 0.25, beat * 0.5)
+		if th < 0.028:
+			v += (randf() * 2.0 - 1.0) * (1.0 - th / 0.028) * 0.10
+		# pad：和弦长音极轻铺底，带缓慢呼吸
+		var pad := (sin(TAU * t * ch[0]) + sin(TAU * t * ch[1]) + sin(TAU * t * ch[2])) * 0.045
+		v += pad * (0.75 + 0.25 * sin(TAU * 0.25 * t))
+		L[i] = v
+	# Haas 加宽：右声道延迟 14 采样
+	var mono := delay(L, beat * 0.75, 0.18, 0.14)
+	var haas := 14
+	for i in n:
+		L[i] = mono[i]
+		R[i] = mono[maxi(0, i - haas)]
+	return {"l": _finalize(L, 0.72), "r": _finalize(R, 0.72)}

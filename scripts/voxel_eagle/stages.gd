@@ -17,7 +17,7 @@ const STAGES := [
 		"scroll": 7.0,
 		"sea": "0a2540", "sky": "050810", "fog": "0a2540",
 		"ambient": "223050", "sun": "fff2e0", "sun_energy": 1.3,
-		"islands": 7, "buildings": false,
+		"islands": 7, "buildings": false, "reefs": 3, "wrecks": 2,
 		"survivors": 3, "boss_hp": 1600, "boss_pace": 1.0,
 		"waves": [
 			{"t": 6.0, "spawn": [{"t": "E1", "x": -8.0}, {"t": "E1", "x": 8.0}]},
@@ -41,7 +41,7 @@ const STAGES := [
 		"scroll": 7.5,
 		"sea": "0a3040", "sky": "04101c", "fog": "0a3040",
 		"ambient": "1e3848", "sun": "eaf6ff", "sun_energy": 1.35,
-		"islands": 11, "buildings": true,
+		"islands": 11, "buildings": true, "reefs": 5, "wrecks": 3,
 		"survivors": 5, "boss_hp": 2200, "boss_pace": 1.1,
 		"waves": [
 			{"t": 6.0, "spawn": [{"t": "E1", "x": -8.0}, {"t": "E1", "x": 8.0}]},
@@ -68,7 +68,7 @@ const STAGES := [
 		"scroll": 8.0,
 		"sea": "2a1e30", "sky": "1c0e08", "fog": "6a3410",
 		"ambient": "402818", "sun": "ffc078", "sun_energy": 1.5,
-		"islands": 9, "buildings": true,
+		"islands": 9, "buildings": true, "reefs": 6, "wrecks": 4,
 		"survivors": 7, "boss_hp": 2800, "boss_pace": 1.2,
 		"waves": [
 			{"t": 6.0, "spawn": [{"t": "E1", "x": -8.0}, {"t": "E1", "x": 8.0}, {"t": "E2", "x": 0.0}]},
