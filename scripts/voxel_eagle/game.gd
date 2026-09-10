@@ -9,6 +9,15 @@ const VoxelModel = preload("res://scripts/voxel_eagle/voxel_model.gd")
 const VoxelPool = preload("res://scripts/voxel_eagle/pools.gd")
 const SaveManager = preload("res://scripts/voxel_eagle/save_manager.gd")
 const Stages = preload("res://scripts/voxel_eagle/stages.gd")
+const VoxReader = preload("res://scripts/voxel_eagle/vox_reader.gd")
+
+# ---- MagicaVoxel 体素场景（.vox）接入 ----
+# 把 assets/vox 下的 .vox 直接挂进战场：编辑器已导入则走导入产物（greedy mesh），
+# 否则运行时用 VoxReader 解析。改 .vox 保存后重开游戏即生效，无需手工导出。
+const VOX_DECOR_PATH := "res://assets/vox/island_scene.vox"
+const VOX_DECOR_COUNT := 2        # 体素场景岛数量，0 = 关闭
+const VOX_DECOR_SCALE := 0.1      # 仅运行时解析路径使用（1 体素 = 0.1 世界单位）
+const VOX_DECOR_REPLACE := false  # true = 体素岛替换全部草岛，false = 叠加为额外地貌
 
 # ---- 数值 ----
 const PLAYER_SPEED := 24.0
@@ -407,8 +416,12 @@ func _build_ground() -> void:
 		waves.append({"n": w, "ph": randf() * TAU})
 
 	# 地貌：草岛 / 暗礁岩石 / 燃烧沉船（按关卡数量，元素差异参照需求截图）
-	for i in int(stage_def["islands"]):
-		islands.append(_make_island())
+	if not VOX_DECOR_REPLACE:
+		for i in int(stage_def["islands"]):
+			islands.append(_make_island())
+	# MagicaVoxel 体素场景：直接挂 .vox，与草岛共用回绕/避让逻辑
+	for i in VOX_DECOR_COUNT:
+		_spawn_vox_decor()
 	for i in int(stage_def["reefs"]):
 		reefs.append(_make_reef())
 	for i in int(stage_def["wrecks"]):
@@ -456,6 +469,31 @@ func _make_island() -> Node3D:
 	n.material_override = VoxelModel.shaded_material()
 	n.position = _decor_spot(22.0, 0.0)
 	world.add_child(n)
+	return n
+
+
+## MagicaVoxel 体素场景接入：优先用编辑器导入产物（已按 Scale=0.1 烘焙），
+## 缺失时回退到 VoxReader 运行时解析（仍按 1 体素 0.1 单位缩放），并归入 islands
+## 复用既有的回绕（z 越界回卷）与波浪穿模剔除逻辑。
+func _spawn_vox_decor() -> Node3D:
+	var mesh := load(VOX_DECOR_PATH) as Mesh
+	var s := 1.0
+	if mesh == null:  # 编辑器尚未导入 / 导出后无导入产物 → 运行时解析
+		mesh = VoxReader.read_mesh(VOX_DECOR_PATH)
+		s = VOX_DECOR_SCALE
+	if mesh == null or mesh.get_surface_count() == 0:
+		push_warning("体素场景加载失败，已跳过：%s" % VOX_DECOR_PATH)
+		return null
+	var n := MeshInstance3D.new()
+	n.mesh = mesh
+	n.scale = Vector3(s, s, s)
+	n.material_override = VoxelModel.shaded_material()
+	n.rotate_y(randf() * TAU)  # 随机朝向，避免重复感
+	var p := _decor_spot(20.0, 0.0)
+	p.y = -mesh.get_aabb().position.y * s - 0.1  # 底面对齐海面并略微下沉
+	n.position = p
+	world.add_child(n)
+	islands.append(n)
 	return n
 
 

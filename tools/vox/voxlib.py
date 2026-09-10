@@ -181,8 +181,43 @@ def _mk(chunk_id, content, children=b""):
             + content + children)
 
 
+def _dict_bytes(pairs):
+    out = struct.pack("<i", len(pairs))
+    for k, v in pairs:
+        kb, vb = k.encode("ascii"), v.encode("ascii")
+        out += struct.pack("<i", len(kb)) + kb + struct.pack("<i", len(vb)) + vb
+    return out
+
+
+def _trn(node_id, child, t=(0, 0, 0), layer=0):
+    """nTRN：与 MagicaVoxel 0.99 完全一致的布局（Godot 导入插件依赖它）"""
+    return _mk(b"nTRN", struct.pack("<iiiiii", node_id, 0, child, -1, layer, 1)
+               + _dict_bytes([("_t", "%d %d %d" % t)]))
+
+
+def _grp(node_id, children):
+    return _mk(b"nGRP", struct.pack("<ii", node_id, 0)
+               + struct.pack("<i", len(children))
+               + b"".join(struct.pack("<i", c) for c in children))
+
+
+def _shp(node_id, model_ids):
+    out = struct.pack("<ii", node_id, 0) + struct.pack("<i", len(model_ids))
+    for mid in model_ids:
+        out += struct.pack("<i", mid) + _dict_bytes([])
+    return _mk(b"nSHP", out)
+
+
+def _scene_graph():
+    """根 nTRN(0) → nGRP(1) → nTRN(2) → nSHP(3)，与官方样例字节结构一致"""
+    root = _mk(b"nTRN", bytes.fromhex("000000000000000001000000ffffffffffffffff01000000")
+               + _dict_bytes([]))
+    return root + _grp(1, [2]) + _trn(2, 3) + _shp(3, [0])
+
+
 def write_vox(path, voxels, size=None):
-    """voxels: {(x,y,z): (r,g,b)} → 写入 .vox。自动构建调色板（最多 255 色）。"""
+    """voxels: {(x,y,z): (r,g,b)} → 写入 .vox。自动构建调色板（最多 255 色）。
+    默认附带标准场景图节点（nTRN/nGRP/nSHP），否则 Godot 的导入插件会解析失败。"""
     if not voxels:
         raise ValueError("空体素集")
     if size is None:
@@ -212,6 +247,7 @@ def write_vox(path, voxels, size=None):
     for c, i in index.items():
         pal[(i - 1) * 4: i * 4] = bytes((c[0], c[1], c[2], 255))
     body += _mk(b"RGBA", bytes(pal))
+    body += _scene_graph()
 
     data = b"VOX " + struct.pack("<I", 150) + _mk(b"MAIN", b"", body)
     with open(path, "wb") as f:
