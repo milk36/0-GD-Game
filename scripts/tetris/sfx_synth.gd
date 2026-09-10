@@ -451,6 +451,24 @@ static func build(id: String) -> AudioStreamWAV:
 			return _to_mono(item_fizzle())
 		"item_clear":
 			return _to_mono(item_clear())
+		"eagle_star":
+			return _to_mono(eagle_star())
+		"eagle_boom":
+			return _to_mono(eagle_boom())
+		"eagle_hurt":
+			return _to_mono(eagle_hurt())
+		"eagle_bomb":
+			return _to_mono(eagle_bomb())
+		"eagle_rescue":
+			return _to_mono(eagle_rescue())
+		"eagle_laser":
+			return _to_mono(eagle_laser())
+		"eagle_boss_phase":
+			return _to_mono(eagle_boss_phase())
+		"eagle_win":
+			return _to_mono(eagle_win())
+		"eagle_lose":
+			return _to_mono(eagle_lose())
 	return null
 
 
@@ -480,3 +498,172 @@ static func _to_stereo(l: PackedFloat32Array, r: PackedFloat32Array) -> AudioStr
 	s.stereo = true
 	s.data = b
 	return s
+
+
+# ================================================================
+# 方块雄鹰（eagle_*）—— M3 接入，全部单声道短音色
+# ================================================================
+
+## 拾星：高频短啾（6→9 半音上行），刻意轻，连拾不吵
+static func eagle_star() -> PackedFloat32Array:
+	var dur := 0.09
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ph := 0.0
+	for i in n:
+		var t := float(i) / SR
+		ph += glide(1318.0, 1976.0, t / dur) / SR
+		out[i] = osc(W.TRI, ph) * env(t, dur, 0.002, 3.0) * 0.42
+	return _finalize(out, 0.55)
+
+
+## 敌机爆炸：噪声爆裂 + 低频下沉
+static func eagle_boom() -> PackedFloat32Array:
+	var dur := 0.38
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var lp := 0.0
+	var ph_b := 0.0
+	for i in n:
+		var t := float(i) / SR
+		var td := t / dur
+		var nz := randf() * 2.0 - 1.0
+		lp += k_lp(glide(1400.0, 150.0, td)) * (nz - lp)
+		ph_b += glide(210.0, 48.0, td) / SR
+		var v := lp * env(t, dur, 0.002, 2.2) * 0.85
+		v += osc(W.SINE, ph_b) * env(t, dur, 0.004, 1.8) * 0.55
+		out[i] = v
+	return _finalize(out, 0.85)
+
+
+## 玩家受击：双音警报（E6→B4 交替两声）
+static func eagle_hurt() -> PackedFloat32Array:
+	var dur := 0.30
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ph := 0.0
+	for i in n:
+		var t := float(i) / SR
+		var f := 830.0 if fmod(t, 0.15) < 0.075 else 587.0
+		ph += f / SR
+		var v := osc(W.SQR, ph) * 0.30 + osc(W.SINE, ph) * 0.45
+		out[i] = v * env(t, dur, 0.002, 2.4) * 0.55
+	return _finalize(out, 0.70)
+
+
+## 炸弹：深轰鸣 + 高频碎裂
+static func eagle_bomb() -> PackedFloat32Array:
+	var dur := 0.55
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ph := 0.0
+	var lp := 0.0
+	for i in n:
+		var t := float(i) / SR
+		ph += glide(150.0, 34.0, clampf(t / 0.40, 0.0, 1.0)) / SR
+		var v := osc(W.SINE, ph) * env(t, 0.50, 0.004, 1.7) * 0.95
+		if t < 0.10:
+			var nz := randf() * 2.0 - 1.0
+			lp += k_lp(3200.0) * (nz - lp)
+			v += lp * (1.0 - t / 0.10) * 0.60
+		out[i] = v
+	return _finalize(out, 0.90)
+
+
+## 救援成功：四音大调琶音 + 亮尾
+static func eagle_rescue() -> PackedFloat32Array:
+	var dur := 0.60
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var notes: Array[float] = [523.25, 659.25, 783.99, 1046.5]
+	for i in n:
+		var t := float(i) / SR
+		var v := 0.0
+		for k in 4:
+			var ta := t - 0.07 * float(k)
+			if ta >= 0.0:
+				v += osc(W.TRI, ta * notes[k]) * env(ta, 0.22, 0.002, 2.6) * 0.40
+		out[i] = v
+	out = delay(out, 0.10, 0.26, 0.30)
+	return _finalize(out, 0.80)
+
+
+## 激光：锯齿下扫 + 电弧抖动
+static func eagle_laser() -> PackedFloat32Array:
+	var dur := 0.45
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var ph := 0.0
+	var jitter := 1.0
+	for i in n:
+		var t := float(i) / SR
+		if i % 40 == 0:
+			jitter = 0.65 + randf() * 0.5
+		ph += glide(1500.0, 240.0, clampf(t / 0.38, 0.0, 1.0)) / SR
+		var v := osc(W.SAW, ph) * 0.55 + (randf() * 2.0 - 1.0) * 0.20
+		out[i] = v * env(t, dur, 0.01, 1.9) * 0.60 * jitter
+	return _finalize(out, 0.70)
+
+
+## Boss 阶段切换：低音双簧管感（根音+五度持续）
+static func eagle_boss_phase() -> PackedFloat32Array:
+	var dur := 0.65
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var p1 := 0.0
+	var p2 := 0.0
+	for i in n:
+		var t := float(i) / SR
+		p1 += 98.0 / SR
+		p2 += 147.0 / SR
+		var v := osc(W.SAW, p1) * 0.40 + osc(W.SAW, p2) * 0.28
+		out[i] = v * env(t, dur, 0.02, 1.6) * 0.70
+	return _finalize(out, 0.75)
+
+
+## 通关：四音上行号角
+static func eagle_win() -> PackedFloat32Array:
+	var dur := 0.95
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var notes: Array[float] = [392.0, 523.25, 659.25, 783.99]
+	for i in n:
+		var t := float(i) / SR
+		var v := 0.0
+		for k in 4:
+			var ta := t - 0.14 * float(k)
+			if ta >= 0.0:
+				var d2 := 0.55 if k == 3 else 0.18
+				v += (osc(W.TRI, ta * notes[k]) * 0.7 + osc(W.SINE, ta * notes[k] * 2.0) * 0.3) \
+						* env(ta, d2, 0.008, 1.8) * 0.42
+		out[i] = v
+	out = delay(out, 0.12, 0.28, 0.32)
+	return _finalize(out, 0.85)
+
+
+## 坠机：小调下行四音
+static func eagle_lose() -> PackedFloat32Array:
+	var dur := 0.95
+	var n := int(dur * SR)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var notes: Array[float] = [392.0, 329.63, 261.63, 196.0]
+	for i in n:
+		var t := float(i) / SR
+		var v := 0.0
+		for k in 4:
+			var ta := t - 0.15 * float(k)
+			if ta >= 0.0:
+				var d2 := 0.50 if k == 3 else 0.16
+				v += osc(W.TRI, ta * notes[k]) * env(ta, d2, 0.006, 2.0) * 0.42
+		out[i] = v
+	out = delay(out, 0.12, 0.26, 0.30)
+	return _finalize(out, 0.78)

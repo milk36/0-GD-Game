@@ -23,6 +23,15 @@ const MIX := {
 	"bolt_cast": 0.0,
 	"item_fizzle": -3.0,
 	"item_clear": -5.0,
+	"eagle_star": -8.0,
+	"eagle_boom": -2.0,
+	"eagle_hurt": 0.0,
+	"eagle_bomb": 1.0,
+	"eagle_rescue": 1.0,
+	"eagle_laser": -3.0,
+	"eagle_boss_phase": 0.0,
+	"eagle_win": 1.0,
+	"eagle_lose": 0.0,
 }
 
 var _players: Array[AudioStreamPlayer] = []
@@ -98,6 +107,9 @@ func _all_ids(ids: Array[String]) -> Array[String]:
 		"shard_spawn", "shard_tick0", "shard_tick1", "shard_tick2",
 		"shard_expire", "item_get", "wind_cast", "rain_cast",
 		"bolt_cast", "item_fizzle", "item_clear",
+		"eagle_star", "eagle_boom", "eagle_hurt", "eagle_bomb",
+		"eagle_rescue", "eagle_laser", "eagle_boss_phase",
+		"eagle_win", "eagle_lose",
 	]
 
 

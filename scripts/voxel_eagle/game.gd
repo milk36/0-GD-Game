@@ -1,16 +1,16 @@
 extends Node3D
-## 方块雄鹰 M2：体素纵版弹幕射击（Sky Force 类）。
-## M0 基础（玩家/敌波/弹幕/星星）+ M2 系统：关卡波次脚本、幸存者救援、
-## Boss 三阶段战、四奖牌判定、结算面板、机库五线升级、JSON 存档。
-## 调试键：F1/F2 相机 68°/90°，F3 阴影，F4 弹幕压测；H 机库；Esc 暂停。
-## M2 系统均已接入：关卡脚本、幸存者、Boss、奖牌、结算、机库、存档。
+## 方块雄鹰 M3：体素纵版弹幕射击（Sky Force 类）。
+## M0 基础 + M2 系统 + M3 内容：三关卡主题地形、选关面板（奖牌解锁）、
+## E6 精英炮舰、炸弹补给掉落、程序化音效、按关结算与存档。
+## 调试键：F1/F2 相机 68°/90°，F3 阴影，F4 弹幕压测；H 机库；S 选关；Esc 暂停。
+## M3 已接入：三关卡主题、选关面板、E6 精英炮舰、炸弹补给、程序化音效。
 
 const VoxelModel = preload("res://scripts/voxel_eagle/voxel_model.gd")
 const VoxelPool = preload("res://scripts/voxel_eagle/pools.gd")
 const SaveManager = preload("res://scripts/voxel_eagle/save_manager.gd")
+const Stages = preload("res://scripts/voxel_eagle/stages.gd")
 
 # ---- 数值 ----
-const SCROLL := 7.0            # 世界滚动速度 VU/s
 const PLAYER_SPEED := 24.0
 const ARENA_HALF_W := 15.0     # 玩家横移边界
 const PLAYER_Z_MIN := -8.0
@@ -18,8 +18,6 @@ const PLAYER_Z_MAX := 10.0
 const BULLET_SPEED := 46.0
 const ENEMY_BULLET_Y := 1.0    # 敌弹飞行高度（与玩家判定平面一致）
 const STAR_LIFE := 9.0
-const SURVIVOR_TOTAL := 3      # 本关幸存者数
-const BOSS_HP := 1600
 
 # 阶段机
 const PH_WAVES := 0
@@ -70,6 +68,13 @@ const ART_RAIDER := "
 DDDDD
   D
 "
+const ART_ELITE := "
+GGGGGGGGG
+GHHHHHHHG
+GHHRHRHHG
+GHHHHHHHG
+GGGGGGGGG
+"
 const ART_BOSS := "
 DDDDDDDDDDDDD
 DHHHHHHHHHHHD
@@ -88,26 +93,6 @@ const PAL_ENEMY := {
 	"M": Color("ff2a6d"), "C": Color("ffb0c8"), "D": Color("b03050"),
 	"T": Color("3a4254"), "H": Color("8a94aa"),
 }
-
-# 关 1「碧海突袭」波次脚本：t = 关卡开始后秒数，地面为主保证歼灭奖牌可达
-const STAGE_WAVES := [
-	{"t": 6.0, "spawn": [{"t": "E1", "x": -8.0}, {"t": "E1", "x": 8.0}]},
-	{"t": 16.0, "spawn": [{"t": "E3", "x": -12.0, "vx": 3.0}, {"t": "E3", "x": -4.0, "vx": -3.0}, {"t": "E3", "x": 4.0, "vx": 3.0}, {"t": "E3", "x": 12.0, "vx": -3.0}]},
-	{"t": 28.0, "spawn": [{"t": "E2", "x": 0.0}, {"t": "E1", "x": -9.0}, {"t": "E1", "x": 9.0}]},
-	{"t": 42.0, "spawn": [{"t": "E4", "x": -8.0}, {"t": "E4", "x": -4.0}, {"t": "E4", "x": 0.0}, {"t": "E4", "x": 4.0}, {"t": "E4", "x": 8.0}]},
-	{"t": 56.0, "spawn": [{"t": "E1", "x": -10.0}, {"t": "E1", "x": 0.0}, {"t": "E1", "x": 10.0}, {"t": "E2", "x": -5.0}]},
-	{"t": 70.0, "spawn": [{"t": "E5", "x": -8.0}, {"t": "E5", "x": 8.0}]},
-	{"t": 84.0, "spawn": [{"t": "E2", "x": -6.0}, {"t": "E2", "x": 6.0}, {"t": "E1", "x": 0.0}]},
-	{"t": 98.0, "spawn": [{"t": "E3", "x": -12.0, "vx": 4.0}, {"t": "E3", "x": 0.0, "vx": -4.0}, {"t": "E3", "x": 12.0, "vx": 4.0}, {"t": "E1", "x": -6.0}, {"t": "E1", "x": 6.0}]},
-	{"t": 114.0, "spawn": [{"t": "E5", "x": -10.0}, {"t": "E2", "x": 8.0}, {"t": "E1", "x": -4.0}]},
-	{"t": 128.0, "spawn": [{"t": "E4", "x": -8.0}, {"t": "E4", "x": -4.0}, {"t": "E4", "x": 0.0}, {"t": "E4", "x": 4.0}, {"t": "E4", "x": 8.0}]},
-	{"t": 140.0, "spawn": [{"t": "E1", "x": -8.0}, {"t": "E1", "x": 8.0}, {"t": "E2", "x": 0.0}]},
-]
-const SURVIVOR_SPOTS := [
-	{"t": 36.0, "x": -6.0},
-	{"t": 78.0, "x": 9.0},
-	{"t": 120.0, "x": 2.0},
-]
 
 # 机库升级线定义（数值曲线见 save_manager.upgrade_cost）
 const UPGRADES := [
@@ -128,6 +113,7 @@ var sun: DirectionalLight3D
 var pb: MultiMeshInstance3D   # 自机弹
 var eb: MultiMeshInstance3D   # 敌弹
 var pickups: MultiMeshInstance3D  # 星星
+var supplies: MultiMeshInstance3D # 炸弹补给
 var fx: MultiMeshInstance3D    # 碎片/闪光
 var enemies: Array = []        # 敌人 dict 列表（含 Boss）
 var waves: Array = []          # 波浪装饰 Node3D
@@ -146,11 +132,13 @@ var hud_info: Label
 var hud_center: Label
 var hud_boss: Label
 
-# ---- 结算 / 机库面板 ----
+# ---- 覆盖层（选关 / 结算 / 机库） ----
+var select_root: Control
 var settle_root: Control
 var settle_title: Label
 var settle_lines: Label
 var settle_medals: Label
+var settle_unlock: Label
 var hangar_root: Control
 var hangar_balance: Label
 var hangar_lv := {}    # key → Label（等级显示）
@@ -159,6 +147,9 @@ var hangar_from := ""  # 打开来源："pause" / "settle"
 
 # ---- 存档与局内状态 ----
 var save: Dictionary
+var stage_def: Dictionary
+var stage_id := 1
+var stage_name := ""
 var phase := PH_WAVES
 var score := 0
 var star_cnt := 0          # 本局已拾取星星
@@ -187,6 +178,11 @@ var hud_cd := 0.0
 var wing_t := 3.0
 var laser := {"st": 0, "t": 0.0, "org": Vector3.ZERO, "dir": Vector3.FORWARD, "len": 60.0}
 
+# 关卡参数（来自 stage_def）
+var scroll_spd := 7.0
+var survivor_total := 3
+var boss_pace := 1.0
+
 # 升级快照（出击时从存档套用）
 var fire_int := 0.11
 var magnet_r := 3.0
@@ -198,6 +194,7 @@ var _meshes := {}          # 敌型号 → 共享 ArrayMesh
 
 func _ready() -> void:
 	save = SaveManager.load_data()
+	_load_stage_def()
 	_apply_upgrades()
 	_build_env()
 	_build_ground()
@@ -211,9 +208,24 @@ func _ready() -> void:
 		"E3": VoxelModel.build(ART_DRONE, PAL_ENEMY, 1),
 		"E4": VoxelModel.build(ART_WING, PAL_ENEMY, 2),
 		"E5": VoxelModel.build(ART_RAIDER, PAL_ENEMY, 2),
+		"E6": VoxelModel.build(ART_ELITE, PAL_ENEMY, 3),
 		"BOSS": VoxelModel.build(ART_BOSS, PAL_ENEMY, 3),
 		"SURV": VoxelModel.build(ART_SURVIVOR, {"W": COL_WHITE}, 1),
 	}
+	if Stages.selected == 0:
+		select_root.visible = true  # 从大厅进入：先选关
+
+
+func _load_stage_def() -> void:
+	stage_id = 1 if int(Stages.selected) == 0 else int(Stages.selected)
+	for s in Stages.STAGES:
+		if int(s["id"]) == stage_id:
+			stage_def = s
+			break
+	stage_name = stage_def["name"]
+	scroll_spd = float(stage_def["scroll"])
+	survivor_total = int(stage_def["survivors"])
+	boss_pace = float(stage_def["boss_pace"])
 
 
 func _apply_upgrades() -> void:
@@ -235,13 +247,13 @@ func _apply_upgrades() -> void:
 func _build_env() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("050810")
+	env.background_color = Color(stage_def["sky"])
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("223050")
+	env.ambient_light_color = Color(stage_def["ambient"])
 	env.ambient_light_energy = 1.0
 	env.fog_enabled = true
 	env.fog_mode = 1  # DEPTH
-	env.fog_light_color = Color("0a2540")
+	env.fog_light_color = Color(stage_def["fog"])
 	env.fog_depth_begin = 46.0
 	env.fog_depth_end = 120.0
 	var we := WorldEnvironment.new()
@@ -249,8 +261,8 @@ func _build_env() -> void:
 	add_child(we)
 
 	sun = DirectionalLight3D.new()
-	sun.light_color = Color("fff2e0")
-	sun.light_energy = 1.3
+	sun.light_color = Color(stage_def["sun"])
+	sun.light_energy = float(stage_def["sun_energy"])
 	sun.rotation_degrees = Vector3(-52, -28, 0)
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = 0  # ORTHOGONAL
@@ -274,7 +286,7 @@ func _build_ground() -> void:
 
 	# 海面：纯色大平面（无纹理，运动感由波浪块/岛提供）
 	var sea_mat := StandardMaterial3D.new()
-	sea_mat.albedo_color = Color("0a2540")
+	sea_mat.albedo_color = Color(stage_def["sea"])
 	sea_mat.roughness = 1.0
 	var sea := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
@@ -295,8 +307,8 @@ func _build_ground() -> void:
 		world.add_child(w)
 		waves.append(w)
 
-	# 体素小岛：草块 + 二层 + 沙边
-	for i in 7:
+	# 体素小岛：草块 + 二层 + 沙边（数量按关卡）
+	for i in int(stage_def["islands"]):
 		islands.append(_make_island())
 
 
@@ -311,6 +323,11 @@ func _make_island() -> Node3D:
 		for z in range(-half, half + 1):
 			if (x + z) % 2 == 0:
 				blocks[Vector3i(x, 1, z)] = Color("2a8a4f")
+	# 要塞关：岛上加灰色军事建筑块
+	if bool(stage_def["buildings"]) and randf() < 0.55:
+		for h in 2:
+			blocks[Vector3i(0, 2 + h, 0)] = Color("5a6478")
+			blocks[Vector3i(1, 2 + h, 0)] = Color("49526a")
 	var n := MeshInstance3D.new()
 	n.mesh = VoxelModel.build_blocks(blocks)
 	n.material_override = VoxelModel.shaded_material()
@@ -385,6 +402,9 @@ func _build_pools() -> void:
 	pickups = VoxelPool.new()
 	add_child(pickups)
 	pickups.setup(256, unshaded)
+	supplies = VoxelPool.new()
+	add_child(supplies)
+	supplies.setup(16, unshaded)
 	fx = VoxelPool.new()
 	add_child(fx)
 	fx.setup(320, unshaded)
@@ -410,7 +430,7 @@ func _mk_label(parent: Node, pos: Vector2, size: int, col: Color) -> Label:
 	return l
 
 
-# ================= 覆盖层（结算 / 机库） =================
+# ================= 覆盖层（选关 / 结算 / 机库） =================
 
 func _make_overlay() -> Array:
 	var layer := CanvasLayer.new()
@@ -452,15 +472,18 @@ func _mk_obutton(box: VBoxContainer, text: String, cb: Callable) -> Button:
 
 
 func _build_overlays() -> void:
+	_build_select()
 	var sr := _make_overlay()
 	settle_root = sr[0]
 	var sbox: VBoxContainer = sr[1]
 	settle_title = _mk_olabel(sbox, 34, COL_YELLOW)
 	settle_lines = _mk_olabel(sbox, 20, COL_WHITE)
 	settle_medals = _mk_olabel(sbox, 20, COL_CYAN)
+	settle_unlock = _mk_olabel(sbox, 16, Color("8a93b8"))
 	_mk_olabel(sbox, 14, Color("8a93b8")).text = " "
 	_mk_obutton(sbox, "H 机库", _open_hangar_from_settle)
 	_mk_obutton(sbox, "R 重打", restart)
+	_mk_obutton(sbox, "S 选关", _back_to_select)
 	_mk_obutton(sbox, "Q 返回大厅", _go_menu)
 
 	var hr := _make_overlay()
@@ -499,6 +522,61 @@ func _build_overlays() -> void:
 	_mk_olabel(hbox, 14, Color("8a93b8")).text = " "
 	_mk_obutton(hbox, "Esc/H 关闭", _close_hangar)
 	_refresh_hangar()
+
+
+func _build_select() -> void:
+	var sr := _make_overlay()
+	select_root = sr[0]
+	var box: VBoxContainer = sr[1]
+	_mk_olabel(box, 32, COL_CYAN).text = "选择作战区域"
+	_mk_olabel(box, 15, Color("8a93b8")).text = "奖牌解锁：关 2 需关 1 奖牌 ≥2 · 关 3 需累计 ≥4（歼灭 / 救援 / 星光 / 完璧）"
+	_mk_olabel(box, 12, Color("8a93b8")).text = " "
+	for s in Stages.STAGES:
+		var id: int = int(s["id"])
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 18)
+		box.add_child(row)
+		var name_l := Label.new()
+		name_l.text = "%d · %s" % [id, s["name"]]
+		name_l.custom_minimum_size = Vector2(220, 0)
+		name_l.add_theme_font_size_override("font_size", 21)
+		name_l.add_theme_color_override("font_color", COL_WHITE)
+		row.add_child(name_l)
+		var got: Array = save["medals"].get(str(id), [])
+		var medal_s := ""
+		for m in Stages.MEDAL_ORDER:
+			medal_s += "■" if got.has(m) else "□"
+		var medal_l := Label.new()
+		medal_l.text = medal_s
+		medal_l.custom_minimum_size = Vector2(120, 0)
+		medal_l.add_theme_font_size_override("font_size", 21)
+		medal_l.add_theme_color_override("font_color", COL_YELLOW)
+		row.add_child(medal_l)
+		var best_l := Label.new()
+		best_l.text = "最高 %d" % int(save["best"].get(str(id), 0))
+		best_l.custom_minimum_size = Vector2(160, 0)
+		best_l.add_theme_font_size_override("font_size", 16)
+		best_l.add_theme_color_override("font_color", Color("8a93b8"))
+		row.add_child(best_l)
+		var btn := Button.new()
+		var unlocked := Stages.is_unlocked(save, id)
+		btn.text = "出 击" if unlocked else "已锁定"
+		btn.disabled = not unlocked
+		btn.custom_minimum_size = Vector2(130, 44)
+		btn.pressed.connect(_launch_stage.bind(id))
+		row.add_child(btn)
+	_mk_olabel(box, 12, Color("8a93b8")).text = " "
+	_mk_obutton(box, "返回大厅", _go_menu)
+
+
+func _launch_stage(id: int) -> void:
+	Stages.selected = id
+	restart()
+
+
+func _back_to_select() -> void:
+	Stages.selected = 0
+	restart()
 
 
 func _refresh_hangar() -> void:
@@ -555,14 +633,14 @@ func _go_menu() -> void:
 # ================= 主循环 =================
 
 func _process(delta: float) -> void:
-	if paused or hangar_root.visible or phase == PH_OVER:
+	if select_root.visible or paused or hangar_root.visible or phase == PH_OVER:
 		return
 	elapsed += delta
 	shake = maxf(0.0, shake - delta)
 	invuln = maxf(0.0, invuln - delta)
 
 	# 世界滚动 + 地面装饰回绕
-	world.position.z += SCROLL * delta
+	world.position.z += scroll_spd * delta
 	for w in waves:
 		if world.position.z + w.position.z > 26.0:
 			w.position.z -= 224.0
@@ -593,6 +671,7 @@ func _process(delta: float) -> void:
 		_update_laser(delta)
 	_update_bullets(delta)
 	_update_pickups(delta)
+	_update_supplies(delta)
 	fx.update(delta)
 	_update_camera(delta)
 
@@ -605,13 +684,15 @@ func _process(delta: float) -> void:
 ## 关卡脚本：按 stage_t 触发波次与幸存者，全部触发后延时进 Boss
 func _update_stage_script(delta: float) -> void:
 	stage_t += delta
-	while wave_i < STAGE_WAVES.size() and stage_t >= float(STAGE_WAVES[wave_i]["t"]):
-		_spawn_group(STAGE_WAVES[wave_i]["spawn"])
+	var wave_list: Array = stage_def["waves"]
+	var spot_list: Array = stage_def["spots"]
+	while wave_i < wave_list.size() and stage_t >= float(wave_list[wave_i]["t"]):
+		_spawn_group(wave_list[wave_i]["spawn"])
 		wave_i += 1
-	while surv_i < SURVIVOR_SPOTS.size() and stage_t >= float(SURVIVOR_SPOTS[surv_i]["t"]):
-		_spawn_survivor(float(SURVIVOR_SPOTS[surv_i]["x"]))
+	while surv_i < spot_list.size() and stage_t >= float(spot_list[surv_i]["t"]):
+		_spawn_survivor(float(spot_list[surv_i]["x"]))
 		surv_i += 1
-	if wave_i >= STAGE_WAVES.size():
+	if wave_i >= wave_list.size():
 		if not waves_done:
 			waves_done = true
 			boss_delay = 6.0
@@ -750,6 +831,7 @@ func hit_player() -> void:
 	damage_taken += 1
 	invuln = 1.5
 	shake = 0.35
+	SFX.play("eagle_hurt")
 	_burst(player.position, COL_CYAN, 8)
 	if armor <= 0:
 		dead = true
@@ -767,6 +849,7 @@ func use_bomb() -> void:
 	bombs -= 1
 	invuln = maxf(invuln, 1.6)
 	shake = 0.4
+	SFX.play("eagle_bomb")
 	for i in range(eb.count):
 		eb.kill(0)
 	var bomb_dmg := 6 + int(save["upgrades"].get("bomb", 0))
@@ -790,7 +873,7 @@ func _spawn_group(list: Array) -> void:
 		if t == "E1" or t == "E2":
 			_spawn_ground(t, x)
 		else:
-			var hp: int = {"E3": 3, "E4": 4, "E5": 5}.get(t, 3)
+			var hp: int = {"E3": 3, "E4": 4, "E5": 5, "E6": 40}.get(t, 3)
 			_spawn_air(t, x, int(hp), float(ent.get("vx", 0.0)))
 
 
@@ -808,9 +891,9 @@ func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 	n.mesh = _meshes[type]
 	n.material_override = VoxelModel.shaded_material()
 	add_child(n)
-	var vz := SCROLL + (10.0 if type == "E3" else 5.0 if type == "E4" else 3.0)
+	var vz := scroll_spd + (10.0 if type == "E3" else 5.0 if type == "E4" else 1.5 if type == "E6" else 3.0)
 	n.position = Vector3(x, 1.6, -46.0)
-	var e := {"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "vx": vx, "vz": vz, "x0": x}
+	var e := {"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "vx": vx, "vz": vz, "x0": x, "mode": 0}
 	enemies.append(e)
 	return e
 
@@ -843,7 +926,8 @@ func _spawn_boss() -> void:
 	n.material_override = boss_mat
 	add_child(n)
 	n.position = Vector3(0, 0.12, -46.0)
-	boss = {"n": n, "t": "BOSS", "hp": BOSS_HP, "hp_max": BOSS_HP, "age": 0.0, "phase": 1, "entering": true, "mode": 0, "act_t": 2.5, "burst_left": 0, "burst_t": 0.0, "sp_t": 0.0, "spiral_a": 0.0, "ring_t": 2.0, "add_t": 5.0, "laser_t": 4.0}
+	var hp_max := int(stage_def["boss_hp"])
+	boss = {"n": n, "t": "BOSS", "hp": hp_max, "hp_max": hp_max, "age": 0.0, "phase": 1, "entering": true, "mode": 0, "act_t": 2.5, "burst_left": 0, "burst_t": 0.0, "sp_t": 0.0, "spiral_a": 0.0, "ring_t": 2.0, "add_t": 5.0, "laser_t": 4.0}
 	enemies.append(boss)
 
 
@@ -891,6 +975,19 @@ func _update_enemies(delta: float) -> void:
 				if float(e["ft"]) <= 0.0:
 					e["ft"] = 1.9
 					_fire_aimed(n.global_position, 7.5, 5, 42.0)
+			"E6":
+				# 精英炮舰：缓慢推进，濒死（hp<40%）加速逃逸；自机狙/环形交替
+				var boost := 6.0 if int(e["hp"]) < 16 else 0.0
+				n.position.z += (float(e["vz"]) + boost) * delta
+				n.position.x = float(e["x0"]) + sin(float(e["age"]) * 0.7) * 3.0
+				e["ft"] = float(e["ft"]) - delta
+				if gp.z > -34.0 and gp.z < 6.0 and float(e["ft"]) <= 0.0:
+					e["ft"] = 2.2
+					e["mode"] = 1 - int(e["mode"])
+					if int(e["mode"]) == 1:
+						_fire_aimed(gp, 8.0, 3, 14.0)
+					else:
+						_fire_ring(gp, 10, 6.5, float(e["age"]))
 			"BOSS":
 				_update_boss(e, n, delta)
 		i += 1
@@ -898,8 +995,8 @@ func _update_enemies(delta: float) -> void:
 
 func _update_boss(e: Dictionary, n: Node3D, delta: float) -> void:
 	if bool(e["entering"]):
-		n.position.z = move_toward(n.position.z, -16.0, 12.0 * delta)
-		if n.position.z >= -16.0:
+		n.position.z = move_toward(n.position.z, -14.0, 12.0 * delta)
+		if n.position.z >= -14.0:
 			e["entering"] = false
 			hud_boss.visible = true
 		return
@@ -916,10 +1013,10 @@ func _update_boss(e: Dictionary, n: Node3D, delta: float) -> void:
 		return
 	var bp := n.global_position
 	match ph:
-		1:  # 5 向扇形 ×3 波 ↔ 自机狙 3 连，4s 交替
+		1:  # 5 向扇形 ×3 波 ↔ 自机狙 3 连，交替
 			e["act_t"] = float(e["act_t"]) - delta
 			if float(e["act_t"]) <= 0.0 and int(e["burst_left"]) <= 0:
-				e["act_t"] = 4.0
+				e["act_t"] = 4.0 / boss_pace
 				e["burst_left"] = 3
 				e["burst_t"] = 0.0
 			if int(e["burst_left"]) > 0:
@@ -934,22 +1031,22 @@ func _update_boss(e: Dictionary, n: Node3D, delta: float) -> void:
 		2:  # 无人机增援 + 横扫激光 + 轻自机狙
 			e["add_t"] = float(e["add_t"]) - delta
 			if float(e["add_t"]) <= 0.0:
-				e["add_t"] = 6.0
+				e["add_t"] = 6.0 / boss_pace
 				for s in [-1.0, 1.0]:
 					var add := _spawn_air("E3", bp.x + s * 4.0, 3, s * randf_range(2.0, 4.0))
 					add["add"] = true
 			e["laser_t"] = float(e["laser_t"]) - delta
 			if float(e["laser_t"]) <= 0.0 and int(laser["st"]) == 0:
-				e["laser_t"] = 5.0
+				e["laser_t"] = 5.0 / boss_pace
 				_fire_laser(bp)
 			e["act_t"] = float(e["act_t"]) - delta
 			if float(e["act_t"]) <= 0.0:
-				e["act_t"] = 2.4
+				e["act_t"] = 2.4 / boss_pace
 				_fire_aimed(bp, 8.0, 1, 0.0)
 		3:  # 双螺旋 + 环形
 			e["sp_t"] = float(e["sp_t"]) - delta
 			if float(e["sp_t"]) <= 0.0:
-				e["sp_t"] = 0.12
+				e["sp_t"] = 0.12 / boss_pace
 				var a0 := float(e["spiral_a"])
 				for arm in 2:
 					var a := a0 + PI * float(arm)
@@ -957,7 +1054,7 @@ func _update_boss(e: Dictionary, n: Node3D, delta: float) -> void:
 				e["spiral_a"] = a0 + 0.38
 			e["ring_t"] = float(e["ring_t"]) - delta
 			if float(e["ring_t"]) <= 0.0:
-				e["ring_t"] = 3.0
+				e["ring_t"] = 3.0 / boss_pace
 				_fire_ring(bp, 16, 7.5, float(e["age"]))
 
 
@@ -967,6 +1064,7 @@ func _boss_phase_change(e: Dictionary, ph: int) -> void:
 	e["burst_left"] = 0
 	for i in range(eb.count):  # 阶段切换清屏
 		eb.kill(0)
+	SFX.play("eagle_boss_phase")
 	_burst(e["n"].global_position, COL_WHITE, 16)
 	_burst(e["n"].global_position, COL_PINK, 12)
 	shake = 0.4
@@ -982,6 +1080,7 @@ func _fire_laser(from: Vector3) -> void:
 	laser["dir"] = dir
 	laser["st"] = 1
 	laser["t"] = 0.7
+	SFX.play("eagle_laser")
 	var ln: float = laser["len"]
 	laser_warn.visible = true
 	_laser_pose(laser_warn, org, dir, ln)
@@ -1021,6 +1120,8 @@ func _update_laser(delta: float) -> void:
 func _hit_radius(t: String) -> Vector2:
 	if t == "BOSS":
 		return Vector2(7.0, 3.4)
+	if t == "E6":
+		return Vector2(2.6, 2.0)
 	if t == "E5" or t == "E2":
 		return Vector2(1.7, 1.7)
 	return Vector2(1.3, 1.3)
@@ -1040,13 +1141,16 @@ func _damage_enemy(e: Dictionary, dmg: int) -> void:
 		var gp := n.global_position
 		_burst(gp, COL_PINK, 12)
 		_burst(gp, COL_WHITE, 6)
-		var reward: int = {"E1": 5, "E2": 8, "E3": 3, "E4": 3, "E5": 10}.get(e["t"], 5)
-		var pts: int = {"E1": 50, "E2": 80, "E3": 30, "E4": 50, "E5": 100}.get(e["t"], 50)
+		SFX.play("eagle_boom")
+		var reward: int = {"E1": 5, "E2": 8, "E3": 3, "E4": 3, "E5": 10, "E6": 40}.get(e["t"], 5)
+		var pts: int = {"E1": 50, "E2": 80, "E3": 30, "E4": 50, "E5": 100, "E6": 500}.get(e["t"], 50)
 		score += pts
 		for s in reward:
 			var v := Vector3(randf_range(-6, 6), randf_range(3, 8), randf_range(-4, 4))
 			pickups.spawn(gp + Vector3(0, 0.5, 0), v, COL_YELLOW, 0.85, STAR_LIFE, 16.0)
 		stars_spawned += reward
+		if e["t"] == "E6":  # 精英炮舰必掉炸弹补给
+			supplies.spawn(gp + Vector3(0, 0.8, 0), Vector3(randf_range(-3, 3), randf_range(4, 7), randf_range(-2, 2)), COL_CYAN, 1.15, 12.0, 14.0)
 		n.queue_free()
 		enemies.erase(e)
 
@@ -1056,6 +1160,7 @@ func _boss_die(e: Dictionary) -> void:
 	_burst(gp, COL_WHITE, 26)
 	_burst(gp, COL_PINK, 22)
 	_burst(gp, COL_YELLOW, 18)
+	SFX.play("eagle_boom", 3.0)
 	score += 2000
 	for s in 100:  # 星星喷泉
 		var v := Vector3(randf_range(-10, 10), randf_range(6, 14), randf_range(-8, 8))
@@ -1109,6 +1214,7 @@ func _update_survivors(delta: float) -> void:
 				if prog >= 1.0:
 					rescued += 1
 					score += 1000
+					SFX.play("eagle_rescue")
 					_burst(gp, COL_WHITE, 10)
 					rope.visible = false
 					n.queue_free()
@@ -1159,7 +1265,7 @@ func _fire_ring(from: Vector3, n: int, speed: float, phase_off := 0.0) -> void:
 		_spawn_enemy_bullet(Vector3(from.x, ENEMY_BULLET_Y, from.z), Vector3(sin(a) * speed, 0, cos(a) * speed), COL_PINK)
 
 
-# ================= 子弹 / 星星 / 碎片 =================
+# ================= 子弹 / 星星 / 补给 / 碎片 =================
 
 func _update_bullets(_delta: float) -> void:
 	pb.update(_delta)
@@ -1213,7 +1319,7 @@ func _update_pickups(delta: float) -> void:
 			pickups.vel[i].y = absf(pickups.vel[i].y) * 0.35
 			if pickups.vel[i].y < 1.0:
 				pickups.vel[i].y = 0.0
-				pickups.vel[i].z = SCROLL
+				pickups.vel[i].z = scroll_spd
 		# 磁吸（半径由机库「磁铁」等级决定）
 		var d: Vector3 = player.position - pickups.pos[i]
 		var dist: float = d.length()
@@ -1224,9 +1330,37 @@ func _update_pickups(delta: float) -> void:
 			pickups.kill(i)
 			star_cnt += 1
 			score += 10
+			SFX.play("eagle_star", -4.0)
 			continue
 		if pickups.pos[i].z > 26.0:
 			pickups.kill(i)
+			continue
+		i += 1
+
+
+func _update_supplies(delta: float) -> void:
+	supplies.update(delta)
+	var i := 0
+	while i < supplies.count:
+		if supplies.pos[i].y < 0.8 and supplies.vel[i].y < 0.0:
+			supplies.vel[i].y = absf(supplies.vel[i].y) * 0.3
+			if supplies.vel[i].y < 1.0:
+				supplies.vel[i].y = 0.0
+				supplies.vel[i].z = scroll_spd
+		var d: Vector3 = player.position - supplies.pos[i]
+		var dist: float = d.length()
+		if dist < magnet_r + 2.0 and not dead:
+			supplies.vel[i] = d.normalized() * clampf(24.0 - dist, 8.0, 24.0)
+		if dist < 2.0 and not dead:
+			supplies.kill(i)
+			if bombs < bombs_max:
+				bombs += 1
+			else:
+				score += 200  # 满弹拾取折算分数
+			SFX.play("item_get")
+			continue
+		if supplies.pos[i].z > 26.0:
+			supplies.kill(i)
 			continue
 		i += 1
 
@@ -1243,40 +1377,45 @@ func _show_settlement(p_victory: bool) -> void:
 	phase = PH_OVER
 	victory = p_victory
 	hud_center.text = ""
+	SFX.play("eagle_win" if p_victory else "eagle_lose")
 	# 星星入账：场上剩余星星一并回收，通关全额入账，坠机折半
 	star_cnt += pickups.count
 	var banked := int(star_cnt * 0.5) if not p_victory else star_cnt
 	save["stars"] = int(save["stars"]) + banked
+	var key := str(stage_id)
 	var medals: Array = []
 	if p_victory:
 		if escaped == 0:
 			medals.append("kill")
-		if rescued >= SURVIVOR_TOTAL:
+		if rescued >= survivor_total:
 			medals.append("rescue")
 		if stars_spawned > 0 and float(star_cnt) >= float(stars_spawned) * 0.95:
 			medals.append("star")
 		if damage_taken == 0:
 			medals.append("perfect")
-		var got: Array = save["medals"].get("1", [])
+		var got: Array = save["medals"].get(key, [])
 		for m in medals:
 			if not got.has(m):
 				got.append(m)
-		save["medals"]["1"] = got
-	var prev_best: int = save["best"].get("1", 0)
+		save["medals"][key] = got
+	var prev_best: int = save["best"].get(key, 0)
 	if score > prev_best:
-		save["best"]["1"] = score
+		save["best"][key] = score
 		prev_best = score
 	SaveManager.save_data(save)
 
-	settle_title.text = "任务完成！" if p_victory else "任务失败"
+	settle_title.text = "%s · 任务完成！" % stage_name if p_victory else "%s · 任务失败" % stage_name
 	var ratio := 100.0 if stars_spawned == 0 else float(star_cnt) / float(stars_spawned) * 100.0
 	settle_lines.text = "得分 %d    最高 %d\n星星收益 +%d ★（%s）\n逃逸敌机 %d    幸存者 %d/%d    星星 %.0f%%" % [
-		score, prev_best, banked, "通关全额" if p_victory else "坠机折半", escaped, rescued, SURVIVOR_TOTAL, ratio]
+		score, prev_best, banked, "通关全额" if p_victory else "坠机折半", escaped, rescued, survivor_total, ratio]
 	settle_medals.text = "[歼灭者] %s    [救援英雄] %s\n[星光收集者] %s    [完璧] %s" % [
 		"达成" if medals.has("kill") else "未达成",
 		"达成" if medals.has("rescue") else "未达成",
 		"达成" if medals.has("star") else "未达成",
 		"达成" if medals.has("perfect") else "未达成"]
+	settle_unlock.text = ""
+	if p_victory and stage_id < 3 and not Stages.is_unlocked(save, stage_id + 1):
+		settle_unlock.text = "下一关需更多奖牌：回本关继续刷（歼灭 / 救援 / 星光 / 完璧）"
 	settle_root.visible = true
 	_refresh_hangar()
 
@@ -1298,8 +1437,8 @@ func _update_camera(_delta: float) -> void:
 
 
 func _refresh_hud() -> void:
-	hud_score.text = "SCORE %d    ★ %d（+%d）    BOMB %d/%d" % [score, int(save["stars"]), star_cnt, bombs, bombs_max]
-	hud_armor.text = "护甲 " + "■".repeat(maxi(armor, 0)) + "□".repeat(maxi(armor_max - armor, 0)) + "    救援 %d/%d    歼灭 %d" % [rescued, SURVIVOR_TOTAL, escaped]
+	hud_score.text = "【%s】SCORE %d    ★ %d（+%d）    BOMB %d/%d" % [stage_name, score, int(save["stars"]), star_cnt, bombs, bombs_max]
+	hud_armor.text = "护甲 " + "■".repeat(maxi(armor, 0)) + "□".repeat(maxi(armor_max - armor, 0)) + "    救援 %d/%d    歼灭 %d" % [rescued, survivor_total, escaped]
 	hud_info.text = "FPS %d  敌弹 %d  F1/F2 相机[68°/90°]  F3 阴影[%s]  F4 压测[%s]  Esc 暂停  H 机库" % [
 		Engine.get_frames_per_second(), eb.count, "开" if sun.shadow_enabled else "关", "开" if stress else "关"]
 	if boss.is_empty() or bool(boss.get("entering", true)):
@@ -1316,6 +1455,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		var key: int = event.keycode
 		var settle_open := settle_root.visible
 		var hangar_open := hangar_root.visible
+		if select_root.visible:
+			if key == KEY_ESCAPE:
+				_go_menu()
+			return  # 选关界面只响应 Esc 和鼠标
 		match key:
 			KEY_F1:
 				cam_mode = 0
@@ -1335,16 +1478,19 @@ func _unhandled_input(event: InputEvent) -> void:
 					paused = true
 					_refresh_hangar()
 					hangar_root.visible = true
+			KEY_S:
+				if settle_open or paused:
+					_back_to_select()
 			KEY_ESCAPE:
 				if hangar_open:
 					_close_hangar()
 				elif settle_open:
-					pass  # 结算层 Esc 不响应（用 Q/R/H）
+					pass  # 结算层 Esc 不响应（用 Q/R/S/H）
 				elif dead or phase == PH_OVER:
 					_go_menu()
 				else:
 					paused = not paused
-					hud_center.text = "已暂停  Esc 继续 · R 重开 · H 机库 · Q 返回大厅" if paused else ""
+					hud_center.text = "已暂停  Esc 继续 · R 重开 · S 选关 · H 机库 · Q 大厅" if paused else ""
 			KEY_R:
 				if settle_open or paused:
 					restart()
