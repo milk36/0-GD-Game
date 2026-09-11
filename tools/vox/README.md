@@ -245,6 +245,30 @@ spec 管线的视觉验收优先用本场景，等距 PNG 只做初筛。
 
 ---
 
+## 3.8 gen_tiles.py —— 瓦片雄鹰瓦片集（M0）
+
+    python gen_tiles.py
+    # → assets/vox/tiles/sea_a|sea_b|sea_c|sea_crest|shoal|reef_s|isle_sand|isle_grass.vox
+    #   + seam_test.vox（2×2 接缝测试）+ tools/vox/_preview_*.png / _preview_layout.png
+
+### 瓦片三规格（llmdoc/tile-eagle-design.html §2 拍板，全工程约定）
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| 瓦片边长 | **16 体素 = 4.8 世界单位** | 体素缩放 0.3 不变；走廊 13 列覆盖 62.4（正交 34 视野宽 60.44） |
+| 锚点 | **底面中心** | 公共管线 `voxel_model.gd` 的 AABB 居中**不改**；游戏端 `tiles.gd` 按 `mesh.get_aabb()` 反推 `lift` 把底面抬到 y=0（半格坑在此一并消化） |
+| 北向 | **vox +Y = 游戏 -Z** | `rot ∈ {0,90,180,270}` 只旋转不镜像；镜像瓦片必须翻转三角面绕序（M3.13 教训） |
+
+### 产线约束（新瓦片必须遵守）
+
+- **边缘无缝**：噪声/正弦按 `(x mod 16, y mod 16)` 周期采样，正弦周期必须整除 16（现用 8）；
+  新瓦片产出后先看 `_preview_seam_test.png` 同类平铺，再进游戏；
+- **单层水面**：海面 1 体素高，颜色分带表现浪纹（`gen_pirate.py` 踩坑结论），浪尖瓦最多 2 层；
+- **高瓦从水长出**：礁/沙洲/岛的底层先铺 1 层水色（SHAL/SEA_D），内容从 z=0 往上长，不留悬空洞；
+- 排布（哪行哪列放哪块）不在 .vox 里——那是游戏端 `layout.gd` 的职责，.vox 只管单块本体。
+
+---
+
 ## 4. gen_scene.py 可调项
 
 | 常量 | 默认 | 说明 |

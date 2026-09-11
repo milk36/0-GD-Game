@@ -52,11 +52,14 @@ static func _art_to_blocks(art: String, palette: Dictionary, y0: int, layers: in
 
 
 ## 直接给方块表 {Vector3i: Color} 建模（供程序化地形等使用）。
-static func build_blocks(blocks: Dictionary) -> ArrayMesh:
-	return _build_mesh(blocks)
+## face_filter：可选，只生成法线在列表内的面。瓦片走廊用它「只出顶面」——
+## 同层相邻瓦各自独立成 mesh 时，边缘侧面无法被邻居剔除，会在瓦界留下可见接缝线。
+## 默认 [] = 六面全出，既有行为完全不变。
+static func build_blocks(blocks: Dictionary, face_filter: Array = []) -> ArrayMesh:
+	return _build_mesh(blocks, face_filter)
 
 
-static func _build_mesh(blocks: Dictionary) -> ArrayMesh:
+static func _build_mesh(blocks: Dictionary, face_filter: Array = []) -> ArrayMesh:
 	if blocks.is_empty():
 		push_error("VoxelModel: 空方块表")
 		return ArrayMesh.new()
@@ -72,6 +75,8 @@ static func _build_mesh(blocks: Dictionary) -> ArrayMesh:
 		var col: Color = blocks[pos]
 		var c := Vector3(pos) + Vector3(0.5, 0.5, 0.5) - center
 		for d in DIRS:
+			if not face_filter.is_empty() and not face_filter.has(d):
+				continue
 			if blocks.has(pos + d):
 				continue  # 内面剔除：被邻居贴住的面不生成
 			var verts: Array = FACE_VERTS[d]
