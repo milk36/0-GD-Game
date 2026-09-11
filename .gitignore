@@ -8,3 +8,7 @@
 # 工具本地数据 / 编辑器意外生成的运行时目录
 .workbuddy/
 Godot/
+
+# Python 字节码缓存
+__pycache__/
+*.pyc
