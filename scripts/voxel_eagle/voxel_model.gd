@@ -75,17 +75,25 @@ static func _build_mesh(blocks: Dictionary) -> ArrayMesh:
 			if blocks.has(pos + d):
 				continue  # 内面剔除：被邻居贴住的面不生成
 			var verts: Array = FACE_VERTS[d]
-			# 绕序：Godot 的 generate_normals() 取 (p1-p3)×(p1-p2)，故按 0-2-1 / 0-3-2 排列
-			# 才让法线朝外（顺序反了会导致顶面被背面剔除、看到内部底面 → 观感"上下颠倒"）
+			# 绕序：Godot 正面为顺时针，按 0-2-1 / 0-3-2 排列才使正面朝外
+			# （顺序反了会导致顶面被背面剔除、看到内部底面 → 观感"上下颠倒"）
+			var n := Vector3(d)
+			# 法线：直接写死面朝向（硬边）。不用 generate_normals()——它是按位置平滑平均的，
+			# 会把相邻面法线混在一起（1 层厚的模型侧面因此几乎全变成斜向法线，块面结构糊掉）。
 			st.set_color(col)
+			st.set_normal(n)
 			st.add_vertex(c + verts[0])
+			st.set_normal(n)
 			st.add_vertex(c + verts[2])
+			st.set_normal(n)
 			st.add_vertex(c + verts[1])
 			st.set_color(col)
+			st.set_normal(n)
 			st.add_vertex(c + verts[0])
+			st.set_normal(n)
 			st.add_vertex(c + verts[3])
+			st.set_normal(n)
 			st.add_vertex(c + verts[2])
-	st.generate_normals()
 	var mesh := st.commit()
 	return mesh
 

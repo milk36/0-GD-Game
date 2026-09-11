@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://djnd16cadtbdb"]
+
+[ext_resource type="Script" uid="uid://c8y3d2my8xrvf" path="res://scripts/voxel_eagle/survivor_test.gd" id="1_test"]
+
+[node name="SurvivorTest" type="Node3D" unique_id=676920463]
+script = ExtResource("1_test")

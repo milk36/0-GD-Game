@@ -10,6 +10,8 @@ const VoxelPool = preload("res://scripts/voxel_eagle/pools.gd")
 const SaveManager = preload("res://scripts/voxel_eagle/save_manager.gd")
 const Stages = preload("res://scripts/voxel_eagle/stages.gd")
 const VoxReader = preload("res://scripts/voxel_eagle/vox_reader.gd")
+const SurvivorUnit = preload("res://scripts/voxel_eagle/survivor_unit.gd")
+const RescueRing = preload("res://scripts/voxel_eagle/rescue_ring.gd")
 
 # ---- MagicaVoxel 体素场景（.vox）接入 ----
 # 把 assets/vox 下的 .vox 直接挂进战场：编辑器已导入则走导入产物（greedy mesh），
@@ -41,77 +43,23 @@ const COL_PINK := Color("ff2a6d")
 const COL_YELLOW := Color("ffe600")
 const COL_WHITE := Color("f5f9ff")
 
-# 玩家机与 Boss 造型已迁移至 MagicaVoxel 资产（assets/vox/units/*.vox），
+# 玩家机 / Boss / E1~E6 造型均已迁移至 MagicaVoxel 资产（assets/vox/units/*.vox），
 # 经 tools/vox/gen_units.py 生成，可在 MagicaVoxel 中继续编辑后直接生效。
-
-const ART_TURRET := "
-GGG
-GRG
-GGG
-"
-const ART_TURRET_BASE := "
-TTT
-TTT
-TTT
-"
-const ART_TURRET_HEAD := "
-TTT
-GRG
-GGG
-"
-const ART_RING := "
-SSS
-SRS
-SSS
-"
-const ART_DRONE_BODY := "
-MM
-MM
-"
-const ART_DRONE_ROTOR := "
-W W
- W
-W W
-"
-const ART_WING := "
- G
-GCG
- G
- G
-"
-const ART_WING_TOP := "
- C
- C
- C
- G
-"
-const ART_RAIDER := "
-  D
- DDD
-DDDDD
-  D
-"
-const ART_RAIDER_TOP := "
-  C
- DTD
- DDD
-  D
-"
-const ART_ELITE := "
-GGGGGGGGG
-GHHHHHHHG
-GHHRHRHHG
-GHHHHHHHG
-GGGGGGGGG
-"
-const ART_SURVIVOR_LEG := "D"
-const ART_SURVIVOR_TORSO := "O"
-const ART_SURVIVOR_HEAD := "S"
-const PAL_ENEMY := {
-	"G": Color("6a7488"), "R": Color("ff2a6d"), "S": Color("8a7a52"),
-	"M": Color("ff2a6d"), "C": Color("ffb0c8"), "D": Color("b03050"),
-	"T": Color("3a4254"), "H": Color("8a94aa"), "W": Color("dfe6f5"),
+# 批量迭代流程：改 gen_units.py（或 MagicaVoxel 直接改 .vox）→ python gen_units.py
+# → 切回编辑器等重导入 → 重开游戏。敌机已无字符画残留（旧 ART_* / PAL_ENEMY 已删）。
+const ENEMY_VOX := {
+	"E1": "res://assets/vox/units/E1.vox",     # 炮台底座（地面单位，贴地摆放）
+	"E1H": "res://assets/vox/units/E1H.vox",   # 炮台炮头（含前伸炮管，look_at 指向玩家）
+	"E2": "res://assets/vox/units/E2.vox",     # 环形机（中空方环 + 悬浮核心）
+	"E3": "res://assets/vox/units/E3.vox",     # 无人机（四旋翼，绕 Y 自转）
+	"E4": "res://assets/vox/units/E4.vox",     # 战斗机（后掠翼，自机狙）
+	"E5": "res://assets/vox/units/E5.vox",     # 巡航机（重型机身，五连发扇形）
+	"E6": "res://assets/vox/units/E6.vox",     # 精英炮舰（双炮塔 + 舰桥 + 三联引擎）
 }
+# 敌机 .vox 统一按 0.3 世界单位/体素 缩放（与玩家机同一精度；Boss 单独用 0.5）
+const ENEMY_SCALE := 0.3
+# 幸存者造型在 scripts/voxel_eagle/survivor_unit.gd（游戏与测试场景共用）
+# 地貌（草岛 / 暗礁 / 沉船）仍是程序化方块，不属"单位造型"范畴
 
 # 机库升级线定义（数值曲线见 save_manager.upgrade_cost）
 const UPGRADES := [
@@ -147,6 +95,8 @@ var rope: MeshInstance3D       # 救援绳索（细长方块）
 var laser_warn: MeshInstance3D
 var laser_beam: MeshInstance3D
 var boss_mat: StandardMaterial3D
+var rescue_ring: MeshInstance3D   # 机上营救进度计时圈
+var ring_flash_t := 0.0           # 救起后进度圈保留显示的剩余时间
 
 # ---- HUD ----
 var hud_score: Label
@@ -229,28 +179,11 @@ func _ready() -> void:
 	_build_hud()
 	_build_overlays()
 	_meshes = {
-		"E1": VoxelModel.build(ART_TURRET_BASE, PAL_ENEMY, 1),
-		"E1H": VoxelModel.build(ART_TURRET_HEAD, PAL_ENEMY, 2),
-		"E2": VoxelModel.build(ART_RING, PAL_ENEMY, 3),
-		"E3": VoxelModel.build_multi([
-			{"art": ART_DRONE_BODY, "pal": PAL_ENEMY, "y": 0, "layers": 1},
-			{"art": ART_DRONE_ROTOR, "pal": PAL_ENEMY, "y": 1, "layers": 1},
-		]),
-		"E4": VoxelModel.build_multi([
-			{"art": ART_WING, "pal": PAL_ENEMY, "y": 0, "layers": 1},
-			{"art": ART_WING_TOP, "pal": PAL_ENEMY, "y": 1, "layers": 1},
-		]),
-		"E5": VoxelModel.build_multi([
-			{"art": ART_RAIDER, "pal": PAL_ENEMY, "y": 0, "layers": 1},
-			{"art": ART_RAIDER_TOP, "pal": PAL_ENEMY, "y": 1, "layers": 1},
-		]),
-		"E6": VoxelModel.build(ART_ELITE, PAL_ENEMY, 3),
-		"SURV": VoxelModel.build_multi([
-			{"art": ART_SURVIVOR_LEG, "pal": {"D": Color("3a3a4a")}, "y": 0, "layers": 1},
-			{"art": ART_SURVIVOR_TORSO, "pal": {"O": Color("ffa03c")}, "y": 1, "layers": 2},
-			{"art": ART_SURVIVOR_HEAD, "pal": {"S": Color("e8b88a")}, "y": 3, "layers": 1},
-		]),
+		"SURV": SurvivorUnit.mesh(),
 	}
+	# E1~E6：MagicaVoxel .vox 运行时解析（与玩家机 / Boss 同一条加载路径）
+	for k in ENEMY_VOX:
+		_meshes[k] = _load_vox_mesh(ENEMY_VOX[k])
 	if Stages.selected == 0:
 		select_root.visible = true  # 从大厅进入：先选关
 	_start_bgm()
@@ -296,6 +229,17 @@ func _apply_upgrades() -> void:
 	armor = armor_max
 	bombs_max = mini(2 + bo_lv, 5)
 	bombs = bombs_max
+
+
+## 运行时解析单位 .vox 网格（与玩家机 / Boss 一致）；失败时退化为占位方块，保证流程可跑
+func _load_vox_mesh(path: String) -> Mesh:
+	var m := VoxReader.read_mesh(path)
+	if m != null and m.get_surface_count() > 0:
+		return m
+	push_warning("单位 .vox 加载失败，使用占位方块：%s" % path)
+	var bm := BoxMesh.new()
+	bm.size = Vector3(3.0, 2.0, 3.0)
+	return bm
 
 
 # ================= 场景构建 =================
@@ -549,6 +493,10 @@ func _build_player() -> void:
 	rope.mesh = rm
 	rope.visible = false
 	add_child(rope)
+
+	# 营救进度计时圈（挂在机上，营救时显示，半径=触发距离）
+	rescue_ring = RescueRing.build()
+	player.add_child(rescue_ring)
 
 	# Boss 激光：预警细线 + 光束粗梁
 	laser_warn = MeshInstance3D.new()
@@ -1099,15 +1047,20 @@ func _spawn_group(list: Array) -> void:
 func _spawn_ground(type: String, x: float) -> void:
 	var n := MeshInstance3D.new()
 	n.mesh = _meshes[type]
+	n.scale = Vector3.ONE * ENEMY_SCALE
 	n.material_override = VoxelModel.shaded_material()
 	world.add_child(n)
-	n.position = Vector3(x, 0.05, -58.0 - world.position.z)
+	# 体素网格以块整数键均值居中（键与几何中心差半格），按 AABB 底面对齐海面后略微下沉
+	n.position = Vector3(x, -n.mesh.get_aabb().position.y * ENEMY_SCALE - 0.15,
+			-58.0 - world.position.z)
 	var e := {"n": n, "t": type, "hp": 4 if type == "E2" else 3, "ft": randf_range(0.8, 1.6), "age": 0.0}
 	if type == "E1":  # 炮台：底座 + 可旋转炮头（含炮管，指向玩家）
 		var head := MeshInstance3D.new()
 		head.mesh = _meshes["E1H"]
 		head.material_override = VoxelModel.shaded_material()
-		head.position = Vector3(0, 1.1, 0)
+		# 炮头底面正好落在底座顶面：按两者 AABB 反推，改模型高度不必再改这里
+		# （head 是 n 的子节点，会继承 n 的 0.3 缩放，故这里的局部值不用乘缩放）
+		head.position = Vector3(0, n.mesh.get_aabb().end.y - head.mesh.get_aabb().position.y, 0)
 		n.add_child(head)
 		e["head"] = head
 	enemies.append(e)
@@ -1116,6 +1069,7 @@ func _spawn_ground(type: String, x: float) -> void:
 func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 	var n := MeshInstance3D.new()
 	n.mesh = _meshes[type]
+	n.scale = Vector3.ONE * ENEMY_SCALE
 	n.material_override = VoxelModel.shaded_material()
 	add_child(n)
 	var vz := scroll_spd + (10.0 if type == "E3" else 5.0 if type == "E4" else 1.5 if type == "E6" else 3.0)
@@ -1126,44 +1080,18 @@ func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 
 
 func _spawn_survivor(x: float) -> void:
-	var n := MeshInstance3D.new()
-	n.mesh = _meshes["SURV"]
-	n.material_override = VoxelModel.unshaded_material()  # 无光照高亮：远视角可读
+	# 造型统一由 SurvivorUnit 提供（与测试场景共用同一份定义）
+	var parts := SurvivorUnit.build()
+	var n: Node3D = parts["n"]
 	world.add_child(n)
-	n.position = Vector3(x, 0.5, -50.0)
-	n.scale = Vector3.ONE * 0.6  # 小人比战机小一号（0.6 倍，高约 2.7 格）
-	# 双臂：肩部支点 + 上举手臂，待救时高举挥动呼叫
-	var arms := {}
-	for s in [-1.0, 1.0]:
-		var piv := Node3D.new()
-		piv.position = Vector3(s * 0.62, 3.1, 0.0)
-		n.add_child(piv)
-		var arm := MeshInstance3D.new()
-		var am := BoxMesh.new()
-		am.size = Vector3(0.34, 1.2, 0.34)
-		var amat := StandardMaterial3D.new()
-		amat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		amat.albedo_color = COL_WHITE
-		am.material = amat
-		arm.mesh = am
-		arm.position = Vector3(0, 0.55, 0)  # 网格上移半格 → 支点在肩部
-		piv.add_child(arm)
-		arms["L" if s < 0.0 else "R"] = piv
-	# 头顶红色叹号（竖条 + 间隙 + 点，远视角醒目）
-	var ex := MeshInstance3D.new()
-	ex.mesh = VoxelModel.build_multi([
-		{"art": "R", "pal": {"R": COL_PINK}, "y": 2, "layers": 3},
-		{"art": "R", "pal": {"R": COL_PINK}, "y": 0, "layers": 1},
-	])
-	ex.material_override = VoxelModel.unshaded_material()
-	ex.scale = Vector3(0.55, 0.55, 0.55)
-	ex.position = Vector3(0, 6.4, 0)
-	ex.visible = false
-	n.add_child(ex)
+	n.position = Vector3(x, SurvivorUnit.BASE_Y, -50.0)
 	rescue_hint_done = true
 	hint_t = 3.5
 	hud_center.text = "飞到幸存者上方悬停即可施救"
-	survivors.append({"n": n, "ex": ex, "arm_l": arms["L"], "arm_r": arms["R"], "roping": false, "prog": 0.0})
+	survivors.append({
+		"n": n, "ex": parts["ex"], "arm_l": parts["arm_l"], "arm_r": parts["arm_r"],
+		"roping": false, "prog": 0.0,
+	})
 
 
 func _spawn_boss() -> void:
@@ -1443,6 +1371,7 @@ func _xz_dist(a: Vector3, b: Vector3) -> float:
 
 func _update_survivors(delta: float) -> void:
 	var i := 0
+	var ring_prog := -1.0            # <0 = 本帧无营救，需隐藏进度圈
 	while i < survivors.size():
 		var s: Dictionary = survivors[i]
 		var n: Node3D = s["n"]
@@ -1454,61 +1383,66 @@ func _update_survivors(delta: float) -> void:
 		var d := _xz_dist(gp, player.position)
 		var ex: MeshInstance3D = s["ex"]
 		ex.visible = d < 8.0 and not bool(s["roping"])
-		ex.position.y = 6.4 + sin(elapsed * 4.0) * 0.25
+		SurvivorUnit.mark_bob(ex, elapsed)
 		# 双手高举挥动呼叫（攀爬时停止挥手改为抱绳姿态）
-		var wob := sin(elapsed * 8.0)
-		var arm_l: Node3D = s["arm_l"]
-		var arm_r: Node3D = s["arm_r"]
+		SurvivorUnit.pose(s["arm_l"], s["arm_r"], elapsed, bool(s["roping"]))
 		if bool(s["roping"]):
-			arm_l.rotation.z = 0.5
-			arm_r.rotation.z = -0.5
-		else:
-			arm_l.rotation.z = 2.4 + wob * 0.45
-			arm_r.rotation.z = -2.4 + wob * 0.45
-		if bool(s["roping"]):
-			if d > 3.4 or dead:  # 离开范围 → 绳索收回（不惩罚）
+			if d > SurvivorUnit.RESCUE_LEAVE or dead:  # 离开范围 → 绳索收回（不惩罚）
 				s["roping"] = false
 				s["prog"] = 0.0
-				n.position.y = 0.5
-				n.scale = Vector3.ONE * 0.6
+				SurvivorUnit.reset_rescue(n)
 				rope.visible = false
 			else:
 				# 幸存者停止随地面滚动，原地等玩家悬停拉起
 				n.position.z -= scroll_spd * delta
-				s["prog"] = float(s["prog"]) + delta / 0.6
+				s["prog"] = float(s["prog"]) + delta / SurvivorUnit.RESCUE_TIME
 				var prog := float(s["prog"])
-				n.position.y = 0.5 + prog * 2.2
-				n.scale = Vector3.ONE * (0.6 * (1.0 - prog * 0.75))
-				_rope_pose(gp)
-				if prog >= 1.0:
+				if SurvivorUnit.apply_rescue_progress(n, prog):
 					rescued += 1
 					score += 1000
-					SFX.play("eagle_rescue")
+					SFX.play("eagle_rescue")   # 救起音效：C5-E5-G5-C6 上行琶音
 					_burst(gp, COL_WHITE, 10)
 					rope.visible = false
+					ring_prog = 1.0            # 进度圈填满（保留 0.3s 闪一下）
+					ring_flash_t = RescueRing.FLASH_TIME
 					n.queue_free()
 					survivors.remove_at(i)
 					continue
+				ring_prog = prog
+				_rope_pose(gp)
 		else:
-			if d < 2.6 and not dead:
+			if d < SurvivorUnit.RESCUE_TRIGGER and not dead:
 				s["roping"] = true
 				s["prog"] = 0.0
+				ring_prog = 0.0
 		i += 1
+	_update_rescue_ring(ring_prog, delta)
+
+
+## 进度圈刷新：营救中实时填充；救起后保留 FLASH_TIME 显示满圈；其余时间隐藏
+func _update_rescue_ring(prog: float, delta: float) -> void:
+	if rescue_ring == null:
+		return
+	if prog >= 0.0:
+		ring_flash_t = 0.0 if prog < 1.0 else ring_flash_t
+		rescue_ring.visible = true
+	elif ring_flash_t > 0.0:
+		ring_flash_t -= delta
+		prog = 1.0
+		if ring_flash_t <= 0.0:
+			rescue_ring.visible = false
+			return
+	else:
+		rescue_ring.visible = false
+		return
+	RescueRing.aim(rescue_ring, cam, player.global_position)
+	RescueRing.set_progress(rescue_ring, clampf(prog, 0.0, 1.0))
 
 
 func _rope_pose(sur_gp: Vector3) -> void:
-	var top := sur_gp + Vector3(0, 2.7, 0)  # 小人头顶（举手高度，0.6 缩放）
-	var bot := player.position
-	var dz := bot - top
-	# 绳索近乎垂直，不能用 look_at（方向与 UP 平行会报错），手动构建正交基
-	var zz := dz.normalized()
-	var xx := zz.cross(Vector3.FORWARD)
-	if xx.length_squared() < 0.001:
-		xx = zz.cross(Vector3.RIGHT)
-	xx = xx.normalized()
-	var yy := zz.cross(xx)
-	rope.global_transform = Transform3D(Basis(xx, yy, zz), (top + bot) * 0.5)
-	rope.scale = Vector3(1, 1, dz.length())
+	var rp := SurvivorUnit.rope_pose(sur_gp, player.position)
+	rope.global_transform = rp["xf"]
+	rope.scale = Vector3(1, 1, rp["len"])
 
 
 # ================= 弹型库 =================
