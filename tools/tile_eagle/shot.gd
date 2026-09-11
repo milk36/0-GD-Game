@@ -47,6 +47,11 @@ const SHOTS := [
 	{"mode": 0, "name": "tile_elite.png", "clouds": false, "elite": true, "spawn": [
 		["E6", -3.0, -32.0], ["E10", 5.0, -28.0], ["E5", -10.0, -24.0], ["E7", 10.0, -20.0],
 	]},
+	# 方舟战舰（M3）：debug_spawn 摆在中距，预热 2.8s 让它进完场（z→-14）并开一轮扇形。
+	# 血条在 HUD 右上角（boss_info 非空即显示）。
+	{"mode": 0, "name": "tile_boss.png", "clouds": false, "elite": true, "spawn": [
+		["BOSS", 0.0, -30.0],
+	]},
 ]
 
 ## 精英取景图的固定步长预热（秒）：只够它们开火 1~2 轮、且 < 第一波 t=6 → 画面里只有摆拍单位
@@ -100,7 +105,9 @@ func _initialize() -> void:
 			inst.set_process(true)
 			var al: Array = []
 			for e in (combat as Node).get("enemies"):
-				al.append(String(e["t"]))
+				al.append("%s@(%.1f, %.1f, %.1f)" % [String(e["t"]),
+						(e["n"] as Node3D).position.x, (e["n"] as Node3D).position.y,
+						(e["n"] as Node3D).position.z])
 			print("精英取景：敌机 %d（%s）  敌弹 %d  击落 %d"
 					% [(combat as Node).call("enemy_count"), ", ".join(al),
 						int(((combat as Node).get("eb") as MultiMeshInstance3D).get("count")),

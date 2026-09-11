@@ -22,6 +22,9 @@ const VoxelPool = preload("res://scripts/voxel_eagle/pools.gd")
 const VoxReader = preload("res://scripts/voxel_eagle/vox_reader.gd")
 const Altitude = preload("res://scripts/tile_eagle/altitude.gd")
 const Waves = preload("res://scripts/tile_eagle/waves.gd")
+const SurvivorUnit = preload("res://scripts/voxel_eagle/survivor_unit.gd")
+const RescueRing = preload("res://scripts/voxel_eagle/rescue_ring.gd")
+const TileSave = preload("res://scripts/tile_eagle/tile_save.gd")
 
 const BULLET_SPEED := 46.0          # 自机弹速（与方块雄鹰同值）
 const ARMOR_MAX := 3
@@ -40,6 +43,9 @@ const COL_WHITE := Color("f5f9ff")
 var host: Node3D                    # 场景根：读 player / scroll_spd / layout
 var land_spot: Callable             # (float x_target) -> Vector3：岛上岸线落点（世界坐标）；INF = 没有陆地
 
+var rope: MeshInstance3D            # 营救绳索（幸存者举手 → 玩家）
+var ring: MeshInstance3D            # 机腹营救进度圈（RescueRing）
+var _ring_flash := 0.0              # 救起后满圈保留的闪烁时间
 var pb: VoxelPool                   # 自机弹
 var eb: VoxelPool                   # 敌弹
 var stars: VoxelPool                # 掉落星星
@@ -63,11 +69,34 @@ var _meshes := {}
 var _mat: Material                  # 单位受光材质（全场共享一份）
 var _rng := RandomNumberGenerator.new()
 
+# ---- M3：幸存者救援 ----
+var survivors: Array = []           # {n, ex, arm_l, arm_r, roping, prog, anchor_y}
+var rescued := 0
+var _surv_t := 8.0                  # 下一名幸存者的出现时刻（script_t 时钟）
+## 幸存者出现节奏：比敌机组松得多——它是「飞过去顺手救」的目标，不是压力源。
+const SURVIVOR_EVERY := 16.0
+## 方舟悬停位（进场终点）。按 68° 正交投影量出来的：再远会顶进画面上缘的 HUD。
+const BOSS_HOLD_Z := -9.0
+# ---- M3：方舟 Boss ----
+var boss_kills := 0
+var _laser := {"st": 0, "t": 0.0, "org": Vector3.ZERO, "dir": Vector3.FORWARD, "len": 60.0}
+var _laser_warn: MeshInstance3D
+var _laser_beam: MeshInstance3D
+var _boss_mat: StandardMaterial3D   # 阶段切换时泛红（毁伤外观）
+# ---- M3：结算与存档 ----
+var best := 0                       # 历史最高分（setup 时读档）
+var new_best := false
+var saved := false                  # 本局是否已落盘过（Boss 击破即存一次，死亡再补存）
+var _banked_bk := 0                 # 已入账的方舟击破数（finalize 幂等：只补差额，避免重复计数）
+var _banked_resc := 0               # 已入账的救援数（同上）
+var _t := 0.0                       # 动画时钟（挥手 / 叹号浮动）
+
 
 func setup() -> void:
 	name = "Combat"
 	_rng.seed = host.layout.seed_val
 	_mat = VoxelModel.shaded_material()
+	_boss_mat = VoxelModel.shaded_material()
 	# 弹/星/碎片用无光照顶点色（高饱和即霓虹感，不依赖 Bloom）
 	var un := VoxelModel.unshaded_material()
 	pb = _mk_pool(96, un)
@@ -75,8 +104,24 @@ func setup() -> void:
 	stars = _mk_pool(256, un)
 	fx = _mk_pool(320, un)
 	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4",
-			"E5", "E6", "E7", "E7R", "E8", "E9", "E10"]:
+			"E5", "E6", "E7", "E7R", "E8", "E9", "E10", "boss"]:
 		_meshes[k] = VoxReader.read_mesh("res://assets/vox/units/%s.vox" % k)
+	# 营救件：绳索（细长盒，按目标距离缩放 z）+ 机腹营救进度圈（挂在玩家机上）
+	var rm := StandardMaterial3D.new()
+	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rm.albedo_color = SurvivorUnit.ROPE_COLOR
+	rope = MeshInstance3D.new()
+	var rbox := BoxMesh.new()
+	rbox.size = Vector3(0.12, 0.12, 1.0)
+	rbox.material = rm
+	rope.mesh = rbox
+	rope.visible = false
+	rope.cast_shadow = 0
+	add_child(rope)
+	ring = RescueRing.build()
+	ring.visible = false
+	host.player.add_child(ring)
+	best = int(TileSave.load_data().get("best", 0))
 
 
 func _mk_pool(n: int, mat: Material) -> VoxelPool:
@@ -96,6 +141,9 @@ func reset() -> void:
 	for e in enemies:
 		(e["n"] as Node).queue_free()
 	enemies.clear()
+	for s in survivors:
+		(s["n"] as Node).queue_free()
+	survivors.clear()
 	pb.clear()
 	eb.clear()
 	stars.clear()
@@ -113,14 +161,31 @@ func reset() -> void:
 	_wave_i = 0
 	_fire_cd = 0.0
 	gun_on = true
+	# M3：救援 / Boss 计数归零（best 保留——历史最高分跨局有效）
+	rescued = 0
+	boss_kills = 0
+	new_best = false
+	saved = false
+	_banked_bk = 0
+	_banked_resc = 0
+	_surv_t = SURVIVOR_EVERY
+	rope.visible = false
+	ring.visible = false
+	_ring_flash = 0.0
+	_laser["st"] = 0
+	if _laser_warn != null:
+		_laser_warn.visible = false
+		_laser_beam.visible = false
 
 
 # ================= 主循环 =================
 
 func update(delta: float) -> void:
+	_t += delta
 	if dead:
 		_update_bullets(delta)          # 死亡后让残弹飞完，画面不会瞬间定格
 		_update_stars(delta)
+		_update_laser(delta)            # 激光同理：否则预警线/光束最多冻结 0.8s 在结算画面下
 		return
 	invuln = maxf(invuln - delta, 0.0)
 	shake = maxf(shake - delta * 2.0, 0.0)
@@ -130,6 +195,9 @@ func update(delta: float) -> void:
 	_update_enemies(delta)
 	_update_bullets(delta)
 	_update_stars(delta)
+	_update_survivors(delta)
+	_spawn_survivors_tick(delta)
+	_update_laser(delta)
 
 
 ## 波次脚本：到点整组刷出；表跑完往回退一个周期并从头循环（走廊无尽 → 波次也无尽）
@@ -154,6 +222,13 @@ const LAND_WAIT_MAX := 6.0
 func _spawn(ent: Dictionary) -> void:
 	var t: String = ent["t"]
 	var x: float = clampf(float(ent["x"]), -13.0, 13.0)
+	if t == "SURVIVOR":                       # M3：幸存者也走「排队等陆」这条链
+		var sp := _ask_land(x)
+		if sp == Vector3.INF:
+			_pending.append({"t": t, "x": x, "wait": 0.0, "try": LAND_RETRY, "surv": true})
+			return
+		_spawn_survivor(sp)
+		return
 	if String(Waves.get_enemy(t)["layer"]) == "GROUND":
 		var lp := _ask_land(x)
 		if lp == Vector3.INF:
@@ -181,15 +256,122 @@ func _update_pending(delta: float) -> void:
 			q["try"] = LAND_RETRY
 			var lp := _ask_land(float(q["x"]))
 			if lp != Vector3.INF:
-				_spawn_ground(String(q["t"]), lp)
+				if bool(q.get("surv", false)):
+					_spawn_survivor(lp)
+				else:
+					_spawn_ground(String(q["t"]), lp)
 				_pending.remove_at(i)
 				continue
 		if float(q["wait"]) > LAND_WAIT_MAX:
-			land_miss += 1
-			_spawn_ground(String(q["t"]), Vector3(float(q["x"]), Altitude.GROUND, AIR_SPAWN_Z))
+			if bool(q.get("surv", false)):
+				pass                        # 幸存者没有「兜底落海」——等不到就静默放弃这一名
+			else:
+				land_miss += 1
+				_spawn_ground(String(q["t"]), Vector3(float(q["x"]), Altitude.GROUND, AIR_SPAWN_Z))
 			_pending.remove_at(i)
 			continue
 		i += 1
+
+
+## 幸存者投放节拍：到点往陆上放一名；放不下（前方暂时没有岛/要塞）就排队等。
+## 幸存者没有兜底落海——空海面上一个挥手的幸存者读不出「遇难」，宁可这一轮不出。
+func _spawn_survivors_tick(delta: float) -> void:
+	_surv_t -= delta
+	if _surv_t > 0.0:
+		return
+	_surv_t = SURVIVOR_EVERY
+	_spawn({"t": "SURVIVOR", "x": _rng.randf_range(-10.0, 10.0)})
+
+
+func _spawn_survivor(p: Vector3) -> void:
+	var parts := SurvivorUnit.build()
+	var n: Node3D = parts["n"]
+	add_child(n)
+	# 与地面单位同一条贴地规则：AABB 底面坐到落点上（mesh 以键均值居中，原点在半高）
+	var aabb: AABB = n.mesh.get_aabb()
+	n.position = Vector3(p.x, p.y - aabb.position.y * SurvivorUnit.SCALE, p.z)
+	survivors.append({
+		"n": n, "ex": parts["ex"], "arm_l": parts["arm_l"], "arm_r": parts["arm_r"],
+		"roping": false, "prog": 0.0, "anchor_y": n.position.y,
+	})
+	host.hint("飞到幸存者上方悬停即可施救", 3.5)
+
+
+## 幸存者：随地貌滚动；玩家悬停在 XZ 半径内开始起吊，离开范围绳索收回（不惩罚）。
+## 交互模型与方块雄鹰逐参数一致（SurvivorUnit 的常量两边共用同一份定义）。
+func _update_survivors(delta: float) -> void:
+	var ring_prog := -1.0                 # <0 = 本帧无营救，需隐藏进度圈
+	var i := 0
+	while i < survivors.size():
+		var s: Dictionary = survivors[i]
+		var n: Node3D = s["n"]
+		n.position.z += host.scroll_spd * delta       # 与脚下的岛严格同步（combat.gd 文件头注）
+		var gp := n.global_position
+		if gp.z > RECYCLE_Z:                          # 滚出屏幕 = 错过
+			n.queue_free()
+			survivors.remove_at(i)
+			continue
+		var pp: Vector3 = host.player.position
+		var d := Vector2(gp.x - pp.x, gp.z - pp.z).length()
+		var ex: MeshInstance3D = s["ex"]
+		ex.visible = d < 8.0 and not bool(s["roping"])
+		SurvivorUnit.mark_bob(ex, _t)
+		SurvivorUnit.pose(s["arm_l"], s["arm_r"], _t, bool(s["roping"]))
+		if bool(s["roping"]):
+			if d > SurvivorUnit.RESCUE_LEAVE or dead:
+				s["roping"] = false
+				s["prog"] = 0.0
+				SurvivorUnit.reset_rescue(n, float(s["anchor_y"]))
+				rope.visible = false
+			else:
+				# 停止随地面滚动，原地等玩家悬停拉起（否则 0.6 秒内就被拽出半径）
+				n.position.z -= host.scroll_spd * delta
+				s["prog"] = float(s["prog"]) + delta / SurvivorUnit.RESCUE_TIME
+				if SurvivorUnit.apply_rescue_progress(n, float(s["prog"]), float(s["anchor_y"])):
+					rescued += 1
+					score += 1000
+					SFX.play("eagle_rescue")
+					_burst(gp, COL_WHITE, 10)
+					rope.visible = false
+					ring_prog = 1.0
+					_ring_flash = RescueRing.FLASH_TIME
+					n.queue_free()
+					survivors.remove_at(i)
+					continue
+				ring_prog = float(s["prog"])
+				_rope_pose(gp)
+		else:
+			if d < SurvivorUnit.RESCUE_TRIGGER and not dead:
+				s["roping"] = true
+				s["prog"] = 0.0
+				ring_prog = 0.0
+		i += 1
+	_update_ring(ring_prog, delta)
+
+
+func _rope_pose(sur_gp: Vector3) -> void:
+	var rp := SurvivorUnit.rope_pose(sur_gp, host.player.position)
+	rope.global_transform = rp["xf"]
+	rope.scale = Vector3(1, 1, float(rp["len"]))
+
+
+## 进度圈刷新：营救中实时填充；救起后保留 FLASH_TIME 显示满圈；其余时间隐藏
+func _update_ring(prog: float, delta: float) -> void:
+	if ring == null:
+		return
+	if prog >= 0.0:
+		ring.visible = true
+	elif _ring_flash > 0.0:
+		_ring_flash -= delta
+		prog = 1.0
+		if _ring_flash <= 0.0:
+			ring.visible = false
+			return
+	else:
+		ring.visible = false
+		return
+	RescueRing.aim(ring, host.cam, host.player.global_position)
+	RescueRing.set_progress(ring, clampf(prog, 0.0, 1.0))
 
 
 ## 自机主炮：与方块雄鹰 1 级主炮同参数（单列 / 间隔 0.115s）；M1 不带升级线
@@ -207,11 +389,13 @@ func _update_player_gun(delta: float) -> void:
 
 # ================= 单位生成 =================
 
-func _new_unit_node(vox: String) -> MeshInstance3D:
+func _new_unit_node(vox: String, def: Dictionary = {}) -> MeshInstance3D:
 	var n := MeshInstance3D.new()
 	n.mesh = _meshes[vox]
-	n.scale = Vector3.ONE * Waves.SCALE
-	n.material_override = _mat
+	# Boss 用 0.5（waves.gd 的 "scale" 字段），其余全表 0.3 —— 与方块雄鹰同值
+	n.scale = Vector3.ONE * float(def.get("scale", Waves.SCALE))
+	# Boss 用独立材质：阶段切换时整体泛红做「毁伤外观」（共享材质会染红全场）
+	n.material_override = _boss_mat if vox == "boss" else _mat
 	return n
 
 
@@ -236,14 +420,21 @@ func _spawn_ground(type: String, p: Vector3) -> void:
 
 func _spawn_air(type: String, x: float, vx: float) -> void:
 	var def := Waves.get_enemy(type)
-	var n := _new_unit_node(def["vox"])
+	var n := _new_unit_node(def["vox"], def)
 	add_child(n)
 	# 高度只认 def.layer（altitude.gd::of）——M1 的 LOW / HIGH 层就是靠这一行生效的
 	n.position = Vector3(x, Altitude.of(String(def["layer"])), AIR_SPAWN_Z)
+	# hold=true（Boss）：vz 归零 → 与玩家相对静止。Boss 战是定点的，跟着走廊滚就打不成了
+	var vz: float = host.scroll_spd + float(def.get("vz", 3.0))
+	if bool(def.get("hold", false)):
+		vz = 0.0
 	var e := {
 		"n": n, "t": type, "def": def, "hp": int(def["hp"]),
 		"ft": _rng.randf_range(0.7, 1.5), "age": 0.0, "mode": 0,
-		"vx": vx, "vz": host.scroll_spd + float(def.get("vz", 3.0)), "x0": x,
+		"vx": vx, "vz": vz, "x0": x,
+		# Boss 专属状态（其它单位读不到这些键）
+		"entering": type == "BOSS", "phase": 1, "act_t": 1.6, "burst_left": 0, "burst_t": 0.0,
+		"add_t": 4.0, "laser_t": 3.0, "sp_t": 0.0, "spiral_a": 0.0,
 	}
 	if def.has("rotor"):   # 旋翼层只转自己：机身朝向稳定，旋翼转得快也读得出机型
 		var rotor := _new_unit_node(def["rotor"])
@@ -365,6 +556,8 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 							int(def.get("ring_n", 12)), float(def.get("ring_spd", 6.0)))
 				else:
 					_fire_aimed(n.global_position, def)
+		"boss":
+			_update_boss(e, n, delta)
 
 
 ## 开火节拍：按 def.cd 倒计时，到点返回 true 并重置
@@ -422,6 +615,214 @@ func _fire_ring(from: Vector3, def: Dictionary, phase: float,
 	for k in n:
 		var a := TAU * float(k) / float(n) + phase
 		_enemy_bullet(from, Vector3(sin(a) * spd, 0.0, cos(a) * spd), COL_PINK)
+
+
+# ================= 方舟 Boss（M3） =================
+
+func boss_info() -> Dictionary:
+	"""HUD 血条用：{} = 场上没有（或还没进完场）。"""
+	for e in enemies:
+		if String(e["t"]) == "BOSS":
+			return {"hp": int(e["hp"]), "hp_max": int(e["def"]["hp"]),
+					"entering": bool(e["entering"])}
+	return {}
+
+
+## 三阶段（与方块雄鹰同构，弹幕量级按本作波次表折算）：
+##   P1 hp>66%  5 向扇形 ×3 波 ↔ 自机狙 3 连交替
+##   P2 hp>33%  无人机增援 + 横扫激光 + 轻自机狙
+##   P3 其余     双螺旋 + 环形
+func _update_boss(e: Dictionary, n: Node3D, delta: float) -> void:
+	if bool(e["entering"]):
+		# 进场：从出生点压到悬停位。z 取 -9 是按正交 68° 的投影量出来的——Boss 的 8.5×12
+		# 体量要完整落在画面上半、又不贴着上缘（-14 会顶进 HUD），到位才开打。
+		n.position.z = move_toward(n.position.z, BOSS_HOLD_Z, 12.0 * delta)
+		if n.position.z >= BOSS_HOLD_Z:
+			e["entering"] = false
+		return
+	e["age"] = float(e["age"]) + delta
+	n.position.x = clampf(sin(float(e["age"]) * 0.5) * 6.0, -13.0, 13.0)
+	var frac := float(e["hp"]) / float(e["def"]["hp"])
+	var ph := 1
+	if frac <= 0.33:
+		ph = 3
+	elif frac <= 0.66:
+		ph = 2
+	if ph != int(e["phase"]):
+		_boss_phase_change(e, ph)
+		return
+	var bp := n.global_position
+	match ph:
+		1:
+			e["act_t"] = float(e["act_t"]) - delta
+			if float(e["act_t"]) <= 0.0 and int(e["burst_left"]) <= 0:
+				e["act_t"] = 4.0
+				e["burst_left"] = 3
+				e["burst_t"] = 0.0
+			if int(e["burst_left"]) > 0:
+				e["burst_t"] = float(e["burst_t"]) - delta
+				if float(e["burst_t"]) <= 0.0:
+					e["burst_t"] = 0.38
+					e["burst_left"] = int(e["burst_left"]) - 1
+					e["mode"] = 1 - int(e["mode"])
+					if int(e["mode"]) == 0:
+						_fire_aimed(bp, e["def"], 5, 46.0, 7.5)
+					else:
+						_fire_aimed(bp, e["def"], 3, 14.0, 8.0)
+		2:
+			e["add_t"] = float(e["add_t"]) - delta
+			if float(e["add_t"]) <= 0.0:
+				e["add_t"] = 6.0
+				for s in [-1.0, 1.0]:
+					_spawn_air("E3", clampf(bp.x + s * 4.0, -13.0, 13.0), s * 3.0)
+			e["laser_t"] = float(e["laser_t"]) - delta
+			if float(e["laser_t"]) <= 0.0 and int(_laser["st"]) == 0:
+				e["laser_t"] = 5.0
+				_fire_laser(bp)
+			e["act_t"] = float(e["act_t"]) - delta
+			if float(e["act_t"]) <= 0.0:
+				e["act_t"] = 2.4
+				_fire_aimed(bp, e["def"], 1, 0.0, 8.0)
+		3:
+			e["sp_t"] = float(e["sp_t"]) - delta
+			if float(e["sp_t"]) <= 0.0:
+				e["sp_t"] = 0.12
+				var a0 := float(e["spiral_a"])
+				for arm in 2:
+					var a := a0 + PI * float(arm)
+					_enemy_bullet(bp, Vector3(sin(a) * 6.5, 0.0, cos(a) * 6.5), COL_PINK)
+				e["spiral_a"] = a0 + 0.38
+			e["ring_t"] = float(e.get("ring_t", 3.0)) - delta
+			if float(e["ring_t"]) <= 0.0:
+				e["ring_t"] = 3.0
+				_fire_ring(bp, e["def"], float(e["age"]), 16, 7.5)
+
+
+func _boss_phase_change(e: Dictionary, ph: int) -> void:
+	e["phase"] = ph
+	e["act_t"] = 1.6
+	e["burst_left"] = 0
+	for i in eb.count:      # 阶段切换清屏：换招的呼吸口，也是玩家的一次喘息
+		eb.kill(0)
+	SFX.play("eagle_boss_phase")
+	_burst((e["n"] as Node3D).global_position, COL_WHITE, 16)
+	_burst((e["n"] as Node3D).global_position, COL_PINK, 12)
+	shake = 0.4
+	# 毁伤外观：材质逐渐泛红
+	var tint := 1.0 - 0.22 * float(ph - 1)
+	_boss_mat.albedo_color = Color(1.0, tint, tint * 0.95)
+
+
+## 横扫激光：预警线（0.7s，半透明）→ 光束（0.8s），按「玩家到线段的最近距离」判定。
+## 与方块雄鹰同参数；这里必须自带判定——本作的玩家在 AIR 层，光束原点也在 AIR，同一平面。
+func _fire_laser(from: Vector3) -> void:
+	if _laser_warn == null:
+		_build_laser()
+	var org := from + Vector3(0, 0.5, 0)
+	var dir: Vector3 = (host.player.position - org).normalized()
+	_laser["org"] = org
+	_laser["dir"] = dir
+	_laser["st"] = 1
+	_laser["t"] = 0.7
+	SFX.play("eagle_laser")
+	_laser_warn.visible = true
+	_laser_pose(_laser_warn, org, dir, float(_laser["len"]))
+	_laser_beam.visible = false
+
+
+func _build_laser() -> void:
+	_laser_warn = _mk_beam(Color(1.0, 0.16, 0.43, 0.35))
+	_laser_beam = _mk_beam(Color(1, 1, 1, 0.9))
+
+
+func _mk_beam(col: Color) -> MeshInstance3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = col
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.5, 0.5, 1.0)
+	box.material = m
+	mi.mesh = box
+	mi.visible = false
+	mi.cast_shadow = 0
+	add_child(mi)
+	return mi
+
+
+func _laser_pose(node: MeshInstance3D, org: Vector3, dir: Vector3, ln: float) -> void:
+	node.position = org + dir * (ln * 0.5)
+	node.look_at(org + dir * ln)
+	node.scale = Vector3(1, 1, ln)
+
+
+func _update_laser(delta: float) -> void:
+	var st := int(_laser["st"])
+	if st == 0:
+		return
+	_laser["t"] = float(_laser["t"]) - delta
+	if st == 1:
+		if float(_laser["t"]) <= 0.0:
+			_laser["st"] = 2
+			_laser["t"] = 0.8
+			_laser_warn.visible = false
+			_laser_beam.visible = true
+			_laser_pose(_laser_beam, _laser["org"], _laser["dir"], float(_laser["len"]))
+	elif st == 2:
+		if not dead and invuln <= 0.0:
+			var p_rel: Vector3 = host.player.position - _laser["org"]
+			var dir: Vector3 = _laser["dir"]
+			var tt: float = clampf(p_rel.dot(dir), 0.0, float(_laser["len"]))
+			var closest: Vector3 = _laser["org"] + dir * tt
+			if host.player.position.distance_to(closest) < 1.2:
+				hit_player()
+		if float(_laser["t"]) <= 0.0:
+			_laser["st"] = 0
+			_laser_beam.visible = false
+
+
+## 方舟击破：星星喷泉 + 计入存档（boss_kills），走廊继续（无尽模式没有「通关」，有「击破」）
+func _boss_die(e: Dictionary) -> void:
+	var gp: Vector3 = (e["n"] as Node3D).global_position
+	_burst(gp, COL_WHITE, 26)
+	_burst(gp, COL_PINK, 22)
+	_burst(gp, COL_YELLOW, 18)
+	SFX.play("eagle_boom", 3.0)
+	SFX.play("eagle_win")
+	score += 2000
+	boss_kills += 1
+	for s in 40:      # 星星喷泉（本作星池 256，40 颗不挤占）
+		var v := Vector3(_rng.randf_range(-10, 10), _rng.randf_range(6, 14), _rng.randf_range(-8, 8))
+		stars.spawn(gp + Vector3(0, 1.0, 0), v, COL_YELLOW, 0.85, STAR_LIFE, 16.0)
+	e["n"].queue_free()
+	enemies.erase(e)
+	shake = 0.5
+	_laser["st"] = 0
+	if _laser_warn != null:
+		_laser_warn.visible = false
+		_laser_beam.visible = false
+	host.hint("方 舟 击 破  +2000", 3.0)
+	finalize()
+
+
+## 结算落盘：死亡时与方舟击破时各写一次（幂等；连续写两次只是覆盖同一份字段）
+func finalize() -> void:
+	## 幂等：Boss 击破会先存一次、死亡再补存一次——计数只补「自上次落盘以来的差额」，
+	## 否则同一局的 boss_kills / rescued_total 会被加两遍；new_best 只置位不清除
+	##（第二次落盘时磁盘上的 best 已含本局分数，直接比较会把标志错误地翻回 false）。
+	var d := TileSave.load_data()
+	var prev: int = int(d.get("best", 0))
+	new_best = new_best or score > prev
+	if score > prev:
+		d["best"] = score
+	d["boss_kills"] = int(d.get("boss_kills", 0)) + (boss_kills - _banked_bk)
+	d["rescued_total"] = int(d.get("rescued_total", 0)) + (rescued - _banked_resc)
+	_banked_bk = boss_kills
+	_banked_resc = rescued
+	TileSave.save_data(d)
+	best = maxi(best, score)
+	saved = true
 
 
 ## 枪焰桥接：弹幕**统一在 AIR 层**（文件头注），而开火单位可能在下方的 GROUND/LOW、
@@ -518,6 +919,13 @@ func _update_stars(delta: float) -> void:
 
 func _damage(e: Dictionary, dmg: int) -> void:
 	e["hp"] = int(e["hp"]) - dmg
+	if String(e["t"]) == "BOSS":
+		if bool(e["entering"]):
+			e["hp"] = int(e["hp"]) + dmg      # 进场中无敌（还没就位，打了也不算）
+			return
+		if int(e["hp"]) <= 0:
+			_boss_die(e)
+		return
 	if int(e["hp"]) > 0:
 		return
 	var def: Dictionary = e["def"]
@@ -549,4 +957,5 @@ func hit_player() -> void:
 		dead = true
 		_burst(p, COL_YELLOW, 18)
 		_burst(p, COL_WHITE, 10)
+		finalize()
 		SFX.play("eagle_lose")

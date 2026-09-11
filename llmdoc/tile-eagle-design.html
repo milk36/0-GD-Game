@@ -80,6 +80,7 @@ M0（可飞行的瓦片滚动走廊）已交付；<b>M1 进入玩法最小集，
 <li><a href="#m1-play">M1 第二步实施记录（玩法最小集：能打能死能重开）</a></li>
 <li><a href="#m1-fin">M1 第三步实施记录（水面动感 / 精英机 / 浪尖瓦重做）</a></li>
 <li><a href="#m2-log">M2 实施记录（要塞走廊 / spec 管线 / pirate 接入）</a></li>
+<li><a href="#m3-log">M3 实施记录（救援 / 方舟 / 结算 / 存档）</a></li>
 </ol>
 
 <!-- ============================================================ -->
@@ -1132,19 +1133,106 @@ op 层直接调 <code>voxspec.compile_part</code>，不复制代码；校验层�
 地形拼接需求（不同地貌互相嵌合的过渡边）再上，避免为 4 张瓦先建一套边沿位算逻辑</td></tr>
 <tr><td>GridMap 备选</td><td>仍未启用。要塞是「单张超大扁平瓦 + 高结构」，MultiMesh 通路够用；
 等出现「多层立体要塞」再评估（§11 调整 ①）</td></tr>
-<tr><td>M3</td><td>多阶段 Boss、救援/存档/结算/音效对齐（§10）；<code>altitude.gd</code> 的
-CLOUD 夹层（22~30）与 HIGH 层（11.5）已就绪</td></tr>
+<tr><td>M3</td><td class="ok">✓ 已交付（§18）：三阶段方舟 Boss / 幸存者救援 / 结算与存档 / BGM</td></tr>
 </table>
 
-<p style="margin-top:40px;color:#5a6486">— 设计定稿于 2026-09-11 · demo-game · Godot 4.7.2 ·
+<h2 id="m3-log">18. M3 实施记录（2026-09-12 · 完整度对齐：救援 / 方舟 / 结算 / 存档）</h2>
+<p>§17.5 的结论是「瓦片实验成立」，于是按 §10 把完整度对齐做完。M3 的<b>复用原则</b>：
+「无状态的定义」直接共享（造型、营救参数、音效），「有进度的系统」另建对应物（波次表、存档）——
+与 §9 定的复用边界一致，只是这条边界在 M3 画得更细。</p>
+<table>
+<tr><th>系统</th><th>处理</th><th>理由</th></tr>
+<tr><td>幸存者造型 / 营救参数 / 进度圈</td>
+<td class="ok">直接 <code>preload</code> 方块雄鹰的 <code>survivor_unit.gd</code> / <code>rescue_ring.gd</code></td>
+<td>它们是<b>自包含的静态构建器</b>（网格 + 常量表），两边共用同一份 <code>RESCUE_TRIGGER/TIME/LEAVE</code>
+——营救手感逐参数一致，且不会有第二处定义走样</td></tr>
+<tr><td>波次表 / 存档 / 结算</td><td>瓦片版自建（<code>waves.gd</code> / <code>tile_save.gd</code>）</td>
+<td>§9：原作冻结、瓦片版自建对应物。存档另立文件（见 §18.4）</td></tr>
+<tr><td>音效 / BGM</td><td class="ok">直接用 SFX autoload（<code>eagle_bgm</code>，-16dB 同值）</td>
+<td>对照实验要求「唯一变量是地貌表现形式」，听觉也必须同一套</td></tr>
+</table>
+
+<h3>18.1 幸存者救援（落位链的第二个客户）</h3>
+<p>M1 建的「落位链」（<code>tiles.landing</code> + <code>layout.features</code> + <code>_cell_xf</code> +
+排队等陆）在 M2 服务了要塞炮台，M3 服务幸存者——同一条链、同一个 <code>_pending</code> 队列，
+只加了一个 <code>surv</> 标记。两个与敌机不同的规则：</p>
+<ul>
+<li><b>幸存者没有「兜底落海」</b>：空海面上一个挥手的幸存者读不出「遇难」，等不到陆就静默放弃这一名
+（敌机的兜底是原作行为，保留）；</li>
+<li><b>悬停时停止随地面滚动</b>（<code>n.position.z -= scroll_spd·delta</code>）：不抵消的话，
+0.6 秒的起吊时间里幸存者已经被走廊拽出半径——这条与地面单位的「<code>vz</code> = 滚动速度」是同一条
+纪律的逆操作。</li>
+</ul>
+<p>交互逐参数沿用 <code>SurvivorUnit</code>：XZ 4.5 内起吊 / 6.0 外松开（不惩罚）/ 0.6s 救起 / +1000 分。
+首次出现时顶部提示「飞到幸存者上方悬停即可施救」（3.5s 自动消失）。</p>
+
+<h3>18.2 三阶段方舟 Boss</h3>
+<p><code>boss.vox</code>（17×24×6，scale 0.5——全表唯一例外，与方块雄鹰同值）+ 三阶段行为，
+结构与方块雄鹰同构、弹幕量级按本作波次表折算：</p>
+<table>
+<tr><th>阶段</th><th>条件</th><th>行为</th></tr>
+<tr><td>P1</td><td>hp &gt; 66%</td><td>5 向扇形 ×3 波 ↔ 自机狙 3 连交替</td></tr>
+<tr><td>P2</td><td>hp ≤ 66%</td><td>无人机增援（左右各一架 E3）+ <b>横扫激光</b>（预警线 0.7s → 光束 0.8s，按「玩家到线段最近距离」判定）+ 轻自机狙</td></tr>
+<tr><td>P3</td><td>hp ≤ 33%</td><td>双螺旋 + 环形</td></tr>
+</table>
+<p>阶段切换：清空全部敌弹（换招的呼吸口）+ 白/粉爆点 + 镜头抖动 + 材质逐阶段泛红（毁伤外观，
+用<b>独立材质</b>——共享材质会把全场染红）。击破：星星喷泉 40 颗 + 2000 分 + 存档计数 + 播报。</p>
+<div class="risk"><b>两个 M3 踩坑</b>：<br>
+① <b>Boss 的 layer 用 AIR 而不是 HIGH</b>——<code>altitude.gd</code> 的注释原本写着 HIGH 供
+「Boss 出场高度」，但 Boss 战必须与玩家同一平面才读得清（§15.2 的高度纪律），真放在 11.5 会让
+整个决战浮在玩家头顶 4 个单位。结论改回 AIR，<code>altitude.gd</code> 的注释同步修正——
+<b>「层」是给亮相用的，不是给决战用的</b>。<br>
+② <b>悬停位 z=-9 是按投影量出来的</b>：Boss 的 8.5×12 体量在 68° 正交下 z=-14 会顶进画面上缘的
+HUD。中间还踩了一个隐蔽的：进场目标改成 -9 后<b>完成判定仍写着 -14</b>，于是 Boss 一过 -14 就停
+（实测坐标钉在 -14.0 不动，三次调参数画面毫无反应）——两处必须同一个常量
+（<code>BOSS_HOLD_Z</code>）。<b>调「走到哪」之前先查「怎么算走到」</b>。</div>
+
+<h3>18.3 结算与存档（<code>tile_save.gd</code>）</h3>
+<p>死亡即出结算面板（得分 / 最高分+新纪录标注 / 击落 / 救援 / 方舟击破数，回车重开 / Q 返回）。
+存档手法与方块雄鹰同套（原子写 tmp→rename、版本号、默认值递归合并），但<b>另立文件</b>
+<code>user://tile_eagle_save.json</code>：那一份的字段是方块雄鹰的进度语义（货币 / 机库升级 / 奖章），
+瓦片雄鹰没有这些系统——共用一个文件只会让两边都背着一堆读不懂的字段。字段只留本作真的有的：
+<code>best</code> / <code>boss_kills</code> / <code>rescued_total</code>。</p>
+
+<h3>18.4 验收数据（<code>_play_smoke.gd</code>，262 秒跑满含 Boss 波的整张波次表）</h3>
+<table>
+<tr><th>项</th><th>实测</th></tr>
+<tr><td>幸存者</td><td class="ok">投放成功（等陆 0.0s）→ 悬停施救 0.62s 救起（RESCUE_TIME=0.6 ✓），救援数 / 得分入账</td></tr>
+<tr><td>方舟 Boss</td><td class="ok">生成 ✓ · 进场 ✓ · <b>P1 → P2 → P3 ✓</b> · 激光发射 ✓ · 击破 ✓
+· boss_kills=1 · 存档落盘 ✓</td></tr>
+<tr><td>既有回归</td><td class="ok">10 型号全出现 / 敌机峰值 8 / 敌弹 164 / 要塞甲板落位 0.85 /
+精摆段换种子逐位一致 / 能死能重开</td></tr>
+<tr><td>瓦片探针</td><td class="ok">11 种瓦水面层顶面全部 0.3000、贴边竖直面 0（fort_wall 白名单除外）</td></tr>
+</table>
+<figure><img src="../tools/tile_eagle/tile_boss.png" alt="方舟战舰" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>方舟战舰（<code>debug_spawn</code> 摆拍 + 预热 2.8s 进完场）：血条在 HUD 右上角，
+悬停位 z=-9 让 8.5×12 的体量完整落在画面上半</figcaption></figure>
+
+<h3>18.5 里程碑收官</h3>
+<table>
+<tr><th>里程碑</th><th>状态</th></tr>
+<tr><td>M0 瓦片小场景</td><td class="ok">✓ §13（瓦片走廊 + 三机位 + 并排对照图）</td></tr>
+<tr><td>M1 玩法最小集</td><td class="ok">✓ §14/§15/§16（尺度与高度分层 / 战斗层 / 水面·精英·浪尖瓦）</td></tr>
+<tr><td>M2 内容化</td><td class="ok">✓ §17（要塞走廊精摆 / terrain spec 管线 / pirate 4×4 接入）</td></tr>
+<tr><td>M3 完整度对齐</td><td class="ok">✓ §18（三阶段方舟 / 幸存者救援 / 结算 / 存档 / BGM）</td></tr>
+</table>
+<p>未做的两项都已在档：auto-tiling 边沿瓦（§17.6，暂无需求）、GridMap 备选（§11 调整 ①，
+暂无「多层立体要塞」需求）。瓦片雄鹰作为<b>对照实验田</b>的使命完成：
+它证明了「体素改瓦片」的三层管线（<code>gen_tiles.py</code> 程序化产瓦 → <code>layout.gd</code> 节奏表排布
+→ MultiMesh 行回绕渲染）能承载一套完整的小游戏，并且把这套产线的全部纪律
+（边缘无缝 / 底层水色 / 水位线分层 / 贴边余量 / 精摆与种子解耦）沉淀在了
+<code>tools/vox/README.md</code> 与本文档里——后续任何一款瓦片化的作品直接从这份纪律起步。</p>
+
+<p style="margin-top:40px;color:#5a6486">— 设计定稿于 2026-09-11（M3 实施于 2026-09-12） · demo-game · Godot 4.7.2 ·
 依据 <code>llmdoc/voxel-to-tile.html</code>（方案评估，本方案的上级文档）、
 <code>game.gd</code>（相机/滚动/环境参数走查）、<code>vox_reader.gd</code> / <code>voxel_model.gd</code>（加载管线）、
 <code>gen_pirate.py</code>（无缝平铺与色带浪纹经验）、<code>llmdoc/voxel-eagle-design.html</code>（M3.9 防穿模 / M3.13 绕序教训）。
-<b>状态：M0 / M1 / M2 已全部交付（2026-09-11）</b>——
+<b>状态：M0 / M1 / M2 / M3 已全部交付</b>——
 M1 三步（§14 尺度与高度分层、§15 玩法最小集、§16 水面动感/精英机/浪尖瓦）、
-M2（§17 要塞走廊精摆 + terrain spec 管线 + pirate 4×4 接入与兼容性结论）；
-10 型敌机、11 种瓦片、精摆段与种子逐位无关、要塞甲板可落位、瓦界零伪影；
-下一交付物为 M3 完整度对齐（§17.6）。</p>
+M2（§17 要塞走廊精摆 + terrain spec 管线 + pirate 4×4 接入与兼容性结论）、
+M3（§18 三阶段方舟 Boss / 幸存者救援 / 结算与存档 / BGM）；
+11 种瓦片、11 型敌方单位（含方舟）、精摆段与种子逐位无关、要塞甲板可落位、瓦界零伪影、最高分落盘。
+瓦片雄鹰实验收官。</p>
 
 </body>
 </html>

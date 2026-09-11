@@ -72,6 +72,9 @@ var paused := false
 var wire := false
 var clouds_on := true
 var hud_center: Label
+var hud_hint: Label
+var hud_boss: Label      # 方舟血条（M3）
+var _hint_t := 0.0
 var water_mat: ShaderMaterial            # 水面材质（water.gdshader，所有水瓦共用一份）
 var wave_on := true                      # V 键开关（出图对照用）
 ## 滚动速度（世界单位/秒）。战斗层要拿它给地面单位定 vz（与地貌严格同步），故做成变量。
@@ -95,6 +98,17 @@ func _ready() -> void:
 	_build_player()
 	_build_combat()
 	_build_hud()
+	_start_bgm()
+
+
+## BGM：与方块雄鹰同一份音源（SFX autoload 的 eagle_bgm），音量同值 -16dB。
+## 两作并排试玩时听觉也是同一套——对照实验要求「唯一变量是地貌表现形式」。
+func _start_bgm() -> void:
+	var bgm := AudioStreamPlayer.new()
+	bgm.stream = SFX.stream_for("eagle_bgm")
+	bgm.volume_db = -16.0
+	add_child(bgm)
+	bgm.play()
 
 
 # ================= 场景构建 =================
@@ -375,6 +389,13 @@ func _build_hud() -> void:
 	hud.add_theme_font_size_override("font_size", 15)
 	hud.add_theme_color_override("font_color", COL_CYAN)
 	layer.add_child(hud)
+	# 方舟血条（M3）：右上角，与方块雄鹰同位置同色
+	hud_boss = Label.new()
+	hud_boss.position = Vector2(820, 16)
+	hud_boss.add_theme_font_size_override("font_size", 20)
+	hud_boss.add_theme_color_override("font_color", COL_PINK)
+	hud_boss.visible = false
+	layer.add_child(hud_boss)
 	# 屏幕中央的告示（目前只有"被击落"）
 	hud_center = Label.new()
 	hud_center.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -384,6 +405,22 @@ func _build_hud() -> void:
 	hud_center.add_theme_color_override("font_color", COL_PINK)
 	hud_center.visible = false
 	layer.add_child(hud_center)
+	# 顶部居中的临时提示（首次出现幸存者的操作教学 / 方舟击破播报），自动消失
+	hud_hint = Label.new()
+	hud_hint.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	hud_hint.position = Vector2(0, 46)
+	hud_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hud_hint.add_theme_font_size_override("font_size", 20)
+	hud_hint.add_theme_color_override("font_color", COL_CYAN)
+	hud_hint.visible = false
+	layer.add_child(hud_hint)
+
+
+## 战斗层的临时播报（教学 / 战果），secs 秒后自动隐藏
+func hint(text: String, secs: float) -> void:
+	hud_hint.text = text
+	hud_hint.visible = true
+	_hint_t = secs
 
 
 # ================= 主循环 =================
@@ -408,7 +445,7 @@ func _process(delta: float) -> void:
 		# 无敌期间机身上下闪烁（与方块雄鹰同一手法）
 		player.set_blink(combat.invuln > 0.0 and fmod(combat.invuln, 0.24) < 0.12)
 	_update_camera()
-	_refresh_hud()
+	_refresh_hud(delta)
 
 
 func _update_camera() -> void:
@@ -430,7 +467,7 @@ func _update_camera() -> void:
 	cam.look_at(target)
 
 
-func _refresh_hud() -> void:
+func _refresh_hud(delta: float) -> void:
 	var inst := 0
 	for j in VIS_ROWS:
 		inst += row_slots[j].size()
@@ -438,8 +475,9 @@ func _refresh_hud() -> void:
 	var armor_txt := ""
 	for i in Combat.ARMOR_MAX:
 		armor_txt += "◆" if i < combat.armor else "◇"
-	hud.text = "分数 %d   装甲 %s   星 %d   击落 %d   敌机 %d%s\n瓦片雄鹰 M1   FPS %d   实例 %d   绘制 %d   种子 %d · 空域 %.1f · 云 %.0f~%.0f · 水波 %s%s      F1/F2/F5 相机  F3 阴影  C 云  V 水波  P 暂停  R 重摇  G 网格  Q 返回" % [
+	hud.text = "分数 %d   装甲 %s   星 %d   击落 %d   敌机 %d   救援 %d%s\n瓦片雄鹰 M3   FPS %d   实例 %d   绘制 %d   种子 %d · 空域 %.1f · 云 %.0f~%.0f · 水波 %s%s      F1/F2/F5 相机  F3 阴影  C 云  V 水波  P 暂停  R 重摇  G 网格  Q 返回" % [
 		combat.score, armor_txt, combat.star_cnt, combat.kills, combat.enemy_count(),
+		combat.rescued,
 		"  [暂停]" if paused else "",
 		Engine.get_frames_per_second(), inst, dc, layout.seed_val,
 		Altitude.AIR, Altitude.CLOUD_LO, Altitude.CLOUD_HI,
@@ -448,7 +486,27 @@ func _refresh_hud() -> void:
 	]
 	hud_center.visible = combat.dead
 	if combat.dead:
-		hud_center.text = "被 击 落\n\n按 回车 重开"
+		# 结算面板（M3）：分数 / 最高分（新纪录标注）/ 击落 / 救援 / 方舟，回车重开
+		var nb := "   ★新纪录" if combat.new_best else ""
+		hud_center.text = "被 击 落\n\n得分 %d    最高 %d%s\n击落 %d    救援 %d    方舟 %d\n\n按 回车 重开      Q 返回" % [
+			combat.score, combat.best, nb,
+			combat.kills, combat.rescued, combat.boss_kills]
+	if _hint_t > 0.0:
+		_hint_t -= delta
+		if _hint_t <= 0.0:
+			hud_hint.visible = false
+	# 方舟血条（M3）：进场中显示「接近中」，进完场显示百分比
+	var bi: Dictionary = combat.boss_info()
+	if bi.is_empty():
+		hud_boss.visible = false
+	else:
+		hud_boss.visible = true
+		if bool(bi.get("entering", false)):
+			hud_boss.text = "方舟战舰 接近中…"
+		else:
+			var frac := float(bi["hp"]) / float(bi["hp_max"])
+			var bars := int(round(frac * 12.0))
+			hud_boss.text = "方舟战舰 " + "■".repeat(bars) + "□".repeat(12 - bars) + " %d%%" % int(frac * 100.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
