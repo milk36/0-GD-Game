@@ -37,17 +37,33 @@ const CREST_BANDS: Array = [
 	{"row": 26, "n": 22, "crest": 0.07},
 ]
 
-## 手工段落（行 40~47）：字面量示范「可设计」——对角礁石引导线 + 浪尖带。
-## 字符映射：. = 交给海面填充  a/b/c = 对应海瓦  C = 浪尖  r = 礁石（rot 按行列号确定性取）
+## 手工段落（行 34~47，共 14 行）：**要塞走廊** —— M2 的「可设计、可复现」精摆段。
+##
+## 【与程序段的分界】这一段是**字面量**：完全不看种子，重摇（R 键）也一动不动；
+## 种子只影响前 34 行的程序段。于是「设计师摆的走廊」和「程序随机的走廊」在同一条
+## 走廊里各占一段，且各自的性质都成立。
+##
+## 【读图约定】第 1 行 = 最近端（row 34），最后一行 = 最远端（row 47）——与屏幕上下相反，
+## 屏幕上要塞在走廊远处「迎面而来」。
+## 字符映射：. = 交给海面填充  a/b/c = 对应海瓦  C = 浪尖  r = 礁石
+##           D = dock_2x2   W = fort_wall   T = fort_tower   G = fort_gate   F = fort_4x4
+## 超级瓦字符标在「锚点」= 跨度里最远的一行 + 最左一列（与 `_stamp_feature` 同一约定，
+## 这样释放/生成永远发生在屏幕之外）。
 const HAND_SECTION: Array[String] = [
-	".............",
-	"....r........",
-	".........r...",
-	"......C......",
-	".............",
-	".........r...",
-	"....r........",
-	".............",
+	".............",    # 34 开阔水（接近段，给玩家看清要塞轮廓留距离）
+	"......D......",    # 35 码头 2×2（rows 34~35 · cols 6~7）
+	".............",    # 36 ┒
+	".............",    # 37 ┃ 要塞 4×4（rows 36~39 · cols 4~7）—— 走廊的地标
+	".............",    # 38 ┃
+	"....F........",    # 39 ┚ 锚点
+	"...T.....T...",    # 40 两座翼塔，夹出「进港水道」
+	".............",    # 41
+	"..WWTWW......",    # 42 城墙线：墙-墙-塔-墙-墙（塔当门楼）
+	".............",    # 43
+	".........r...",    # 44 礁（航道收窄的提示）
+	"....r........",    # 45 礁
+	".............",    # 46
+	"......T......",    # 47 远端哨塔（走廊尽头的收束）
 ]
 
 var seed_val: int = DEFAULT_SEED
@@ -109,26 +125,60 @@ func _stamp_feature(rng: RandomNumberGenerator, f: Dictionary) -> void:
 	features.append({"tile": id, "row0": r0, "col0": c0, "span": span})
 
 
+## 手工段的字符 → 瓦片。超级瓦（D/F）的字符标在**锚点**上：跨度里最远的一行 + 最左一列，
+## 与 `_stamp_feature` 的记录行约定一致（否则 4×4 的要塞会在屏幕内凭空消失/出现）。
+const HAND_TILES := {
+	"a": "sea_a", "b": "sea_b", "c": "sea_c", "C": "sea_crest", "r": "reef_s",
+	"D": "dock_2x2", "W": "fort_wall", "T": "fort_tower", "G": "fort_gate", "F": "fort_4x4",
+}
+
+
 func _sec_hand() -> void:
 	var r0 := ROWS - HAND_SECTION.size()
+	# 【必须两遍】第一遍只摆超级瓦。超级瓦的跨度会伸进「比锚点更近的几行」，
+	# 而那些行的 '.' 若先被海面填充占掉，图章一查 used_mask 就得整块放弃——
+	# 表现就是「要塞/码头根本没摆上，走廊里只剩程序段的岛」（M2 实测踩到）。
 	for i in HAND_SECTION.size():
 		var line: String = HAND_SECTION[i]
 		for c in mini(line.length(), COLS):
-			var id := ""
-			var rot := 0
-			match line[c]:
-				".": pass
-				"a": id = "sea_a"
-				"b": id = "sea_b"
-				"c": id = "sea_c"
-				"C": id = "sea_crest"
-				"r":
-					# 礁石也一律 rot=0：它的底色水面已改成与海面瓦同分布（带浪带），
-					# 旋转 90° 会把浪带相位也转过去 → 瓦界浪纹断开（waves/sea 同一条纪律）。
-					id = "reef_s"
-					rot = 0
+			var id: String = HAND_TILES.get(line[c], "")
+			if id != "" and Tiles.span_of(id) > 1:
+				_stamp_at(r0 + i, c, id)
+	# 第二遍：单格瓦 + '.' 的确定性海面填充
+	for i in HAND_SECTION.size():
+		var line: String = HAND_SECTION[i]
+		for c in mini(line.length(), COLS):
+			var id: String = HAND_TILES.get(line[c], "")
 			if id != "":
-				_set_cell(r0 + i, c, id, rot)
+				if Tiles.span_of(id) > 1:
+					continue                      # 第一遍已盖章
+				# 手工段一律确定性 rot：礁石也 rot=0（底色带浪带，见 §16.3），
+				# 结构瓦的朝向由设计师在图上直接决定，不引入随机
+				_set_cell(r0 + i, c, id, 0)
+			elif line[c] == ".":
+				# 精摆段的「空格」也**不吃随机数**：走固定序号取海面变体。
+				# 否则这一段的填充要从共享 rng 抽样 → 整段随种子变，「精摆段与种子无关」
+				# 就只剩结构那一半。固定序号让 14 行逐字节可复现（_play_smoke 的验收项）。
+				_set_cell(r0 + i, c, SEA_VARIANTS[(i * 5 + c * 3) % SEA_VARIANTS.size()], 0)
+
+
+## 手工段的超级瓦图章：与 `_stamp_feature` 同一套落位/掩码/登记逻辑，只是列位来自字面量
+## （不掷随机）→ 精摆段与种子完全无关。
+func _stamp_at(r_far: int, c0: int, id: String) -> void:
+	var span: int = Tiles.span_of(id)
+	var r0: int = r_far - span + 1                # 字符标在最远行 → 反推最靠近相机的一行
+	if r0 < 0 or c0 + span > COLS:
+		return
+	for dy in span:
+		for dx in span:
+			if used_mask[r0 + dy][c0 + dx]:
+				return                            # 与其它特征冲突则整块不摆（宁可缺，不叠瓦）
+	rows[r_far].append({"tile": id, "col": c0, "rot": 0})
+	for dy in span:
+		for dx in span:
+			used_mask[r0 + dy][c0 + dx] = true
+			high_mask[r0 + dy][c0 + dx] = true
+	features.append({"tile": id, "row0": r0, "col0": c0, "span": span})
 
 
 func _fill_sea(rng: RandomNumberGenerator, r0: int, n: int, crest_p: float) -> void:

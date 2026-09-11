@@ -5,9 +5,15 @@ extends SceneTree
 const Tiles = preload("res://scripts/tile_eagle/tiles.gd")
 const TILE_HALF := 8.0   # 单格 16 体素的半宽
 
+## 刻意「跨瓦连续」的结构瓦：墙体沿 x 顶满瓦边，相邻同类瓦接上后是连续墙线，
+## 露出的断面就是墙的收头 —— 这是设计意图，不是接缝伪影（README §3.8 边缘余量条目）。
+## 除此之外任何瓦的贴边竖直面都必须为 0。
+const EDGE_OK := ["fort_wall"]
+
 
 func _initialize() -> void:
-	for id in ["sea_a", "sea_crest", "island_4x4", "island_2x2", "sandbar_2x2", "reef_s"]:
+	for id in ["sea_a", "sea_crest", "island_4x4", "island_2x2", "sandbar_2x2", "reef_s",
+			"fort_4x4", "fort_wall", "fort_tower", "fort_gate", "dock_2x2"]:
 		_probe(id)
 	quit(0)
 
@@ -49,8 +55,9 @@ func _probe(id: String) -> void:
 	# 水面层顶面落在哪个世界高度：水面层是网格的最低面，AABB.min.y 就是它，
 	# 世界高度 = (AABB.min.y + off.y) × 0.3。**全体瓦片必须都等于 0.30**
 	# （= altitude.gd 的 SEA）——不等就说明锚点/分层烘焙又错位了，瓦界会露出台阶。
-	print("    水面层顶面世界 y = %.4f（期望 0.3000）   三角面 %d   贴瓦边的侧立面顶点 = %d"
-			% [(m.get_aabb().position.y + off.y) * 0.3, tris, edge_side])
+	print("    水面层顶面世界 y = %.4f（期望 0.3000）   三角面 %d   贴瓦边的侧立面顶点 = %d%s"
+			% [(m.get_aabb().position.y + off.y) * 0.3, tris, edge_side,
+				"（跨瓦连续结构，允许）" if EDGE_OK.has(id) and edge_side > 0 else ""])
 	print("    顶点范围 %s .. %s" % [str(all_min), str(all_max)])
 	if not samples.is_empty():
 		print("    样例：", ", ".join(samples))

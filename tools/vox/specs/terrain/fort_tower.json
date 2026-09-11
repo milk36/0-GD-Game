@@ -1,0 +1,12 @@
+{
+  "name": "fort_tower",
+  "span": 1,
+  "notes": "要塞哨塔：八角塔身 + 垛口环 + 顶台。塔身 9 体素高（2.7 世界单位），是结构瓦里最高的一档——走廊里当「远处有情况」的地标读。",
+  "parts": [
+    { "op": "oct", "cx": 7, "cy": 7, "r": 5, "cut": 2, "z": [1, 1], "col": "ROCK2" },
+    { "op": "oct", "cx": 7, "cy": 7, "r": 4, "cut": 2, "z": [2, 7], "col": "ROCK", "edge": { "col": "ROCK2", "mode": "ring" } },
+    { "op": "oct", "cx": 7, "cy": 7, "r": 3, "cut": 2, "z": [8, 8], "col": "ROCK" },
+    { "op": "ring", "cx": 7, "cy": 7, "r_in": 2, "r_out": 3, "z": [9, 9], "col": "ROCK_TOP" },
+    { "op": "dots", "col": "ROCK2", "pts": [[7, 7, 9], [7, 7, 10]] }
+  ]
+}

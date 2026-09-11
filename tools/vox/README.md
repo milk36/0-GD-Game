@@ -29,8 +29,10 @@
 | `tools/vox/pngsheet.py` | 把多张 PNG 拼成接触表（纯标准库 PNG 解码，替代 PIL） |
 | `tools/tile_eagle/shot.gd` | 瓦片雄鹰出图验收：三机位 + 关云 + 关阴影 + 关水波 + 战斗图 + 精英取景图，用 `debug_seek` 固定构图（同种子逐像素可复现） |
 | `tools/tile_eagle/_mesh_probe.gd` | 瓦片回归探针（headless）：AABB / off / 三角面数 / 贴瓦边的竖直面顶点数 / 水面层顶面世界高度 |
-| `tools/tile_eagle/_play_smoke.gd` | M1 玩法冒烟（headless）：固定步长跑满波次表（240s，含精英段），查敌机生成 / 分层落位 / 落岛高度 / 弹幕峰值 / 击杀 / 死亡重开 |
+| `tools/tile_eagle/_play_smoke.gd` | M1/M2 玩法冒烟（headless）：固定步长跑满波次表（240s，含精英段），查敌机生成 / 分层落位 / 落岛高度 / 弹幕峰值 / 击杀 / 死亡重开 / **精摆段与种子逐位无关** |
 | `tools/tile_eagle/_probe_wave.gd` | 水面 shader 诊断（headless 出图）：把浪光 sheen 放大 5.3 倍，肉眼判据「亮度栅格是否跨瓦连续」——若相位锚在局部坐标会按瓦格重置、露出 100px 见方的错位格 |
+| `tools/vox/terraintile.py` | 地形/结构瓦 spec 编译器（M2）：复用 voxspec 的 op 展开，另立地形 schema；`build specs/terrain` 一条命令批量产出 |
+| `tools/vox/gen_pirate_tiles.py` | 外来 64×64 资产 → 4×4 超级瓦的接入管线（M2）：平移对齐 / 补水面板 / 整体抬 1 体素，附兼容性报告 |
 | `scenes/unit_review.tscn` + `scripts/voxel_eagle/unit_review.gd` | 单位审查场景：全单位 4×3 阵列，快捷键切机位（1=正交 34 游戏机位认物 / 2 等距 / 3 特写） |
 | `scripts/voxel_eagle/vox_reader.gd` | GDScript 运行时 .vox 解析器 → ArrayMesh |
 | `assets/vox/island_scene.vox` | 产物：小岛场景（48×49×21，19295 体素，11 色；v2 起无水体，贴地生长） |
@@ -318,12 +320,52 @@ M0 的 1×1 `isle_grass` / `isle_sand` **已废弃删除**——1×1 的岛在 6
 | 字段 | 内容 |
 |---|---|
 | `heights` | `PackedFloat32Array`，下标 `(z−mn.z)·sx + (x−mn.x)`，值 = 该列顶面的**世界 y** |
-| `shore` | 沙面列（世界 y ≤ 0.75）的**网格局部坐标**列表——地面单位落岛时的岸线候选点 |
+| `landing` | 可落位列的**网格局部坐标**列表——岸线沙面（0.60）+ 可站立平台面（≤3.0，M2 起含要塞甲板/城墙顶） |
 
 **关键恒等式**：世界 y = `(列顶体素数 + 1) × 0.3`，与瓦片的均值基准无关
 （因为 `off.y ≡ mean_key.y`），所以水面恒 0.30、沙滩恒 0.60、草丘恒 0.90~1.50。
-落点的世界坐标 = **瓦片实例变换 × `shore[i]`**（game.gd `_cell_xf`），
+落点的世界坐标 = **瓦片实例变换 × `landing[i]`**（game.gd `_cell_xf`），
 与画瓦片用的是同一份变换，因此"反算的落点"和"看到的瓦片"不可能对不上。
+（M1 时这个字段叫 `shore`、只收沙面；M2 要塞是石头结构，只认沙面会让炮台永远上不了要塞。）
+
+---
+
+## 3.9 terraintile.py —— 地形/结构瓦 spec 编译器（M2）
+
+    python terraintile.py build specs/terrain     # 批量：目录下全部 .json
+    python terraintile.py check specs/terrain/fort_wall.json
+
+与 `voxspec.py`（单位编译器）的关系是**「共用 op 展开，另立 schema」**：op 层直接调
+`voxspec.compile_part`，校验层换地形瓦自己的约束——
+
+| 约束 | 内容 |
+|---|---|
+| 画布 | `16 × span`（span ∈ 1/2/4），越界体素编译期报错 |
+| **禁写 z=0** | 那一层属于水面板（自动铺一张与 `sea_*` 同源的），内容必须从 z=1 长起 |
+| 高度 | ≤ 24 体素 = 7.2 世界单位 |
+| 镜像 | 不支持 `symbox` / `profile` / `mirror`——16 宽瓦的对称轴在 7.5，整数轴镜像必偏半格 |
+
+调色板 `TILE_PALETTE` 直接引用 `gen_tiles` 的共享色库（含 M2 新增 `WOOD`/`WOOD2`），
+结构瓦与程序化瓦永远同色。M2 产出 4 张：`fort_wall` / `fort_tower` / `fort_gate` / `dock_2x2`。
+
+**贴边余量条目的边界**：那条纪律管的是**水线附近的碎块**（浪尖泡沫/礁石），不是跨瓦连续结构——
+`fort_wall` 刻意沿 x 顶满瓦边，相邻同类瓦接上后是连续墙线。探针的 `EDGE_OK` 白名单登记了这一条例外。
+
+## 3.10 gen_pirate_tiles.py —— 外来 64×64 资产接入（M2）
+
+    python gen_pirate_tiles.py
+    # → assets/vox/tiles/fort_4x4.vox + 控制台兼容性报告
+
+把 `assets/vox/pirate/pirate_fort.vox` 接成 span=4 超级瓦。**兼容性结论：能接入，但 3 处必须归一**
+（完整报告见 `llmdoc/tile-eagle-design.html` §17.1）：
+
+| # | 冲突 | 归一动作 |
+|---|---|---|
+| ① | 内容包围盒不是 16 的倍数（55×49） | 平移到原点即可——span 只管占位掩码，几何由 AABB 居中 |
+| ② | z=0 底层覆盖 54% 且没有一滴水 | 用 `_sea_color` 补齐整张 64×64 水面板（与海面瓦同源 → 瓦界无缝） |
+| ③ | 外来底层与水面同高（y=0.30） | **整个结构抬 1 体素**——否则游戏端水面材质按「朝上的面 × y<水位线」判定时，沙滩会被误判成水跟着起伏 |
+
+配色不做 remap：外来陆上结构与本产线 ROCK2/SAND2/GRASS 同族，直接保留。
 
 ---
 

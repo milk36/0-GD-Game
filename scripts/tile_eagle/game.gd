@@ -162,7 +162,7 @@ func _build_tiles() -> void:
 	var z_far := -(NEAR_ROWS + float(VIS_ROWS) + 6.0) * Tiles.TILE
 	var z_near := (NEAR_ROWS + 6.0) * Tiles.TILE
 	var aabb := AABB(Vector3(-half_x, -1.0, z_far),
-			Vector3(half_x * 2.0, 12.0, z_near - z_far))
+			Vector3(half_x * 2.0, 14.0, z_near - z_far))
 	# 瓦片材质：**全部瓦片共用这一份** ShaderMaterial（water.gdshader）。水面/陆地的区分
 	# 在 shader 里按「朝上的面 × 世界 y < 水位线」完成 —— 岛/礁/沙洲的 z=0 层就是水面板，
 	# 于是岛周围那圈水也跟着整片海一起起伏，不会留下一块"海在动、这块不动"的方斑。
@@ -335,15 +335,16 @@ func _screen_row(row_layout: int) -> int:
 	return posmod(row_layout - abs_row + (VIS_ROWS - 1), Layout.ROWS)
 
 
-## 在"还在屏幕外 1~8 行"的超级瓦里挑一个岸线列，作为地面单位落点（世界坐标）。
-## `x_target` 是要落位的单位原本的列位——取最接近它的岸线列，让一组（如左右 -8/+8）
-## 落在岛上后仍然左右分开。返回 Vector3.INF 表示当前没有合适陆地（调用方兜底落海面）。
+## 在"还在屏幕外 1~8 行"的超级瓦里挑一个**可落位**列，作为地面单位落点（世界坐标）。
+## `x_target` 是要落位的单位原本的列位——取最接近它的可落位列，让一组（如左右 -8/+8）
+## 落在陆上后仍然左右分开。返回 Vector3.INF 表示当前没有合适陆地（调用方兜底落海面）。
 ##
-## 为什么必须走瓦片实例变换反算：地面单位的 y 要贴岛的沙面、x/z 要落在岛的轮廓内，
+## 为什么必须走瓦片实例变换反算：地面单位的 y 要贴地面、x/z 要落在轮廓内，
 ## 这两件事只有瓦片自己的网格与变换知道（tiles.gd 的列高表 + 本文件的 `_cell_xf`）。
 ## 为什么只取"屏幕外"：落点若已进屏，地面炮台会在玩家眼前凭空出现。
-## 窗口宽度是"陆地命中率"的旋钮：每张超级瓦在 48 行里只被 8 行窗口命中一次，
-## 4 张瓦 → 约 2/3 的地面单位能落岛，其余兜底落海（兜底也是方块雄鹰的原行为，不算异常）。
+## 窗口宽度是"陆地命中率"的旋钮：每张超级瓦在 48 行里只被 11 行窗口命中一次。
+## M2 起可落位列 = 岸线沙面 + 要塞甲板/城墙顶（tiles.gd `_fill_columns` 的 landing），
+## 所以炮台能真正摆上要塞——否则要塞走廊就退化成纯背景板。
 func _land_spot(x_target: float) -> Vector3:
 	var best := Vector3.INF
 	var best_d := 1e9
@@ -353,11 +354,11 @@ func _land_spot(x_target: float) -> Vector3:
 		if j < VIS_ROWS or j > VIS_ROWS + 10:
 			continue                                     # 只认"还没进屏、11 行之内会进"的瓦
 		var td: Dictionary = Tiles.get_tile(f.tile)
-		var shore: Array = td.get("shore", [])
-		if shore.is_empty():
+		var landing: Array = td.get("landing", [])
+		if landing.is_empty():
 			continue
 		var xf := _cell_xf(int(f.col0), j, span, td.off, 0)
-		for sp in shore:
+		for sp in landing:
 			var w: Vector3 = xf * sp
 			var d := absf(w.x - x_target)
 			if d < best_d:

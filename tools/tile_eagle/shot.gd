@@ -32,6 +32,10 @@ const SHOTS := [
 	{"mode": 0, "name": "tile_cam68_noshadow.png", "clouds": false, "shadow": false},
 	# 水面顶点动感的唯一变量对照（V 键的 off 状态）：材质/网格/衰减全不动，只把 wave_amp 置 0
 	{"mode": 0, "name": "tile_cam68_nowave.png", "clouds": false, "wave": false},
+	# M2 要塞走廊（layout.gd 的手工精摆段，rows 34~47）：seek=45 让 4×4 要塞正好居中
+	# （要塞远行 39 → 屏幕行 j = 39−45+13 = 7 → z = −9.6；近行 36 → z = +4.8，跨相机观察点）。
+	# 14 行的精摆段塞不进一个 68° 视野（可见带只有 ~8 行），这张取「码头+要塞+翼塔」主组。
+	{"mode": 0, "name": "tile_fort.png", "clouds": true, "seek": 45},
 	# 战斗图放最后：它不跳行（跳行会把已生成的敌机和地貌错开），改为先确定性空跑一段，
 	# 让第 1 波地面炮台走到玩家附近再冻结。
 	{"mode": 0, "name": "tile_combat.png", "clouds": false, "combat": true, "seek": 0},
@@ -116,7 +120,7 @@ func _initialize() -> void:
 						int(((combat as Node).get("eb") as MultiMeshInstance3D).get("count")),
 						(combat as Node).get("kills")])
 		else:
-			inst.call("debug_seek", SEEK_ROW)       # 固定构图 + 复位玩家与云带
+			inst.call("debug_seek", int(shot.get("seek", SEEK_ROW)))   # 固定构图 + 复位玩家与云带
 		inst.set("paused", true)                    # 冻结滚动，同机位截图逐像素可复现
 		for i in SETTLE:
 			await process_frame

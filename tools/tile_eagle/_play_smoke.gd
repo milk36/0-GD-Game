@@ -8,6 +8,7 @@ extends SceneTree
 
 const SCENE := "res://scenes/tile_eagle.tscn"
 const DT := 1.0 / 60.0
+const Layout = preload("res://scripts/tile_eagle/layout.gd")
 ## 必须 ≥ 波次表最后一组的时间（waves.gd 的精英段末组 t=232）——否则精英段根本没被跑到。
 ## 240 秒 × 60 帧 = 14400 步，headless 下十几秒即可跑完。
 const SECONDS := 240.0
@@ -68,7 +69,7 @@ func _initialize() -> void:
 	print("=== 跑完 %.0f 秒（%d 帧）===" % [SECONDS, steps])
 	print("  敌机峰值 = %d   敌弹峰值 = %d" % [peak_enemies, peak_eb])
 	print("  击落 = %d   得分 = %d   拾星 = %d" % [combat.get("kills"), combat.get("score"), combat.get("star_cnt")])
-	print("  地面单位脚底 y ∈ [%.2f, %.2f]（0.55 = 落在岛上沙滩面；0.25 = 兜底落海面）"
+	print("  地面单位脚底 y ∈ [%.2f, %.2f]（0.55 = 岛上沙滩面；0.85 = 要塞甲板/码头面；0.25 = 兜底落海面）"
 			% [ground_y_min, ground_y_max])
 	print("  地面单位落位 x ∈ [%.1f, %.1f]（期望在走廊 ±31 内）" % [ground_x_min, ground_x_max])
 	print("  没赶上岛、兜底落海面的次数 = %d（期望远小于总生成数）" % combat.get("land_miss"))
@@ -97,4 +98,20 @@ func _initialize() -> void:
 	combat.call("reset")
 	print("  重开后：装甲 = %d   dead = %s   分数 = %d"
 			% [combat.get("armor"), str(combat.get("dead")), combat.get("score")])
+
+	# M2 验收项：精摆段（要塞走廊）必须与种子无关 —— 换种子重建布局后逐位一致。
+	# 这是「设计师摆的走廊」的成立前提：R 键重摇只影响程序段，精摆段一动不动。
+	var n_hand: int = Layout.HAND_SECTION.size()
+	var before: Array = []
+	var lay = inst.get("layout")
+	for r in range(Layout.ROWS - n_hand, Layout.ROWS):
+		before.append(str(lay.rows[r]))
+	lay.set("seed_val", 987654321)
+	lay.build()
+	var same := true
+	for i in n_hand:
+		if str(lay.rows[Layout.ROWS - n_hand + i]) != before[i]:
+			same = false
+	print("  精摆段与种子无关：%s（%d 行逐位比对）"
+			% ["一致 ✓" if same else "不一致 ✗（精摆段被种子改动了）", n_hand])
 	quit(0)
