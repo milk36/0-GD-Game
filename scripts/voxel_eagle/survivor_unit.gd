@@ -126,16 +126,17 @@ static func mark_bob(ex: MeshInstance3D, t: float) -> void:
 	ex.position.y = MARK_Y + sin(t * 4.0) * 0.25
 
 
-## 被起吊中的位移/缩放：prog 0→1 表示从地面升到顶。返回 true = 已完成
-static func apply_rescue_progress(n: Node3D, prog: float) -> bool:
-	n.position.y = BASE_Y + prog * RESCUE_LIFT
+## 被起吊中的位移/缩放：prog 0→1 表示从立足面升到顶。返回 true = 已完成
+## base_y 为幸存者立足面高度（岛上/礁石顶与海面不同，由游戏侧传入）
+static func apply_rescue_progress(n: Node3D, prog: float, base_y := BASE_Y) -> bool:
+	n.position.y = base_y + prog * RESCUE_LIFT
 	n.scale = Vector3.ONE * (SCALE * (1.0 - prog * RESCUE_SHRINK))
 	return prog >= 1.0
 
 
-## 松开绳索：回到地面原状
-static func reset_rescue(n: Node3D) -> void:
-	n.position.y = BASE_Y
+## 松开绳索：回到立足面原状
+static func reset_rescue(n: Node3D, base_y := BASE_Y) -> void:
+	n.position.y = base_y
 	n.scale = Vector3.ONE * SCALE
 
 

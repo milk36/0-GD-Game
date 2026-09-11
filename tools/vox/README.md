@@ -29,7 +29,7 @@
 | `tools/vox/pngsheet.py` | 把多张 PNG 拼成接触表（纯标准库 PNG 解码，替代 PIL） |
 | `scenes/unit_review.tscn` + `scripts/voxel_eagle/unit_review.gd` | 单位审查场景：全单位 4×3 阵列，快捷键切机位（1=正交 34 游戏机位认物 / 2 等距 / 3 特写） |
 | `scripts/voxel_eagle/vox_reader.gd` | GDScript 运行时 .vox 解析器 → ArrayMesh |
-| `assets/vox/island_scene.vox` | 产物：小岛场景（72×72×29，32946 体素，14 色） |
+| `assets/vox/island_scene.vox` | 产物：小岛场景（48×49×21，19295 体素，11 色；v2 起无水体，贴地生长） |
 | `assets/vox/island_scene_preview.png` | 产物：等距预览图（自检用，不参与游戏） |
 
 运行 Python 用任意 3.8+ 均可（无第三方依赖）：

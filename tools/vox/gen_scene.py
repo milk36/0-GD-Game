@@ -1,10 +1,14 @@
-"""示例：程序化生成一座体素小岛场景（.vox），并渲染等距预览图。
+"""程序化生成一座体素小岛（.vox），并渲染等距预览图。
 
-演示用 voxlib 绕开 MagicaVoxel GUI 直接"造场景"：
-    地形（值噪声高度图）+ 海洋 + 沙滩 + 树木 + 小屋
+用 voxlib 绕开 MagicaVoxel GUI 直接"造场景"：
+    值噪声高度场 + 径向衰减成岛 + 沙滩带 + 树木 + 小屋 + 岸礁
 产出：
     ../../assets/vox/island_scene.vox   可直接用 MagicaVoxel 打开继续编辑
     _preview_island.png                 自检预览图
+
+v2（2026-09-11）：去除水体——沿用 gen_pirate.py 的设计约定「不写水体积素」，
+所有内容从 z=0 往上长，海面由游戏的海面片提供（旧版自带方形海洋底座，
+在游戏里呈现为凸出海面的蓝色方台）。
 
 运行：
     python gen_scene.py
@@ -17,13 +21,9 @@ import os
 import voxlib
 
 SIZE = (72, 72, 30)
-WATER = 5          # 海平面
 SEED = 20260910
 
-# 调色板（RGB）
-C_DEEP = (24, 52, 96)
-C_WATER = (38, 92, 160)
-C_SHALLOW = (58, 130, 190)
+# 调色板（RGB）——无水体色，11 色
 C_SAND = (222, 202, 140)
 C_GRASS = (86, 158, 74)
 C_GRASS2 = (64, 132, 60)
@@ -38,7 +38,7 @@ C_DOOR = (84, 56, 34)
 
 
 def value_noise(w, h, scale, rng):
-    """双线性插值 + 3 倍频的简易值噪声，返回 [0,1] 高度场。"""
+    """双线性插值 + 3 倍频的简易值噪声，返回采样函数。"""
     gw, gh = w // scale + 2, h // scale + 2
     grid = [[rng.random() for _ in range(gw)] for _ in range(gh)]
 
@@ -66,44 +66,40 @@ def build():
     cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
     vox = {}
 
-    def top_color(hh):
+    def top_color(hh, x, y):
         if hh >= 22:
             return C_SNOW
         if hh >= 18:
             return C_ROCK
-        if hh <= WATER + 1:
+        if hh <= 3:
             return C_SAND
         return C_GRASS if (x * 7 + y * 13) % 5 else C_GRASS2
 
-    # ---- 地形 + 海洋
+    # ---- 地形（贴地生长：hh<=0 为海面空缺，不写任何体素）
     heights = {}
     for y in range(h):
         for x in range(w):
             d = math.hypot(x - cx, y - cy) / (min(w, h) / 2.0)
-            e = n1(x / 18.0, y / 18.0) * 0.55 \
-                + n2(x / 7.0, y / 7.0) * 0.30 \
-                + n3(x / 3.0, y / 3.0) * 0.15
-            e = e * 1.25 - max(0.0, d - 0.55) * 1.9   # 径向衰减 → 岛
+            e = n1(x / 18.0, y / 18.0) * 0.55                 + n2(x / 7.0, y / 7.0) * 0.30                 + n3(x / 3.0, y / 3.0) * 0.15
+            e = e * 1.25 - max(0.0, d - 0.42) * 2.2   # 径向衰减 → 岛（岸线略外扩）
             hh = int(e * 26)
-            hh = max(-4, min(depth - 2, hh))
+            hh = max(0, min(depth - 2, hh))
             heights[(x, y)] = hh
-
-            if hh <= WATER:  # 水下/海面
-                floor = max(0, hh)
-                for z in range(0, floor + 1):
-                    vox[(x, y, z)] = C_SAND if hh >= WATER - 2 else C_ROCK
-                if hh < WATER:
-                    surf = C_SHALLOW if hh >= WATER - 2 else (C_WATER if hh >= 1 else C_DEEP)
-                    for z in range(hh + 1, WATER + 1):
-                        vox[(x, y, z)] = surf
+            if hh == 0:
                 continue
+            inner = C_SAND if hh <= 3 else C_ROCK
+            for z in range(0, hh + 1):  # 实心柱落到 z=0
+                vox[(x, y, z)] = top_color(hh, x, y) if z == hh else inner
 
-            for z in range(max(0, hh - 3), hh + 1):  # 实心柱
-                vox[(x, y, z)] = top_color(hh) if z == hh else C_ROCK
+    # ---- 岸礁：低矮沙滩外缘散几块灰礁石
+    shore = [(x, y) for (x, y), hh in heights.items() if hh == 1]
+    rng.shuffle(shore)
+    for (x, y) in shore[:9]:
+        vox[(x, y, 1)] = C_ROCK if (x + y) % 2 else (146, 146, 154)
 
     # ---- 树木
     spots = [(x, y) for (x, y), hh in heights.items()
-             if WATER + 2 <= hh <= 14 and 2 < x < w - 3 and 2 < y < h - 3]
+             if 5 <= hh <= 14 and 2 < x < w - 3 and 2 < y < h - 3]
     rng.shuffle(spots)
     placed = []
     for (x, y) in spots:
@@ -135,11 +131,13 @@ def build():
                        for dx in range(-3, 5) for dy in range(-3, 5))
             if flat > best:
                 best, bx, by = flat, x, y
-    ground = max(best, WATER + 1)
+    ground = max(best, 3)
     for dx in range(-3, 4):
         for dy in range(-3, 4):
-            for z in range(ground, heights[(bx + dx, by + dy)] + 1):
-                vox[(bx + dx, by + dy, z)] = C_SAND  # 找平地基
+            for z in range(0, heights[(bx + dx, by + dy)] + 1):
+                vox[(bx + dx, by + dy, z)] = C_SAND  # 找平地基（落到底）
+            for z in range(heights[(bx + dx, by + dy)] + 1, ground + 1):
+                vox[(bx + dx, by + dy, z)] = C_SAND
     wall_h = 4
     for dx in range(-3, 4):
         for dy in range(-3, 4):

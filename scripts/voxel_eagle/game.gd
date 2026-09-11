@@ -95,7 +95,10 @@ var reefs: Array = []          # 暗礁岩石 Node3D
 var wrecks: Array = []         # 燃烧沉船 Node3D
 var fires: Array = []          # 火焰动画 dict 列表
 var clouds: Array = []         # 云朵 dict 列表（视差）
-var survivors: Array = []      # 幸存者 dict 列表
+var survivors: Array = []      # 幸存者 dict 列表（含 anchor_y 立足面高度）
+var _island_cols := {}         # 体素岛滩涂列缓存 {Vector2i: 列顶高(体素)}，首次锚定懒加载
+var _island_cols_mn := Vector2i.ZERO   # 列表 x/z 最小键（算网格中心用）
+var _island_cols_mx := Vector2i.ZERO   # 列表 x/z 最大键
 var missiles: Array = []       # 僚机追踪弹 dict 列表
 var rope: MeshInstance3D       # 救援绳索（细长方块）
 var laser_warn: MeshInstance3D
@@ -302,16 +305,34 @@ func _build_ground() -> void:
 	sea.position = Vector3(0, 0, -110)
 	add_child(sea)
 
-	# 波浪装饰块：挂 World 随滚动流动 + 起伏呼吸，滚出下缘后回绕
-	var wave_box := BoxMesh.new()
-	wave_box.size = Vector3(2.0, 0.14, 2.0)
-	wave_box.material = VoxelModel.shaded_material()
-	for i in 46:
+	# 波浪装饰（两层）：细长浪痕条带 + 小块亮浪尖，颜色由本关海色向白色分带插值
+	# （无光照材质保证色带精确，不随光照漂白）；挂 World 随滚动流动 + 轻微呼吸，
+	# 滚出下缘后回绕（见 _process 波浪回绕段）。
+	var sea_c := Color(stage_def["sea"])
+	var band: Array = []
+	for f in [0.22, 0.38, 0.55, 0.82]:
+		var bm := StandardMaterial3D.new()
+		bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bm.albedo_color = sea_c.lerp(Color.WHITE, f)
+		band.append(bm)
+	for i in 64:  # 浪痕：细长条带，模拟涌浪破碎纹（三档暗→亮）
 		var w := MeshInstance3D.new()
-		w.mesh = wave_box
+		var wm := BoxMesh.new()
+		wm.size = Vector3(randf_range(1.0, 3.4), 0.05, randf_range(0.5, 1.1))
+		wm.material = band[randi() % 3]
+		w.mesh = wm
 		w.position = Vector3(randf_range(-26, 26), 0.07, randf_range(-200, 24))
 		world.add_child(w)
 		waves.append({"n": w, "ph": randf() * TAU})
+	for i in 16:  # 浪尖：小而亮的碎浪块，点缀在浪痕之间
+		var c := MeshInstance3D.new()
+		var cm := BoxMesh.new()
+		cm.size = Vector3(randf_range(0.55, 0.95), 0.07, randf_range(0.55, 0.95))
+		cm.material = band[3]
+		c.mesh = cm
+		c.position = Vector3(randf_range(-26, 26), 0.07, randf_range(-200, 24))
+		world.add_child(c)
+		waves.append({"n": c, "ph": randf() * TAU})
 
 	# 地貌：草岛 / 暗礁岩石 / 燃烧沉船（按关卡数量，元素差异参照需求截图）
 	if not VOX_DECOR_REPLACE:
@@ -390,6 +411,7 @@ func _spawn_vox_decor() -> Node3D:
 	var p := _decor_spot(20.0, 0.0)
 	p.y = -mesh.get_aabb().position.y * s - 0.1  # 底面对齐海面并略微下沉
 	n.position = p
+	n.set_meta("vox_island", true)  # 幸存者锚定：可从 .vox 采样滩涂列
 	world.add_child(n)
 	islands.append(n)
 	return n
@@ -1099,15 +1121,78 @@ func _spawn_survivor(x: float) -> void:
 	# 造型统一由 SurvivorUnit 提供（与测试场景共用同一份定义）
 	var parts := SurvivorUnit.build()
 	var n: Node3D = parts["n"]
+	var spot := _survivor_anchor(x)
 	world.add_child(n)
-	n.position = Vector3(x, SurvivorUnit.BASE_Y, -50.0)
+	n.position = spot["pos"]
+	survivors.append({
+		"n": n, "ex": parts["ex"], "arm_l": parts["arm_l"], "arm_r": parts["arm_r"],
+		"roping": false, "prog": 0.0, "anchor_y": float(spot["pos"].y),
+	})
 	rescue_hint_done = true
 	hint_t = 3.5
 	hud_center.text = "飞到幸存者上方悬停即可施救"
-	survivors.append({
-		"n": n, "ex": parts["ex"], "arm_l": parts["arm_l"], "arm_r": parts["arm_r"],
-		"roping": false, "prog": 0.0,
-	})
+
+
+## 幸存者落点：优先锚到前方漂过的地貌顶面（体素岛滩涂 → 暗礁 → 沉船），
+## 站在实体上比空海面合理且显眼；没有合适地貌才落空海面（旧行为兜底）。
+## 锚定后随世界滚动同步移动；营救起吊以 anchor_y 为立足面（见 _update_survivors）。
+func _survivor_anchor(fallback_x: float) -> Dictionary:
+	for win in [Vector2(-95.0, -38.0), Vector2(-150.0, -30.0)]:  # 先近后远
+		var cands: Array = []
+		for isl in islands:
+			if isl.has_meta("vox_island") and isl.position.z >= win.x and isl.position.z <= win.y:
+				var p := _island_coast_spot(isl)
+				if p != Vector3.INF:
+					cands.append(p)
+		for rf in reefs:
+			if rf.position.z >= win.x and rf.position.z <= win.y:
+				cands.append(Vector3(rf.position.x, rf.position.y + rf.mesh.get_aabb().end.y, rf.position.z))
+		for wk in wrecks:
+			if wk.position.z >= win.x and wk.position.z <= win.y:
+				cands.append(Vector3(wk.position.x, wk.position.y + wk.mesh.get_aabb().end.y, wk.position.z))
+		if not cands.is_empty():
+			var pos: Vector3 = cands[randi() % cands.size()]
+			return {"pos": pos}
+	return {"pos": Vector3(fallback_x, SurvivorUnit.BASE_Y, -50.0)}
+
+
+## 体素岛滩涂取点：从 .vox 列高表缓存里挑一列低矮岸带（顶面 ≤4 体素），
+## 换算到网格局部坐标再经岛屿变换（含随机旋转/缩放）映射到世界；失败返回 INF。
+func _island_coast_spot(isl: Node3D) -> Vector3:
+	if _island_cols.is_empty():
+		var blocks := VoxReader.read_blocks(VOX_DECOR_PATH)
+		if blocks.is_empty():
+			return Vector3.INF
+		for k in blocks:
+			var key := Vector2i(k.x, k.z)
+			if not _island_cols.has(key) or k.y > int(_island_cols[key]):
+				_island_cols[key] = k.y
+		var mn := Vector2i(1 << 30, 1 << 30)
+		var mx := Vector2i(-(1 << 30), -(1 << 30))
+		for key in _island_cols:
+			mn = Vector2i(mini(mn.x, key.x), mini(mn.y, key.y))
+			mx = Vector2i(maxi(mx.x, key.x), maxi(mx.y, key.y))
+		_island_cols_mn = mn
+		_island_cols_mx = mx
+	var coast: Array = []
+	for key in _island_cols:
+		if int(_island_cols[key]) <= 3:  # 滩涂带：低矮沿海列（不含山峰）
+			coast.append(key)
+	if coast.is_empty():
+		return Vector3.INF
+	var k: Vector2i = coast[randi() % coast.size()]
+	var cx := (_island_cols_mn.x + _island_cols_mx.x + 1) * 0.5
+	var cz := (_island_cols_mn.y + _island_cols_mx.y + 1) * 0.5
+	var maxh := 0
+	for key2 in _island_cols:
+		maxh = maxi(maxh, int(_island_cols[key2]))
+	# 网格以块 AABB 中心为原点：局部单位坐标 = 键 + 0.5 - 中心（y 用整岛列高范围）
+	# 世界偏移手动换算（体素×0.1 + 随机朝向旋转），不经过节点 transform——
+	# 编辑器导入路径节点 scale=1（已烘焙）、运行时路径 scale=0.1，走 to_global 两条路不一致
+	var local := Vector3(k.x + 0.5 - cx, float(int(_island_cols[k]) + 1) - float(maxh + 1) * 0.5,
+			k.y + 0.5 - cz)
+	var off := (local * VOX_DECOR_SCALE).rotated(Vector3.UP, isl.rotation.y)
+	return isl.position + off + Vector3(0, 0.02, 0)
 
 
 func _spawn_boss() -> void:
@@ -1445,14 +1530,14 @@ func _update_survivors(delta: float) -> void:
 			if d > SurvivorUnit.RESCUE_LEAVE or dead:  # 离开范围 → 绳索收回（不惩罚）
 				s["roping"] = false
 				s["prog"] = 0.0
-				SurvivorUnit.reset_rescue(n)
+				SurvivorUnit.reset_rescue(n, float(s["anchor_y"]))
 				rope.visible = false
 			else:
 				# 幸存者停止随地面滚动，原地等玩家悬停拉起
 				n.position.z -= scroll_spd * delta
 				s["prog"] = float(s["prog"]) + delta / SurvivorUnit.RESCUE_TIME
 				var prog := float(s["prog"])
-				if SurvivorUnit.apply_rescue_progress(n, prog):
+				if SurvivorUnit.apply_rescue_progress(n, prog, float(s["anchor_y"])):
 					rescued += 1
 					score += 1000
 					SFX.play("eagle_rescue")   # 救起音效：C5-E5-G5-C6 上行琶音
