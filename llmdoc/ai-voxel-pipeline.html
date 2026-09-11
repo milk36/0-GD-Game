@@ -119,8 +119,8 @@ L1 的隐含成本是<b data-page-node-id="hAcFbtowLAW7JbH7XA0y3X">每次改动�
     <td data-page-node-id="99k2lilTKnsJQS28Xub177">模型编出渐变配色 → 生成中断</td>
   </tr>
   <tr data-page-node-id="JjhUNUyTpqTjyaPo0MAeXk">
-    <td data-page-node-id="2uwEaxM3qAQW1GCRSS6b9q">单位须 11~29 体素宽</td>
-    <td data-page-node-id="ruzi2xLCIpO0ECkcE5PiT0">README 第 119 行：正交 34 相机下过小则「认不出是什么」</td>
+    <td data-page-node-id="2uwEaxM3qAQW1GCRSS6b9q">单位量级带宽（见 §9.6 实测：宽 11~21 / 长 11~29 / 体素 175~2953）</td>
+    <td data-page-node-id="ruzi2xLCIpO0ECkcE5PiT0">正交 34 相机下过小则「认不出是什么」（旧版 E1~E5 只有 3~5 体素宽的教训）</td>
     <td data-page-node-id="eiI1hY9CFD3kNdlz0tfMsp">造出 5 体素宽的装饰性敌机，游戏里不可辨</td>
   </tr>
   <tr data-page-node-id="BVRKi07dd09t52mhJQaI61">
@@ -246,15 +246,15 @@ L1 的隐含成本是<b data-page-node-id="hAcFbtowLAW7JbH7XA0y3X">每次改动�
 <table data-page-node-id="L1BAL9eqUCG9M1je4xupqn">
   <tr data-page-node-id="hfqi2cYraZpRS1ktVxfgTO"><th data-page-node-id="vmysd7vf0tvgKMliRKh8An">校验项</th><th data-page-node-id="Zm0qx99BYf5EMJogNHeDTd">判据</th><th data-page-node-id="o46urWx2CfmQl8T7nkHtYL">失败动作</th></tr>
   <tr data-page-node-id="3gE6fIS8YtBaNOWzNNVmoh"><td data-page-node-id="ZMB6qZHjUVAZQK25ijLb4F">调色板</td><td data-page-node-id="PnS4CutIWT97Bnbqr53WLC">引用命名调色板，颜色数 ≤ 255</td><td class="no" data-page-node-id="RqAT2fOZSbFaflz35qSTCj">报错，拒绝生成</td></tr>
-  <tr data-page-node-id="CcQcGvF2UmBZydlupfPYkh"><td data-page-node-id="Q9dmt3N9691bccf3H6CVTS">包围盒量级</td><td data-page-node-id="08FzAEZEMS6R3iA8oJh2c1">air 单位宽 15~29，ground 单位 9~19</td><td class="mid" data-page-node-id="FCCFHcUDT8zkIKFjqKvMvw">警告 + 列出实际尺寸</td></tr>
+  <tr data-page-node-id="CcQcGvF2UmBZydlupfPYkh"><td data-page-node-id="Q9dmt3N9691bccf3H6CVTS">包围盒量级</td><td data-page-node-id="08FzAEZEMS6R3iA8oJh2c1">宽 11~21、长 ≤29、体素 175~3000（§9.6 实测为准）</td><td class="mid" data-page-node-id="FCCFHcUDT8zkIKFjqKvMvw">警告 + 列出实际尺寸</td></tr>
   <tr data-page-node-id="e8fBdEbLPRNrdu25sqpDQ0"><td data-page-node-id="Nm5BDQqt1Lmf6QtxVLxToK">左右对称</td><td data-page-node-id="oHtK5r5vS4ICb04uYS38mU">逐 (y,z) 行做镜像比对</td><td class="no" data-page-node-id="uuiF7hW6dfFrXJFmgIdiV4">报错（或按 axis 自动补对称）</td></tr>
   <tr data-page-node-id="PtWCNf7FzxapnUgFWEXUmM"><td data-page-node-id="SbKylgwzkeDu5lpLfGFgjA">连通性</td><td data-page-node-id="mPzPDBwY0NUWNiXPuZpWTb">flood fill，主连通分量应覆盖 ≥99% 体素</td><td class="mid" data-page-node-id="ZuKCOlpUjHzH1MVlfHe423">警告 + 输出漂浮块坐标</td></tr>
   <tr data-page-node-id="CcAiLwuLjcEsIkSejQCAse"><td data-page-node-id="vIvojwYUfOAosTc9S3DB3E">朝向</td><td data-page-node-id="KGmAzps8lRh6kJTbpqc32q"><code data-page-node-id="iulATuHADspprVlnQ3kAZO">facing</code> 与 category 默认值一致</td><td class="no" data-page-node-id="GZVUs5VaHDGGo669k8MsxF">报错</td></tr>
-  <tr data-page-node-id="aMdcKztsxFBGAEQ2OjtK5V"><td data-page-node-id="tMLRIwuKBVwdT4BZpdLbw3">可复现</td><td data-page-node-id="gCMod3PJNWGOU2NBGZCSWD">同 spec 重跑，输出体素哈希一致</td><td class="no" data-page-node-id="xhEG7inDSdMhNBRpGDoJTb">报错（编译器本身确定性，用于回归闸门）</td></tr>
+  <tr data-page-node-id="aMdcKztsxFBGAEQ2OjtK5V"><td data-page-node-id="tMLRIwuKBVwdT4BZpdLbw3">可复现</td><td data-page-node-id="gCMod3PJNWGOU2NBGZCSWD">随机类 op 强制显式 seed（编译器本身确定，见 §9.6）</td><td class="no" data-page-node-id="xhEG7inDSdMhNBRpGDoJTb">报错（用于回归闸门与漂移检测）</td></tr>
 </table>
 
 <div class="note" data-page-node-id="x4uwavn7oEv8FBYaDMWqij"><b data-page-node-id="upprjvKSz3bpUJ4e6FpGeN">零回归闸门（阶段 0 的验收标准）</b>：把现有
-<code data-page-node-id="Msd3Q4KR9KmbqpbaPY29BS">build_player()</code> / <code data-page-node-id="zA0dSBihchENJ89jEgt8Tj">build_e4()</code> 反向导出为 spec，重跑后
+<code data-page-node-id="Msd3Q4KR9KmbqpbaPY29BS">build_e1_base()</code> → <code data-page-node-id="zA0dSBihchENJ89jEgt8Tj">build_e4()</code> → <code data-page-node-id="Msd3Q4KR9KmbqpbaPY29BS">build_player()</code> 按 §9.1 三级反向导出为 spec，重跑后
 <b data-page-node-id="iyliNA0lZgshbPUroWmqZg">与现有 <code data-page-node-id="U9Ew5HX6foVOKvoL4sbKXb">assets/vox/units/*.vox</code> 逐体素比对必须完全一致</b>。
 达不到就说明 op 集合漏了原语，补齐即可——这保证「引入 spec」不引入任何视觉回归。</div>
 
@@ -313,9 +313,9 @@ MCP 桥定义「在哪儿看和改」。</p>
   <tr data-page-node-id="E1F1gnsebNqWN9F3OCSIbw"><th data-page-node-id="9Ps2yM1Ig00oea6GIkU7Zt">阶段</th><th data-page-node-id="GiezwjCl0QVU26uAGhQPfk">交付物</th><th data-page-node-id="iKyl3rdggLlBCB5MIf5PLx">验收标准</th></tr>
   <tr data-page-node-id="Dzl3xsiCWpiL1XSNk3P0au">
     <td data-page-node-id="zi718DVMZnAusudD475DSA"><b data-page-node-id="ZgJYnJMKVOo3vYmMorNE5w">0</b> 零回归闸门</td>
-    <td data-page-node-id="ZJA09gxO0ibvSFSChhu6hJ"><code data-page-node-id="mGQVcP1MWkKElCArie09Kt">voxspec.py</code> 骨架 + spec schema；把 <code data-page-node-id="sUz2X9sZFtOAHVVFN74Nl1">build_player()</code> /
+    <td data-page-node-id="ZJA09gxO0ibvSFSChhu6hJ"><code data-page-node-id="mGQVcP1MWkKEelCArie09Kt">voxspec.py</code> 骨架 + spec schema；反向导出按 <b data-page-node-id="k9w2rT4xQmZvA7bN1cLdEh">E1 → E4 → player</b> 由简到繁三级推进（§9.1：player 条件涂色最重，不宜作首样本）</td>
         <code data-page-node-id="E3nBiD4pY6KQeocZqs4WRh">build_e4()</code> 反向导出为 spec</td>
-    <td data-page-node-id="G0kWFBITUrhOR1ROj5H9Zq">重跑输出与现有 .vox <b data-page-node-id="qrQbbAojMcMkHbQW9MtGOk">逐体素一致</b></td>
+    <td data-page-node-id="G0kWFBITUrhOR1ROj5H9Zq">每级重跑输出与现有 .vox <b data-page-node-id="qrQbbAojMcMkHbQW9MtGOk">按 (x,y,z)→(r,g,b) 逐体素一致</b>（比颜色不比索引，§9.1）</td>
   </tr>
   <tr data-page-node-id="O8MbHdV82myDqkxb7sVcbB">
     <td data-page-node-id="07PTES8h53kq3JkbWQSQdN"><b data-page-node-id="g967AodCgcDbpgvlp9TaUj">1</b> 一条命令出图</td>
@@ -355,6 +355,142 @@ L2 能大幅降低 token 与畸形输出，但「这个造型在正交 34 相机
   <li data-page-node-id="fOTz48rQNCVbFHVI1D3gt5"><b data-page-node-id="XBWEqDvp28uAarJaqRED5r">真正划算的场景是「批量造新内容」</b>：后续关卡敌机、更多海盗地图切片。
       单件精修仍以 MagicaVoxel 手工微调最高效。</li>
 </ul>
+
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="rV9aKm2xQpLw4eT7bNzUcH">9. 评审修订（v2 · 2026-09-11 开工前走查）</h2>
+
+<p data-page-node-id="tY3bWq8rNcXvF5hJ2mZkAs">开工前对照 <code data-page-node-id="uH7cJp4nRqXw9eB3vTfYdK">gen_units.py</code> 实码走查了一遍本方案，
+确认基建描述属实，但发现六处需要修订的缺口与本三处数字不一致。本节为修订记录，
+正文相关处已同步指向本节。</p>
+
+<h3 data-page-node-id="wQ5eRn8yTvB2cXj6mFpHsD">9.1 零回归闸门样本重排：E1 → E4 → player</h3>
+<p data-page-node-id="pK2xF6hVcMqW8rT4nBbYzJ">原定首批反导 <code data-page-node-id="nR8vC3yTqHs6wE1mZkXfB">build_player()</code> /
+<code data-page-node-id="cJ4mW7eTxQp9rN2vYhKfD">build_e4()</code>，但 <code data-page-node-id="vT6qN3wErHc8xF1mJbYkZ">build_player()</code>
+（gen_units.py:86-131）是全文件<b data-page-node-id="xL9pR2tWqKe5vH7nFcMzB">条件涂色最重</b>的函数——
+<code data-page-node-id="yM3sH8wNqTf4cV6bXkJrD">wing = dx &gt; 1 and 7 &lt;= y &lt;= 14</code>、<code data-page-node-id="zN4tJ7vMrWg2xE9cYkHfB">tip = dx &gt;= h - 1</code>、
+<code data-page-node-id="aP5uK1xLsDh7yF3cVnMqE">stripe = dx == 1 and 5 &lt;= y &lt;= 15</code> 这类「相对条件涂色」当前 op 集合表达不了。
+拿它当首样本会触发本文警告过的路径：为过闸门往 op 里塞条件参数，spec 退化成编程语言。
+改为三级推进，每级都过逐体素闸门：</p>
+<table data-page-node-id="bQ6vL0mKtCj4hZ8wNpFrA">
+  <tr data-page-node-id="cR7wM9nLuEk5iA1xOqGsB"><th data-page-node-id="dS8xN1oMvFl6jB2yPrHtC">级</th><th data-page-node-id="eT9yO2pNwGm7kC3zQsIuD">样本</th><th data-page-node-id="fU0zP3qNxHn8lD4aRtJvE">验证目标</th></tr>
+  <tr data-page-node-id="gV1aQ4rOyIo9mE5bSuKwF"><td data-page-node-id="hW2bR5sPzJp0nF6cTvLxG">1</td><td data-page-node-id="iX3cS6tQaKq1oG7dUwMyH"><code data-page-node-id="jY4dT7uRbLr2pH8eVxNzI">build_e1_base()</code></td><td data-page-node-id="kZ5eU8vScMs3qI9fWyOAJ">基础 op：八边形柱 oct、symbox、dots 点枚举（无条件涂色）</td></tr>
+  <tr data-page-node-id="lA6fV9wTdNt4rJ0gXpPBK"><td data-page-node-id="mB7gW0xUeOu5sK1hYqQCL">2</td><td data-page-node-id="nC8hX1yVfPv6tL2iZrRDM"><code data-page-node-id="oD9iY2zWgQw7uM3jAsSEN">build_e4()</code></td><td data-page-node-id="pE0jZ3aXhRx8vN4kBtTFO">profile 剖面 + edge 附着色（翼尖红）；翼面刻线用 dots 兜底（见 9.2）</td></tr>
+  <tr data-page-node-id="qF1kA4bYiSy9wO5lcUUGP"><td data-page-node-id="rG2lB5cZjTz0xP6mdVVHQ">3</td><td data-page-node-id="sH3mC6dAkUa1yQ7neWWIR"><code data-page-node-id="tI4nD7eBlVb2zR8ofXXJS">build_player()</code></td><td data-page-node-id="uJ5oE8fCmWc3AS9pgYYKT">逐行层色（翼段与前後段层集合不同）+ 座舱/喷口 paint 覆盖</td></tr>
+</table>
+<p data-page-node-id="vK6pF9gDnXd4BT6qhZZLU"><b data-page-node-id="wL7qG0hEoYe5CU7riAAMV">比对方式</b>：按 <code data-page-node-id="xM8rH1iFpZf6DV8sjBBNW">(x,y,z) → (r,g,b)</code> 比对，
+<b data-page-node-id="yN9sI2jGqAg7EW9tkCCOX">不比调色板索引</b>——<code data-page-node-id="zO0tJ3kHrBh8FX0ulDDPY">write_vox()</code> 按颜色排序生成索引，
+而标准工作流允许 MagicaVoxel 手工精修（会重排调色板），比索引会误报。</p>
+
+<h3 data-page-node-id="aP1uK4lIsCi9GY0vmEEQZ">9.2 op 集合补强：solid / paint 语义分离等四项</h3>
+<ul data-page-node-id="bQ2vL5mJtDj0HZ1wnFFRa">
+  <li data-page-node-id="cR3wM6nKuEk1IA2xoGGSb"><b data-page-node-id="dS4xN7oLvFl2JB3ypHHTc">solid / paint 语义分离（新增核心设计）</b>。
+    塑形类 op（box / symbox / oct / profile / dots）只负责<b data-page-node-id="eT5yO8pMwGm3KC4zqIIUD">添加体素</b>；
+    <code data-page-node-id="fU6zP9qNxHn4LD4artJvE">paint</code> op 只对<b data-page-node-id="gV7aQ0rOyIo5ME5bsuKwF">已存在体素改色</b>，不新增。
+    这解决了「覆盖涂色时不小心长出新块」的问题（build_player 的白机鼻只应涂到已存在的格子上），
+    也让 spec 更贴近建模心智：先塑形、再上色。不对称的 paint 不破坏镜像校验。</li>
+  <li data-page-node-id="hW8bR1sPzJp6nF7cTvLxG"><b data-page-node-id="iX9cS2tQaKq7oG8dUwMyH">profile 逐行层色 + edge 附着</b>。
+    build_player 同一剖面的每层 z 颜色不同（z0 腹暗 / z1 枪灰 / z2 侧条 / z3 顶面四色），
+    且翼段与前後段<b data-page-node-id="jY0dT3uRbLr8pH9eVxNzI">层集合不同</b>（翼段只有 z1/z2）——
+    profile op 需支持 per-z 色表，层集合差异靠「拆成多个 profile op 分段」表达，不引入通用条件式。
+    <code data-page-node-id="kZ1eU4vScMs9qI0fWyOAJ">edge</code> 附着规则（「距行外缘 n 格换色」）表达翼尖红这类相对条件，
+    不让模型做算术。</li>
+  <li data-page-node-id="lA2fV5wTdNt0rJ1gXpPBK"><b data-page-node-id="mB3gW6xUeOu1sK2hYqQCL">dots 点枚举兜底</b>。
+    E4 的翼面刻线 <code data-page-node-id="nC4hX7yVfPv2tL3iZrRDM">(abs(dx)*2+y)%5==0</code> 是数学条件，op 永不该表达它——
+    这类零星装饰用 dots 显式枚举（十几个点），仍走镜像/调色板校验。主体结构用高级 op、
+    零星装饰用点枚举，输出规模原则不被破坏。</li>
+  <li data-page-node-id="oD5iY8zWgQw3uM4jAsSEN"><b data-page-node-id="pE6jZ9aXhRx4vN5kBtTFO">多部件与多调色板</b>。
+    E3 是「机身 + 独立旋翼层」两个 .vox，spec 顶层一开始就设计成 <code data-page-node-id="qF7kA0bYiSy5wO6lcUUGP">parts: [...]</code>，
+    别等撞上再改 schema。命名色库分 <code data-page-node-id="rG8lB1cZjTz0xP7mdVVHQ">player</code> /
+    <code data-page-node-id="sH9mC2dAkUa1yQ8neWWIR">enemy</code> 两套（从 gen_units.py 原样搬运），新配色走「先入库、后引用」，不开放自由造色。</li>
+</ul>
+
+<h3 data-page-node-id="tI0nD3eBlVb5zR9ofXXJS">9.3 认物闭环补一环：视觉模型初筛</h3>
+<p data-page-node-id="uJ1oE4fCmWc6AS0pgYYKT">原方案认物完全靠人审。多模态模型恰恰擅长「这张俯视图像不像战斗机」——
+把 <code data-page-node-id="vK2pF5gDnXd7BT7qhZZLU">ingame_view.gd</code> 的输出喂给视觉模型做第一轮筛选
+（像 / 不像 / 缺什么特征），人只终审。不新增基建（预览图本来就在产），能砍掉大半人审轮次。
+回灌格式需结构化：audit 报告从人读表格转 JSON，问题定位到 op 级（哪个 op 产生了漂浮块），
+并定义迭代上限（如 3 次失败转人工）。</p>
+
+<h3 data-page-node-id="wL3qG6hEoYe7CU8riAAMV">9.4 与 MagicaVoxel 手工精修的真源策略</h3>
+<p data-page-node-id="xM4rH7iFpZf8DV9sjBBNW">标准工作流允许「生成 → MagicaVoxel 精修 → 保存」，精修后 .vox 与 spec 即脱钩，
+spec 重跑会<b data-page-node-id="yN5sI8jGqAg8EW9tkCCOX">覆盖手工修改</b>。对策：手工精修过的资产以 .vox 为真源，
+对应 spec 标记废弃或删除；且 <code data-page-node-id="zO6tJ9kHrBh9FX1ulDDPY">voxspec verify</code> 兼作<b data-page-node-id="aP7uK0lIsCi9GY1vmEEQZ">漂移检测器</b>——
+spec 与 .vox 不一致时报告差异，区分「编译器回归」（必须修）与「手工精修漂移」（更新或废弃 spec）。
+两者都能被同一命令发现，这是把零回归闸门工具常态化的额外收益。</p>
+
+<h3 data-page-node-id="bQ8vL1mJtDj2HZ3wnFFRa">9.5 范围界定：spec v1 只覆盖「单位」</h3>
+<p data-page-node-id="cR9wM2nKuEk3IA4xoGGSb">gen_pirate 的海面/岛屿是 64×64 噪声地形 + 随机撒点，与单位的「对称手工造型」是两种范式，
+硬统一会撑爆 op 集合（需要 noise / scatter / 分带等着色 op）。地貌继续走 L1 Python 生成器；
+若确需 AI 产地貌，另立 terrain spec，不与单位共用 schema。</p>
+
+<h3 data-page-node-id="dS0xN3oLvFl4JB5ypHHTc">9.6 数字修正与流程注记</h3>
+<ul data-page-node-id="eT1yO4pMwGm5KC6zqIIUD">
+  <li data-page-node-id="fU2zP5qNxHn6LD7artJvE"><b data-page-node-id="gV3aQ6rOyIo7ME8bsuKwF">bbox 阈值统一为实测值</b>（2026-09-11 统计 assets/vox/units/）：
+    宽 11~21、长 11~29、体素 52~2953（旋翼层 52 除外，主体 175~2953）。原文档三处说法
+    （11~29 / 15~29 / 11~25）均与实测不符，已统一。</li>
+  <li data-page-node-id="hW4bR7sPzJp8nF9cTvLxG"><b data-page-node-id="iX5cS8tQaKq9oG0dUwMyH">「可复现」判据改为「随机类 op 强制显式 seed」</b>——
+    编译器确定性天然成立，要禁的是无 seed 随机 op。</li>
+  <li data-page-node-id="jY6dT9uRbLr0pH1eVxNzI"><b data-page-node-id="kZ7eU0vScMs1qI2fWyOAJ">GPU 环节进不了自动化</b>：asset_review / ingame_view
+    需要开窗渲染（headless 出不了图），CI 只能挂 headless 审计；「一条命令」需区分 headless 部分与人触发的视觉部分。</li>
+  <li data-page-node-id="lA8fV1wTdNt2rJ3gXpPBK"><b data-page-node-id="mB9gW2xUeOu3sK4hYqQCL">spec 文件管理</b>：specs 进 git
+    （tools/vox/specs/*.json），文件名与产物 .vox 同名映射，改 spec = 改资产，diff 可读。</li>
+</ul>
+
+<h3 data-page-node-id="nC0hX3yVfPv4tL5iZrRDM">9.7 开工触发条件（决策记录）</h3>
+<p data-page-node-id="oD1iY4zWgQw5uM6jAsSEN">L2 的收益取决于新单位需求量；若 E7 及后续只有十几个，L1 + 视觉模型初筛可能已够。
+本方案于 2026-09-11 决策开工阶段 0~1（纯重构、零模型依赖、风险最低且立刻可用），
+阶段 2（模型产 spec）的启动以「确认下一批关卡需要 ≥10 个新单位」为触发条件，避免为方案而方案。</p>
+
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="aQ1wE5rTyIu3oP7bNzKcHf">10. 实施记录（阶段 0/1 · 2026-09-11 交付）</h2>
+
+<table data-page-node-id="bR2xF6sUzJv4qQ8cOaLdIg">
+  <tr data-page-node-id="cS3yG7tVaKw5rR9dPbMeJh"><th data-page-node-id="dT4zH8uWbLx6sS0eQcNfKi">交付物</th><th data-page-node-id="eU5aI9vXcMy7tT1fRdOgLj">说明</th></tr>
+  <tr data-page-node-id="fV6bJ0wYdNz8uU2gSePhMk"><td data-page-node-id="gW7cK1xZeOa9vV3hTfQqNl"><code data-page-node-id="hX8dL2yAfPb0wW4iUgRrOm">tools/vox/voxspec.py</code></td><td data-page-node-id="iY9eM3zBgQc1xX5jVhSsPn">spec 编译器：check / build / verify 三子命令；solid/paint 分离、oct 双 edge 模式、profile 逐行层色 + edge 附着、dots 兜底；排序落盘保证同 spec 字节级可复现</td></tr>
+  <tr data-page-node-id="jZ0fN4aChRd2yY6kWiTtQo"><td data-page-node-id="kA1gO5bDiSe3zZ7lXjUuRp"><code data-page-node-id="lB2hP6cEjTf4aA8mYkVvSq">tools/vox/gen_spec.py</code></td><td data-page-node-id="mC3iQ7dFkUg5bB9nZlWwTr">一条命令出图：编译 + 审计 + 等距预览；<b data-page-node-id="nD4jR8eGlVh6cC0oAmXxUs">默认 dry</b>（不碰正式资产），<code data-page-node-id="oE5kS9fHmWi7dD1pBnYyVt">--write</code> 才落盘；结束打印 GPU 视觉验收与回灌命令</td></tr>
+  <tr data-page-node-id="pF6lT0gInXj8eE2qCoZzWu"><td data-page-node-id="qG7mU1hJoYk9fF3rDpAaXv"><code data-page-node-id="rH8nV2iKpZl0gG4sEqBbYw">tools/vox/specs/</code></td><td data-page-node-id="sI9oW3jLqAm1hH5tFrCcZx">e1 / e4 / player 三个反向导出样本（验证样本，非真源）</td></tr>
+</table>
+
+<p data-page-node-id="tJ0pX4kMrBn2iI6uGsDdYy"><b data-page-node-id="uK1qY5lNsCo3jJ7vHtEeZz">零回归验收</b>：三级闸门按 §9.1 顺序通过——
+E1（175 体素，验证 oct / symbox / dots / paint）→ E4（498 体素，验证 profile + edge 附着 + 刻线 dots 兜底，
+修正一处遗漏：机身侧缘 <code data-page-node-id="vL2rZ6mOtDp4kK8wIuFfAa">|dx|==2→ED</code> 补 paint）→
+player（512 体素，验证三段 profile 分解 + 逐行层色 + paint 覆盖）。
+比对按 <code data-page-node-id="wM3sA7nPuEq5lL9xJvGgBb">(x,y,z)→(r,g,b)</code> 全部 PASS；
+spec 通道连续两次 build 的 md5 一致（字节级可复现）。</p>
+
+<div class="note" data-page-node-id="xN4tB8oQvFr6mM0yKwHhCc"><b data-page-node-id="yO5uC9pRwGs7nN1zJxIiDd">真源决策（§9.4 的落地）</b>：
+正式资产 <code data-page-node-id="zP6vD0qSxHt8oO2aKyJjEe">assets/vox/units/*.vox</code> 未被改动（git 零 diff）——
+既有单位真源仍是 gen_units.py，spec 是验证样本兼漂移检测基准。
+XYZI 顺序差异（spec 排序写盘 vs gen_units 插入序）无功能影响：游戏与导入插件均按体素集合读取。
+<b data-page-node-id="aQ7wE1rTyIu9oP3bNzKcHf">下一步是阶段 2</b>（提示词模板 + 视觉模型初筛 + 回灌循环），
+按 §9.7 触发条件：确认下一批关卡需要 ≥10 个新单位时启动。</div>
+
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="aR8wF2tYcUj5vP9cMaKeHg">11. 阶段 2 冒烟实录（E7 · 2026-09-11）</h2>
+
+<p data-page-node-id="bS9xG3uZdVw6qQ0dNbLfIh">按 §9.7 的触发条件，阶段 2 本应等「≥10 个新单位」再启动；
+本次以<b data-page-node-id="cT0yH4vAeXr7rR1eOcMgJi">单个冒烟样本</b>提前验证了闭环本身
+（不启动批量生产）。交付：提示词模板 <code data-page-node-id="dU1zI5wBfYs8sS2fPdNhKj">tools/vox/specs/PROMPT.md</code>
+（内嵌 schema / op 语义 / 调色板纪律 / 量级基准 / 初筛清单 / few-shot），
+及新单位 <code data-page-node-id="eV2aJ6xCgZt9tT3gQeOiLk">E7 武装直升机</code>
+（机身 11×20×6 · 372 体素 + 独立旋翼层 17×17×1 · 33 体素，双 part 首次实战）。</p>
+
+<table data-page-node-id="fW3bK7yDhAu0uU4hRfPjMl">
+  <tr data-page-node-id="gX4cL8zEiBv1vV5iSgQkNm"><th data-page-node-id="hY5dM9aFjCw2wW6jThRlOn">环节</th><th data-page-node-id="iZ6eN0bGkDx3xX7kUiSmPo">结果</th></tr>
+  <tr data-page-node-id="jA7fO1cHlEy4yY8lVjTnQp"><td data-page-node-id="kB8gP2dImFz5zZ9mWkUoRq">提示词 → spec</td><td data-page-node-id="lC9hQ3eJnGa6aA0nXlVpSr">一句「武装直升机」描述 → 双 part spec（约 20 个 op，零坐标算术）</td></tr>
+  <tr data-page-node-id="mD0iR4fKoHb7bB1oYmWqTs"><td data-page-node-id="nE1jS5gLpIc8cC2pZnXrUt">编译器拦截</td><td data-page-node-id="oF2kT6hMqJd9dD3qAoYsVu">首编译报「左右不对称 3 处（尾桨 dots 漏镜像）」→ 补 mirror 通过。<b data-page-node-id="pG3lU7iNrKe0eE4rBpZtWv">模型胡编被降级为一次失败重试</b>，符合 §2 架构原则</td></tr>
+  <tr data-page-node-id="qH4mV8jOsLf1fF5sCqAuXw"><td data-page-node-id="rI5nW9kPtMg2gG6tDrBvYx">视觉初筛（§9.3）</td><td data-page-node-id="sJ6oX0lQuNh3hH7uEsCwZy">第 1 轮抓到真问题：①独立旋翼层单看「缺旋翼」→ <b data-page-node-id="tK7pY1mRvOi4iI8vFtXaAb">新增 assembly 合成预览</b>（工具改进）；②座舱窗小 / 尾桨碎 → 加大座舱、尾桨三点成盘</td></tr>
+  <tr data-page-node-id="uL8qZ2nSwPj5jJ9wGuYbBc"><td data-page-node-id="vM9rA3oTxQk6kK0xHvZcCd">二轮初筛</td><td data-page-node-id="wN0sB4pUyRl7lL1yIwAdDe">4/4 通过（可辨识 / 旋翼居中 / 部件协调 / 无结构错误），2 轮迭代 &lt; 3 次上限</td></tr>
+  <tr data-page-node-id="xO1tC5qVzSm8mM2zJxBgEf"><td data-page-node-id="yP2uD6rWATn9nN3aKxChFg">落盘</td><td data-page-node-id="zQ3vE7sXbUo0oO4bLyDiGh">--write 产出 E7.vox / E7R.vox（assets/vox/units/），未接入 game.gd（同海盗切片「待确认后接入」惯例）</td></tr>
+</table>
+
+<div class="note" data-page-node-id="aR4wF8tYcUj9vP0dMaKeHg"><b data-page-node-id="bS5xG9uZdVw0qQ1dNbLfIh">阶段 2 的真实增量</b>：
+闭环里最贵的不是「模型写 spec」（一次过），而是<b data-page-node-id="cT6yH0vAeXr1rR2eOcMgJi">视觉反馈驱动的两处工具改进</b>——
+assembly 合成预览（多部件单位初筛的正确打开方式）与初筛清单的迭代。
+这印证了 §8 的判断：造型判断必须靠图，工具链要把「看图→定位→修」的路径铺短。</div>
 
 <p style="margin-top:40px;color:#5a6486" data-page-node-id="e3DA6HNZurzdFebfJRB4p6">— 生成于 2026-09-11 · demo-game ·
 依据 <code data-page-node-id="c2tkOvYgZ7605K0zJfPY2U">tools/vox/README.md</code>、<code data-page-node-id="njGAsgBFUZbYJcGpp4pBt0">gen_units.py</code>、<code data-page-node-id="hM8il8FCy7N5Brs7esFZga">gen_pirate.py</code>、

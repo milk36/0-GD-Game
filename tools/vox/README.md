@@ -14,6 +14,9 @@
 | `tools/vox/gen_scene.py` | 示例生成器：程序化小岛（地形+海洋+树+小屋） |
 | `tools/vox/gen_units.py` | 单位生成器：玩家机 / Boss / **E1~E6 敌机** → `assets/vox/units/*.vox` |
 | `tools/vox/gen_pirate.py` | 海盗关卡地图切片生成器：海面瓦片 / 海盗岛 / 要塞 / 帆船 → `assets/vox/pirate/*.vox` |
+| `tools/vox/voxspec.py` | 声明式 spec 编译器（AI 体素管线 L2）：spec JSON → 展开校验 → .vox；`verify` 子命令兼作零回归闸门 / 漂移检测 |
+| `tools/vox/gen_spec.py` | 一条命令出图：spec → 编译+审计+预览（默认 dry，`--write` 才落盘） |
+| `tools/vox/specs/*.json` | 单位 spec（E1/E4/player 为零回归验证样本，与 gen_units 等价） |
 | `tools/vox/_smoke.gd` | 冒烟测试：headless 跑真实场景，检查体素岛是否挂载成功 |
 | `tools/vox/_check_enemies.gd` | 敌机回归：headless 生成 E1~E5 + 跑更新循环，检查 .vox 加载与炮头 look_at |
 | `tools/vox/asset_audit.gd` | 量化审计：绕序/法线硬边/光照溢出（headless 可跑，输出表格） |
@@ -172,6 +175,66 @@ python gen_pirate.py       # 输出 assets/vox/pirate/*.vox + _preview_*.png + _
 
 ---
 
+## 3.7 voxspec.py —— 声明式 spec 管线（AI 体素管线 L2，阶段 0/1 已交付）
+
+设计文档：`llmdoc/ai-voxel-pipeline.html`（op 集合、校验项、§9 评审修订）。
+大模型（或人）只写 **spec JSON**（十几个 op），编译器负责展开、校验、落盘——
+编译器是唯一写 .vox 的出口，模型胡编的后果从"坏资产进游戏"降级为"一次失败重试"。
+
+```bash
+python voxspec.py check  specs/e1.json            # 编译+校验，不落盘
+python gen_spec.py specs/                          # 批量：编译+审计+预览（dry，不碰正式资产）
+python gen_spec.py specs/e7.json --write           # 新资产：写 assets/vox/units/
+python voxspec.py verify specs/e1.json --ref ../../assets/vox/units/E1.vox
+                                                   # 逐体素比对（零回归闸门 / 漂移检测）
+```
+
+### spec 结构与 op 语义
+
+顶层：`name / category(air|ground) / facing(+Y|-Y|none) / palettes(["player"|"enemy"]) /
+axis(镜像轴 c) / parts:[{file, ops}]`（多部件单位如 E3+旋翼层用多个 part）。
+坐标约定与 gen_units.py 完全一致（x=左右按 2c-x 镜像、y=前后、z=高低）。
+
+op 分两类（**solid / paint 语义分离**，§9.2）：
+
+| op | 类别 | 语义 |
+|---|---|---|
+| `box` / `symbox` | solid | 闭区间实心块；symbox 自动镜像 |
+| `oct` | solid | 八边形柱（`cx,cy,r,cut`），`edge` 可换外缘色（`mode: ring\|cheb`） |
+| `profile` | solid | 沿 y 逐行按 `half` 表铺层（`z` 为层→色表）；`edge:{z,within,col}` 表达「翼尖红」类相对条件；`x0` 支持翼段从 dx>2 起 |
+| `dots` | solid | 点枚举（数学刻线等零星装饰的兜底，别用它写主体） |
+| `paint` | solid 之外 | **只改已存在体素的颜色，绝不新增**——覆盖涂色不会长出新块 |
+
+校验项（编译时强制 / 警告）：调色板引用（≤255 色）、左右对称（报错）、
+连通性 ≥99%（警告+漂浮块坐标）、量级带（宽 11~21 / 长 ≤29 / 体素 175~3000，越带警告）、
+敌机 facing 必须 +Y。落盘前按坐标排序 → **同 spec 字节级可复现**。
+
+### 零回归闸门（已通过）
+
+`specs/e1.json`、`specs/e4.json`、`specs/player.json` 反向导出自
+`build_e1_base()` / `build_e4()` / `build_player()`，verify 按 `(x,y,z)→(r,g,b)`
+逐体素一致（E1 175 / E4 498 / player 512 体素，全部 PASS）。**既有资产真源仍是
+gen_units.py**（§9.4：不迁移，spec 是验证样本兼漂移检测基准）；新单位直接写 spec。
+
+### 与既有通道的关系
+
+- `gen_units.py`：不变，继续作为既有资产的真源；
+- spec 通道：新单位（E7+）与 AI 产出的入口；`verify` 兼作漂移检测——
+  .vox 被 MagicaVoxel 手工精修后与 spec 不一致时会报差异，
+  区分"编译器回归"（必须修）与"手工精修漂移"（更新或废弃 spec）；
+- 地貌（gen_pirate / gen_scene）**不走** spec 管线（范式不同，见 §9.5）。
+
+### AI 产 spec（阶段 2）
+
+`specs/PROMPT.md` 是喂给大模型的提示词模板（schema / op 语义 / 调色板纪律 /
+量级基准 / 视觉初筛清单）。端到端冒烟样本：`specs/e7.json`（E7 武装直升机，
+双 part：机身 + 独立旋翼层）——一句描述 → spec → 编译器拦错（漏镜像）→
+初筛 2 轮（新增 assembly 合成预览）→ `--write` 落盘 `E7.vox` / `E7R.vox`。
+多部件单位的初筛看 `_spec_preview_<name>_all.png`（装配合成图）。
+E7 尚未接入 game.gd 的 ENEMY_VOX 表（同海盗切片「待确认后接入」惯例）。
+
+---
+
 ## 4. gen_scene.py 可调项
 
 | 常量 | 默认 | 说明 |
@@ -268,6 +331,9 @@ python voxlib.py inspect D:/Tools/MagicaVoxel-0.99.7.2-win64/vox/chr_knight.vox
 # 2) Godot 侧：headless 跑真实场景，打印 World 子节点与体素岛 AABB
 "D:/Tools/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64_console.exe" \
   --headless --path "D:/GithubProjects/Godot-game/0-demo-game" -s res://tools/vox/_smoke.gd
+
+# 2b) spec 管线：零回归闸门 / 漂移检测（headless，纯 Python）
+python voxspec.py verify specs/e1.json --ref ../../assets/vox/units/E1.vox   # 期望 PASS
 
 # 3) 量化审计（绕序 / 法线风格 / 光照预算，headless）
 "...Godot...console.exe" --headless --path <项目> -s res://tools/vox/asset_audit.gd
