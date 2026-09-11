@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="ISmw5ugew8UjvBvrxFfwWq">
+<head data-page-node-id="MQ9GaSRdChHODcoeqmbAU1">
+<meta charset="UTF-8" data-page-node-id="NFwqOYVb5yRfdXP1m6aTYo">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="89TYD0TDuZOm4A7nN2xcAH">
+<title>体素改瓦片 · 方案评估与建议</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 960px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.8em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+  }
+  h2 { color: #ff2a6d; margin-top: 40px; text-shadow: 0 0 12px rgba(255, 42, 109, 0.35); }
+  h3 { color: #ffe600; margin-top: 24px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  pre {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; color: #b7c4ef; line-height: 1.5;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #2a3554; padding: 8px 14px; text-align: left; vertical-align: top; }
+  th { background: #131a2e; color: #00f0ff; }
+  .note {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .warn {
+    background: #1c1420; border-left: 4px solid #ff2a6d;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .warn b { color: #ff2a6d; }
+  .ok { color: #6ee7a8; }
+  .no { color: #ff2a6d; }
+  .mid { color: #ffe600; }
+  figure { margin: 24px 0; }
+  figcaption { color: #5a6486; font-size: 0.9em; text-align: center; margin-top: 8px; }
+</style>
+</head>
+<body data-page-node-id="PMimHotAzq9oIpnJ36tWGL">
+
+<h1 data-page-node-id="qkBkXWRfNxdEyxHN503H3y">▚ 体素改瓦片 · 方案评估与建议</h1>
+
+<p data-page-node-id="BZiRfhcbOHHtBI8OOXKkBw">本文评估「把现有体素资产改为 tile 瓦片方式」这一方向，给出分层建议、必须先定死的规格，
+以及与本仓库既有管线（<code data-page-node-id="QXDTQwJVsHWtO9y3g8ZGmq">voxspec.py</code> spec 管线、<code data-page-node-id="FwrEoAChRC5pwtSzaTf2RY">gen_pirate.py</code> 地形切片）的衔接方式。</p>
+
+<div class="note" data-page-node-id="rVwUHqw5NshRvH6qFfiWAz">
+<b data-page-node-id="kw0UELAccrcw27FebcG6rs">一句话结论</b>：瓦片应该只用在<b data-page-node-id="3NW5L6F9YL8gfwl6zIjuyQ">地貌与关卡摆件</b>，且应走
+<b data-page-node-id="GGxtACIy8WNRSdYge3r9On">「3D 模块化瓦片 + 网格排布 + GridMap 渲染」</b>；<b data-page-node-id="ZSmM9t2BMt1Ii1izFGJfSQ">不要</b>退到 2D TileMapLayer，
+也<b data-page-node-id="LPhk8PzPUOqzIBvvSdSrsc">不要</b>把单位瓦片化。瓦片化省的是「重复摆放与绘制」，不省「单块美术工作量」——
+真正的双赢组合是<b data-page-node-id="CzHhNKWo7vol8CJs6aKdf8">用 spec 管线产瓦片本体 + 用数据表排布</b>。
+<br><b>▶ 配套演示</b>：<a href="tile-3d-vs-2d-demo.html" style="color:#7ee7ff">tile-3d-vs-2d-demo.html</a>
+——两侧跑同一份瓦片布局与同一套颜色，3D 侧用游戏真实相机（正交 34 / (0,30,12) / 方向光 (-52°,-28°)）软件投影，
+可切 68°/90° 机位与地形高度，直观对比「瓦片+3D」与「纯 2D 瓦片」的观感差异。
+</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="7yVfpYOdOHUk05xHbihlbX">1. 现状盘点（本方案的前提）</h2>
+
+<table data-page-node-id="3AhTh1fU6yNg5DTKaJuBlV">
+  <tr data-page-node-id="NUshqzrah1V5SGSUChELAK"><th data-page-node-id="OymChQuyg3aV2hjfj6OUAH">项</th><th data-page-node-id="LDBQQl1HLCejNoRrpPD10J">现状</th><th data-page-node-id="T3rsTvgiYnGPITxjlvDlAO">与瓦片的关系</th></tr>
+  <tr data-page-node-id="RMv5C1K5UDzILsT4eFx4Te">
+    <td data-page-node-id="tEfj3n9vUbeaIXnaWeHC0N">渲染器</td>
+    <td data-page-node-id="hcd8ve0SFMe0XLkSEKheTC"><code data-page-node-id="9htm2Wmxy3UgdB9GKzWgla">gl_compatibility</code>（<code data-page-node-id="blSODR01OkEU7n0zoBnhWT">project.godot</code>）</td>
+    <td data-page-node-id="j3BYvyI21uzTuQDIWlaBpH">draw call 敏感；<code data-page-node-id="LLFgJpcRdwBHxq8ZIpfr3K">MultiMesh</code> 可用且项目已在用</td>
+  </tr>
+  <tr data-page-node-id="jG1vSB21c1VBccNoJymTGC">
+    <td data-page-node-id="vyanyhg0j7uQh9nvGKOp2c">相机</td>
+    <td data-page-node-id="8qKsBN9cxAYDFKSqn72yGW">正交 <code data-page-node-id="2wCQT9xWShzPPhP8ErYEvw">size = 34</code>，位置 <code data-page-node-id="4bFTEmy6dufIsvDCOfzS3U">(0,30,12)</code>；<code data-page-node-id="p0SSxSm3cjATWMTejGfEvd">cam_mode</code> 0=68° 斜俯视 / 1=90° 纯俯视</td>
+    <td data-page-node-id="CFIhRXoBlfBNhBBzkhbxE5">决定视野尺寸与瓦片列数（见 §5）</td>
+  </tr>
+  <tr data-page-node-id="acQJIHil5CvIQKev8u93dj">
+    <td data-page-node-id="jjcrHLo3NFvTg01n0EWJq4">世界滚动</td>
+    <td data-page-node-id="o7aEOvMLfO72EpvKrrMutn">逐对象回绕：<code data-page-node-id="MwAcdeozpNj3s5aWEqgWXQ">world.position.z + obj.z &gt; 30</code> → <code data-page-node-id="eAAoGX6KSdSYGLDPygYtYJ">z -= 230</code>，<b data-page-node-id="s2cEGbBTGtZQDhyGabYCBr">并重新随机 x</b>（<code data-page-node-id="4Jy833hgIZC8wGJyCKMBR3">game.gd:795-806</code>）</td>
+    <td class="mid" data-page-node-id="ufqAJFpV0yibAEhhR99ItZ">每次回绕重摇位置 → 关卡不可复现、不可设计</td>
+  </tr>
+  <tr data-page-node-id="YrmpyB7ShTvj5wxI9Zzisa">
+    <td data-page-node-id="3YM9UW2DMhP6JiIU864ReF">地貌生成</td>
+    <td data-page-node-id="HOITiDNh6wrsuEHBc3BUp9"><code data-page-node-id="iiA86FBqagvAUJ3MFNfkjK">_make_island</code> / <code data-page-node-id="7vmsEMSmx1aGG7ZCiKTeVF">_make_reef</code> / <code data-page-node-id="LgPg8fTCdRfufY3nEuM3Y2">_make_wreck</code>：<b data-page-node-id="cB4uz1bUM6WLbmELpGGRJB">程序化小块 + 随机撒点</b>（<code data-page-node-id="0ytpYywWWYxDyp8hLXbEH0">_decor_spot()</code> 8 次重试 + 最小间距 7）</td>
+    <td class="mid" data-page-node-id="WphS2zTte8l7epZivEUvv6">本质是「伪瓦片」；改造见 §10 阶段 4</td>
+  </tr>
+  <tr data-page-node-id="iMk6Bdqz3OMcmcg2HEPIGT">
+    <td data-page-node-id="kIypspHMP461OYtwPGwD9M">体素岛</td>
+    <td data-page-node-id="aJnunz8F9v4sQq22qof6ec"><code data-page-node-id="C3tl61EtddvXOmUTpUMaiP">VOX_DECOR_REPLACE = true</code>，2 个 <code data-page-node-id="RZa3sTGTpb62dz1QhZFn3G">island_scene.vox</code>（scale 0.1）</td>
+    <td data-page-node-id="GriVMafkMHcsmfoq8j96Tv">已是单 mesh 合并，<b data-page-node-id="YpdJdxRThzWlUj8IblA6gF">不是</b> draw call 瓶颈</td>
+  </tr>
+  <tr data-page-node-id="GhLwx8QiMAaEUc6Ez12FV9">
+    <td data-page-node-id="yod8OrhB8zTIhkyZTcoPPK">海面</td>
+    <td data-page-node-id="BrBymluimnw0rLV2UboAT4">1 个 <code data-page-node-id="Les4exhKbjGDAu2JesBxHh">PlaneMesh(72×300)</code> 纯色 + <b data-page-node-id="AA6eKEqKD88pmWL1mNPiO3">46 个</b>波浪 <code data-page-node-id="DFtUvrbRrwdCqRwPsdeGxg">BoxMesh</code></td>
+    <td class="mid" data-page-node-id="wTZgsRD0yj6OQcmtmrG5so">46 次绘制只为表现水面运动（见 §8 性能账）</td>
+  </tr>
+  <tr data-page-node-id="rHkGX0JyPamlB2YAHxH2ce">
+    <td data-page-node-id="ABlmgguxLEZa9st8TV4kj8">spec 管线</td>
+    <td data-page-node-id="YWRZnJdIhvs9KZAenBaxwa"><code data-page-node-id="PlUwfDrP2LYqu8VqRgAZco">voxspec.py</code>（op：box/symbox/oct/ring/profile/dots/paint）+ <code data-page-node-id="c1b68YucyJFMc9FpHlrU2y">gen_spec.py</code> + <code data-page-node-id="3wnNjH7ZXD08gowVMYE8D0">specs/</code>；E7~E10 均由此产出</td>
+    <td class="ok" data-page-node-id="nhEpfSAiW3PeP1IBPJQJlo">可复用的 op 实现与校验基建（见 §9）</td>
+  </tr>
+  <tr data-page-node-id="NDIfR79G6nL98EpHC76JyZ">
+    <td data-page-node-id="VM3br4bmiVwwxRdtM26vdF">海盗地形切片</td>
+    <td data-page-node-id="oJ0om12NcmdlH93FIa2PhF"><code data-page-node-id="1mGriY5PUpNk24nBz5NKCo">pirate_sea.vox</code>(64×64 无缝可平铺) / island / fort / ship；<b data-page-node-id="xkGF4bhKb7VeT3xxJPGSCg"><code data-page-node-id="9sPVCGclH4KhcPi3PSajVk">game.gd</code> 未引用</b></td>
+    <td class="ok" data-page-node-id="IpSn3tACQuqa2cfRH8S8Iz">瓦片系统的<b data-page-node-id="lbSSWu9Ieo6Qr6XQU2hTYc">最佳试点</b>：已就绪且未接入</td>
+  </tr>
+</table>
+
+<div class="note" data-page-node-id="Yed555S1QFXDopD3P4FDVM"><b data-page-node-id="CJvFRhBmREGrYpFpPQiExB">设计文档 §9.5 已界定的边界（本方案继承）</b>：spec v1 只覆盖「单位」，
+地貌是「噪声地形 + 随机撒点」范式，硬统一会撑爆 op 集合。瓦片问题正落在这条边界上——
+<b data-page-node-id="ajqo1wGHQGg5yfsAB0x0jR">瓦片本体可以用 spec 做（它是小块、可枚举），但地形排布不能</b>。</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="K8jdGLGehYcjuNzi39grQY">2. 「瓦片」的四种含义与适配度</h2>
+
+<table data-page-node-id="zLrwkuXMUyFDGCRjFfocgz">
+  <tr data-page-node-id="VJWVpRoLt5p9ccQfujiXFq"><th data-page-node-id="W1ypk5aLryutXmM8TyHk5u">含义</th><th data-page-node-id="MlyuDNDRFk7awG3wcCyuNr">在本工程对应</th><th data-page-node-id="Z12cpRGTnSoANxSPNycIKT">适配度</th></tr>
+  <tr data-page-node-id="WZ5XARz65D1RCvbiGOrLFF">
+    <td data-page-node-id="6YNsm21LVlsUHUyw4eMox9"><b data-page-node-id="5NQ1S0DP2JZIpI20c4gcxg">3D 模块化拼块</b><br data-page-node-id="BqssD2g7sKf4bzHhqqPGOE">GridMap + MeshLibrary</td>
+    <td data-page-node-id="jtQNQoCQzAwwRMPZEFe9dg">地貌 / 关卡摆件按格拼装</td>
+    <td class="ok" data-page-node-id="jEJZ7jXlRF0If46KXJ9Jjw">★ 推荐主路</td>
+  </tr>
+  <tr data-page-node-id="5MEJwKBJ3tTsGhw1dfxojH">
+    <td data-page-node-id="IjvWCFbm0WXRAiBj1pD7jd"><b data-page-node-id="K6DQzSQBcKN3cBMVDKMD8E">2D TileMapLayer</b> + TileSet</td>
+    <td data-page-node-id="GJC9EXvXbfCqmMKO3knMSs">整个游戏退到 2D</td>
+    <td class="no" data-page-node-id="62sSlHiGsySxnUJmIabDUG">✗ 不建议（见 §3）</td>
+  </tr>
+  <tr data-page-node-id="zEsVoXPk7xhAZVKtYgImrd">
+    <td data-page-node-id="JWKc6BHi1N89YqKEZ0Ifb0"><b data-page-node-id="ta1VKNxAa3k4QHVOwDvz5o">纹理平铺</b><br data-page-node-id="CwgZRb1cl4yWXt2HcXOfwx">tiled texture / UV 滚动</td>
+    <td data-page-node-id="QF3OdeF7DdoiNfamcmzzvC">海面、地表</td>
+    <td class="ok" data-page-node-id="Rc8oxah2vVK22vfsv7hPL8">★ 推荐，但只用于海面</td>
+  </tr>
+  <tr data-page-node-id="pFc4gGzZO42kQ8XJtPFfoV">
+    <td data-page-node-id="jym5phruzuDqN1MpPVgDAu"><b data-page-node-id="T1JpV2pC1dpAJZ6jwfeOZQ">无缝地形块切片</b></td>
+    <td data-page-node-id="U20eheCYTX055857yeNNR0">已有 <code data-page-node-id="ccCj1CaUuqZZEv3Bjj2xwV">pirate_sea / island / fort / ship</code></td>
+    <td class="ok" data-page-node-id="mdLsnM5H6FwK3B3JjxFhxt">★ 已在做，只差接入</td>
+  </tr>
+</table>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="zPGAP6Z1nk5lwVN8nCqY2F">3. 为什么不退到 2D TileMapLayer</h2>
+
+<p data-page-node-id="jNh1OPCCbhvXiNRAgSziqN">那不是「省事」，是<b data-page-node-id="BWtTtK0cJVbdQ4En1WGTIe">换引擎</b>。以下能力会全部作废：</p>
+
+<table data-page-node-id="8tXbCyyvTzG3630gTaVhvr">
+  <tr data-page-node-id="gsR6iielB4XzdDdDneAvS8"><th data-page-node-id="fxi2G26xsQM9wrMLGmzcTQ">会丢失的能力</th><th data-page-node-id="Ey0IfzO1rTCwlxDg9kOM47">出处</th></tr>
+  <tr data-page-node-id="e6SwEvAKIQADOcDNw4rCjH"><td data-page-node-id="VZH7duWwqL9VRtUBT3z5eR">炮台 <code data-page-node-id="EfDxHQCjlMmiLdb4Phlo5Z">look_at</code> 转向玩家</td><td data-page-node-id="1LEOGJJQN4azXixP8JE3n0"><code data-page-node-id="cyMxAnz05iitmcRg3GF2PD">game.gd</code> E1H 炮头子树</td></tr>
+  <tr data-page-node-id="0a1gSiu7Ku7ZDm3Tpbggk2"><td data-page-node-id="DHFsLe4jar3gVpChHJziMX">AABB 反推贴地对齐（<code data-page-node-id="kL9vx9rE3K6huzgYh6ma62">-aabb.position.y * ENEMY_SCALE</code>）</td><td data-page-node-id="gyaRQyBkCIlF1dF0bwmARh"><code data-page-node-id="NDbTH704twpj1tgGgGXP0m">_spawn_ground</code> / <code data-page-node-id="mJDcCEVaqbtXVFEZscxjuA">_spawn_vox_decor</code></td></tr>
+  <tr data-page-node-id="4FOs8Ec4cS9KjpFhVYlebr"><td data-page-node-id="lBlJektGxBLkAxBxiXmNgO">绳索引擎与营救姿态解算</td><td data-page-node-id="v7wNpMJm8GRaXGzA7CzKaX"><code data-page-node-id="GHFlTldbiJA8M6hCgLCuS3">_rope_pose</code> / <code data-page-node-id="SgYIZoiVvxvgaHW4IPBGrQ">survivor_unit.gd</code></td></tr>
+  <tr data-page-node-id="uNeOOWFwYVebO0QvrMkQeI"><td data-page-node-id="KnJ3WLbwmVw4wFJS4mMKwU">方向光阴影（<code data-page-node-id="0DwijJMkAQBBbDAwcnHEb5">ORTHOGONAL</code> shadow）+ 深度雾</td><td data-page-node-id="eag8xxyY4wgM3HUYCzkAkp"><code data-page-node-id="gjMH7jD7PuqdKpiWM6s512">_build_env</code></td></tr>
+  <tr data-page-node-id="DjYVZd0zDtzHbQHI8KxUnz"><td data-page-node-id="lLMde8WM4vuuYrgxOdByrs">68° / 90° 双机位切换</td><td data-page-node-id="stRR6ht8hL63Y91YVB5lUC"><code data-page-node-id="CG2RG6FE0XmkWxH8rz95Ca">cam_mode</code></td></tr>
+  <tr data-page-node-id="BnsagZY9z2Zy3ealTaDhpF"><td data-page-node-id="7VQxco9yxGptj25SRdKvFK">体素块风格（本作美术身份）</td><td data-page-node-id="Q5cFqNsg4TiNWcMKrUxpMk">整套 <code data-page-node-id="b7vJoStNSa4VWIWttwvPyc">voxlib</code> / <code data-page-node-id="17ti6Q9St4UPVghElsvHvk">voxspec</code> 管线</td></tr>
+</table>
+
+<p data-page-node-id="mT4b7REo3rzep2ZShbEBFY">换言之：2D 化的代价约等于重写 <code data-page-node-id="ZAN722K2EGLPbHqGdOp5v0">game.gd</code> 的 3D 部分（1700 行中的大半），
+而收益只有「地形自动拼接」一项——那不划算。</p>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="hPWAnqZj3bRdVZ4qOLr5eT">4. 推荐架构：三层分工</h2>
+
+<figure data-page-node-id="eMBU1toOLE7masuWm8umMH">
+<svg viewBox="0 0 680 195" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" data-page-node-id="G5lQAvGQ0OStswe0C5SQ9t">
+<title>瓦片化改造的三层分工</title>
+<desc data-page-node-id="FKTTk3J04hbDu8uCq7kexy">瓦片本体复用 spec 编译器产出单块资产，排布层用网格数据表描述摆放，渲染层用 GridMap 或 MultiMesh 承担绘制；海面单独走纹理平铺，单位不做瓦片化。</desc>
+<defs data-page-node-id="I6WFJ7ld8hewMf1MpXbmL4">
+<marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" data-page-node-id="0dN2LqRjw9udfjxRcB5neN">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="19bGsCKq6U6xOSc52OeJaj"/>
+</marker>
+</defs>
+<g data-page-node-id="U4D7ixhj5WSle2c9dJR8V7">
+<rect x="40" y="50" width="160" height="60" rx="8" fill="#085041" stroke="#5DCAA5" stroke-width="0.5" data-page-node-id="OpPDi062Z2CtaGzG13aNoh"/>
+<text x="120" y="73" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#9FE1CB" data-page-node-id="WOOxWhbDvk3I2WJnc8jNGm">① 瓦片本体</text>
+<text x="120" y="93" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5DCAA5" data-page-node-id="BDkXGOlgqo9eCXNBcZUXyU">单块 .vox / spec</text>
+</g>
+<g data-page-node-id="yGOS3bE37ESmf8GAuoFhwc">
+<rect x="260" y="50" width="160" height="60" rx="8" fill="#3C3489" stroke="#AFA9EC" stroke-width="0.5" data-page-node-id="w92J20qwyyCbAYB4WqYFAE"/>
+<text x="340" y="73" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#CECBF6" data-page-node-id="ZVLzQEAAOu75O94sAHk8Xg">② 排布层</text>
+<text x="340" y="93" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#AFA9EC" data-page-node-id="pv5DDwkoYuX5NlVaCdLDO5">tile_id · gx · gz · rot</text>
+</g>
+<g data-page-node-id="UmHpxvU4IMbXMUXlk2eI9F">
+<rect x="480" y="50" width="160" height="60" rx="8" fill="#131a2e" stroke="#2a3554" stroke-width="0.5" data-page-node-id="e5BomdgWRx37ICbyUnTjOS"/>
+<text x="560" y="73" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#cdd3e8" data-page-node-id="76wq2aRH0gcd8vkud1nkBb">③ 渲染层</text>
+<text x="560" y="93" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#8a94b8" data-page-node-id="kO8F1XmAFxuFHY3E3v2yXN">GridMap / MultiMesh</text>
+</g>
+<path d="M200 80 L260 80" fill="none" stroke="#5DCAA5" stroke-width="1.5" marker-end="url(#ar)" data-page-node-id="1scydJqqeZEEjX6rklbG90"/>
+<path d="M420 80 L480 80" fill="none" stroke="#5DCAA5" stroke-width="1.5" marker-end="url(#ar)" data-page-node-id="XaHZqCxA3xHuQqVqxT9rR6"/>
+<text x="340" y="140" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5a6486" data-page-node-id="rFlSKhGHM94iqDE1TiA6E3">海面单独走纹理平铺：46 个波浪块 → 最多 1 次绘制</text>
+<text x="340" y="166" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5a6486" data-page-node-id="bc4WSc44B6Fo5LXrzXDAB6">单位不瓦片化：player / boss / E1~E10 是唯一造型，瓦片会毁辨识度</text>
+</svg>
+<figcaption data-page-node-id="mMKvnuA0ZpBULHNuZ2H5QJ">图 1 · 三层分工。① 复用 spec 管线产小块；② 用数据表替代随机撒点；③ 用实例化渲染替代逐块 MeshInstance3D。</figcaption>
+</figure>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="3w7iQqhbxFBXTomeZll46n">5. 关键洞察：本作的世界是一条「滚动走廊」，天然适合行式瓦片</h2>
+
+<p data-page-node-id="PVEDKVmmOjFAsElIGvJDQU">当前世界沿 -Z 无限滚动（对象滚出后 <code data-page-node-id="RhixzS4MZ0gLqv9XJGBHCM">z -= 230</code> 回绕，并把 x 重新随机），
+玩家固定在 <code data-page-node-id="lBAbNQDtVV8W6KhDhZEGYc">z≈0</code>。<b data-page-node-id="UtJ3xarDlVIfRXzkHnf1sf">这本身就是「行式瓦片」的形态</b>——只是现在每行内容是随机的。
+把它显式化成「行 → 瓦片列表」的映射后，随机撒点自然消失。</p>
+
+<figure data-page-node-id="EGMsBLLxBVzykZjqDEBNC1">
+<svg viewBox="0 0 680 232" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" data-page-node-id="DAndIi5AaUMTkPpe0AwqAL">
+<title>滚动走廊的行式瓦片布局</title>
+<desc data-page-node-id="6QCbGreXZqDbXqGlWAQfAG">世界沿 Z 轴分为若干行，每行由若干瓦片横向拼成；远端新行从 layout 表重建，近端滚出的行回收进对象池复用。</desc>
+<defs data-page-node-id="IbmPBjTuW1HkMfYelaE0B7">
+<marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" data-page-node-id="ms2Kj7fJ3aELudea0F5HFb">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="B2DDKqrCaBkyrY3fVC63L6"/>
+</marker>
+</defs>
+<g data-page-node-id="uMzJZnSxN2AW7FloB1YeX3">
+<rect x="100" y="58" width="480" height="34" rx="6" fill="#085041" stroke="#5DCAA5" stroke-width="0.5" data-page-node-id="D9qiTtTFiBFMv4BlLjw0Do"/>
+<text x="340" y="75" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#9FE1CB" data-page-node-id="UNWSJTMy4Zwm0DF1FWlbY8">新行：按 layout 表重建（tile_id · col · rot）</text>
+</g>
+<g data-page-node-id="K2sHi4y0YGJAQPwUdBzGyH">
+<rect x="100" y="102" width="480" height="34" rx="6" fill="#3C3489" stroke="#AFA9EC" stroke-width="0.5" data-page-node-id="5JbdSWk6Pl3xSVm84rov8t"/>
+<text x="340" y="119" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#CECBF6" data-page-node-id="fFrhdmX3LsYFFyAVzBvLGQ">视野内：正交 34 → 宽约 60.44 世界单位</text>
+</g>
+<g data-page-node-id="bHvqWMxRJlA7Jp2c5InL1e">
+<rect x="100" y="146" width="480" height="34" rx="6" fill="#131a2e" stroke="#2a3554" stroke-width="0.5" data-page-node-id="Wg14MFVBWMtFRxtIcmXyXe"/>
+<text x="340" y="163" text-anchor="middle" dominant-baseline="central" font-size="13" fill="#8a94b8" data-page-node-id="GVWeLO8wCyv2qkfxK1RsIy">滚出：回收进对象池，不销毁</text>
+</g>
+<path d="M602 75 L602 163" fill="none" stroke="#5DCAA5" stroke-width="1.5" marker-end="url(#ar2)" data-page-node-id="38DWgyhSgw8Huan39RaHCw"/>
+<path d="M62 163 L62 75" fill="none" stroke="#AFA9EC" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar2)" data-page-node-id="kJv3FXWCvj5KvjyP2yzGpU"/>
+<text x="620" y="119" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5DCAA5" data-page-node-id="3Zdya7CWZHT8TR4qkMmghp">前进</text>
+<text x="46" y="119" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#AFA9EC" data-page-node-id="ybTFPQLwBUgndE9wdJoGvS">复用</text>
+<text x="340" y="208" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5a6486" data-page-node-id="TrCDLyWWnN0NTGa1E6dLDd">列数 = 视野宽 ÷ 瓦片边长；行数 = 回绕跨度 230 ÷ 瓦片边长（边长 4.8 → 13 列 × 48 行）</text>
+</svg>
+<figcaption data-page-node-id="UQpFiEziPSaFFO8DGgtAHV">图 2 · 行式瓦片：对象数恒定（池化），布局来自数据表，滚动只推进行索引。</figcaption>
+</figure>
+
+<p data-page-node-id="BGLmir3KugZ0hgQv912IYQ">这条改造同时解决三个现存问题：</p>
+<ul data-page-node-id="0QHPWT74vFnkmcDTjZfS9T">
+  <li data-page-node-id="PA0AeWLUIFAVttENRszrlz"><b data-page-node-id="ncvxLpIeKoko6vtDyck9jj">不可复现</b> → 布局来自数据表，同关卡同种子恒定；</li>
+  <li data-page-node-id="kKSuz6Y4zDvJVDjwh9sPTB"><b data-page-node-id="nFp39tGQ3MIxcOZcyHtrbu">不可设计</b> → 想摆什么摆什么，不必与随机数较劲；</li>
+  <li data-page-node-id="T0wLdTWDPKFBBG14Yf3YKj"><b data-page-node-id="1OqqV5j9bGPDhECkxPJNQq">对象数波动</b> → 行级池化，运行时对象数恒定。</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="MziBoHwPuntzlAIHDwtCL5">6. 必须先定死的三个数</h2>
+
+<div class="warn" data-page-node-id="zA4pVHpxQI70CXJMCUNY7r"><b data-page-node-id="UXT76Rc3byDLY65xguiNgp">这三点定不下来，瓦片拼装一定会出缝或错半格。</b>
+且它们都触及全工程共用的代码，改动要极其小心。</div>
+
+<h3 data-page-node-id="i3pghXYJw48hqPjDdyf4Nw">6.1 瓦片边长</h3>
+<p data-page-node-id="qUJOzXkLtBI0ITh6Pp6jBD">现状：体素单位是 <b data-page-node-id="IFFOIoYYLEYBtCOorQlLOU">0.3 世界单位 / 体素</b>（<code data-page-node-id="yfwl4fdlFkVZVlUZzs6Rg6">ENEMY_SCALE</code>；玩家机 15×19 体素 = 4.5×5.7 世界单位）。</p>
+<table data-page-node-id="N79R2N2PtBqNDsnL9CxcVh">
+  <tr data-page-node-id="ftkrk4fEk9wd0QmvU6EB1p"><th data-page-node-id="hFFPpMHHURX6hADLMMEdmH">方案</th><th data-page-node-id="5SOchqHdmdE4FQukwylWJB">边长</th><th data-page-node-id="vipEy629hYtGAJPoMCoRbC">列数（视野 60.44）</th><th data-page-node-id="bmzgRpCUEz6HkJsriYdm9R">评价</th></tr>
+  <tr data-page-node-id="TH0z6T4yJhJ3WsO6xFpPjU">
+    <td data-page-node-id="QebU9finhoR7CNWaEqILA9">整数世界单位 2.0</td>
+    <td data-page-node-id="V1UsF0SqhuQXCkTCv7wutg">2.0 = <b data-page-node-id="1BdI2iJBsWyhppaA6Gad9I">6.67 体素</b></td>
+    <td data-page-node-id="zl9f2i0cPjSicPlpW1Q78T">31</td>
+    <td class="no" data-page-node-id="6PHCS8aT7mvzephHetJpZf">体素除不尽 → 跨瓦片体素不连续、拼接错半格</td>
+  </tr>
+  <tr data-page-node-id="06493OjmnxepVvpLfuBhFr">
+    <td data-page-node-id="FuWrX22zR4qw1bIz6nxEBS">整数世界单位 4.0</td>
+    <td data-page-node-id="f3Uz6BzrwtGvpLvFgByR5z">4.0 = <b data-page-node-id="w3sUgrgIQmIQ3jSEhL1mGR">13.33 体素</b></td>
+    <td data-page-node-id="Al6COEyg6FZUIH4nFco81B">16</td>
+    <td class="no" data-page-node-id="6MdMT9Czza3ID6YYiN3JnL">同上，仍是除不尽</td>
+  </tr>
+  <tr data-page-node-id="l9GfQKV4aOW44gOcq9ijwp">
+    <td data-page-node-id="k4Ftx8BlzVwGLmZnHZ7EaC"><b data-page-node-id="2xIpkLkWLVhxscWTK4RUpC">体素整数倍 16 体素</b></td>
+    <td data-page-node-id="7QHETCPekdOZSgqcJakDci"><b data-page-node-id="Rrpej8lZ5VLlggr00emLC5">4.8</b></td>
+    <td data-page-node-id="aUfStRntUmZcK8d0XSnudT">13（覆盖 62.4）</td>
+    <td class="ok" data-page-node-id="mIup8akvX1TV8fzG4UuJ6h">★ 推荐：体素严格对齐，粒度较细</td>
+  </tr>
+  <tr data-page-node-id="cCtYbIYW3LSFs4ZHvjl39P">
+    <td data-page-node-id="gFNSpaXPCO8vD1lEcswkOA"><b data-page-node-id="LXIINXY1vZDBtGwG1C2N8E">体素整数倍 32 体素</b></td>
+    <td data-page-node-id="wnBaFLwbwA5XoOxJqPm3qT"><b data-page-node-id="736B42ve5bJ8reI2vRTLSL">9.6</b></td>
+    <td data-page-node-id="1k0BMAAxgLa5QxDAOCpuxd">7（覆盖 67.2）</td>
+    <td class="ok" data-page-node-id="Wf0ggP6B1cSxerTAzwhez9">★ 备选：块大、对象少，但地形细节粗</td>
+  </tr>
+  <tr data-page-node-id="Ttr5ER2vJVwU9zSReyEae7">
+    <td data-page-node-id="iqFzjdce2qyQQ8Q0JkHfAH">改体素缩放为 0.25</td>
+    <td data-page-node-id="8qAl5cjzThHFi93ATDDH5Q">2.0 = 8 体素</td>
+    <td data-page-node-id="Ms2NRb98fOkau7VzYqGUk5">31</td>
+    <td class="no" data-page-node-id="tv4iAbVDzOABhnDK9bOjZJ">世界单位凑成整数，但<b data-page-node-id="psa7UQUq3GBERLYtP5cqL3">牵动全部已有单位</b>与手感调参（玩家速 24 / 正交 34 / 贴地偏移全部要重调）</td>
+  </tr>
+</table>
+<p data-page-node-id="u5zaVCVZQNoRraRhtHGqFw"><b data-page-node-id="aWvPTMhDZxH8sxMKRkIWVK">建议取 16 体素 = 4.8 世界单位</b>。关键理由：把「边长」表达成体素整数倍，
+体素网格才能跨瓦片连续（沙滩、浪纹这些要跨界延续的细节才不会断）。
+<b data-page-node-id="owDwavNAUFz0TVGfw8dXiK">不要为了凑整数世界单位去改 0.3 缩放</b>——那是牵一发动全身的改动。</p>
+
+<h3 data-page-node-id="TTbMCQ9fen0ILvcQt2nD6P">6.2 锚点</h3>
+<p data-page-node-id="znzx85nfYdqWLFTetktBbJ">现状：<code data-page-node-id="QUmNB4MzDJoGkM3WlngXeC">voxel_model.gd::build_blocks()</code> 以 <b data-page-node-id="zsCfJPX9NGDmFFzvV72l5P">AABB 中心</b>为原点，
+且键与几何中心<b data-page-node-id="lXNWF3Sq3Q7uNAXnLhVQti">差半格</b>（<code data-page-node-id="mHSExoXAIHi0jibKd5EXpq">README §6</code> 记载的已知坑）。当前靠
+<code data-page-node-id="QQlJGtLTGwLjUSokuTx7o9">-mesh.get_aabb().position.y * s - 0.1</code> 反推贴海。</p>
+<div class="warn" data-page-node-id="xZaKaUUTvIXL9UksDyI40l"><b data-page-node-id="j4StBNenVjZZiruQlIvqvU">不要改 <code data-page-node-id="bEsJlKaKuppOlsR2P1VLC5">voxel_model.gd</code> 的居中逻辑</b>——单位资产、幸存者、
+地形全部共用它，改了会让所有既有资产偏移半格。
+对策：<b data-page-node-id="l8wjplHBc1w0sgCICLXzae">在瓦片侧另做锚点修正</b>（或给 <code data-page-node-id="V3NsaFfUEKNFKOuQ4mKQKt">build_blocks</code> 加一个可选参数、默认行为不变）。
+建议瓦片统一采用<b data-page-node-id="vW7KHzAy56ijUU357Dbh9G">底面中心</b>锚点（x/z 居中、y 取底面）——走廊左右对称，
+且布局是以 0 为轴的，中心锚最自然。</p>
+
+<h3 data-page-node-id="hpCXQO1MozsGwFMnclAzbl">6.3 全局北向与旋转约定</h3>
+<p data-page-node-id="i3TgbkaGwGI6IO7PhjoNaD"><code data-page-node-id="aO1zuikUUO7mgaEpDkzjl8">godot(x,y,z) = vox(x,z,y)</code>（Z-up → Y-up）。瓦片的「北」若不统一，
+<code data-page-node-id="6uGECZCW0j5RpIxmc83vhV">rot</code> 旋转拼图时会出现镜像错乱。</p>
+<ul data-page-node-id="fNwDVqzG6ORUOueBFlvdrI">
+  <li data-page-node-id="1XrxzaJiRJ3png5sD7H3Lz">规定瓦片的 <b data-page-node-id="8J6K8I5dZxtvUztTHt0VU7">+Y（vox 坐标）即游戏 -Z</b>（远端 / 前进方向）；</li>
+  <li data-page-node-id="ACQQvHO7G4p1BZAFCJfch6"><code data-page-node-id="NwPTeOuOdGjERyXcl1BSGn">rot</code> 只允许 <b data-page-node-id="ErvkMR1aViGrV3HPJP5OHD">0 / 90 / 180 / 270</b> 四个值，<b data-page-node-id="veCQn3YvOjZMOi2O6ADS8F">不承担镜像</b>；</li>
+  <li data-page-node-id="G5naK1C53TdvfObyNDLdvj">需要镜像的瓦片另设 <code data-page-node-id="ktX5T8VateP6vsenazZdIC">flip</code> 标志并显式声明（体素模型镜像后法线绕序会反转，
+      必须同时翻转绕序，否则 <code data-page-node-id="xglUOiv8289grGtFvAX7fq">asset_audit.gd</code> 的「绕序 100% 朝外」会失守）。</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="Q9g6SIE9lx0KVGBnLGAroO">7. 渲染层选型</h2>
+
+<table data-page-node-id="qlBoK1JdjyuM6pl8IGZmRy">
+  <tr data-page-node-id="zpjDEFQxnXRNw4s8Jnpvng"><th data-page-node-id="JPz865X8IcCsRFQSQJfnok">方案</th><th data-page-node-id="tW2rpScbKhkO4HAwC9OCQJ">适用</th><th data-page-node-id="EI3E6pdPViRVQl0iNcLB9W">优点</th><th data-page-node-id="8fsDXkfXy5G0IVVFvdMVTK">代价</th></tr>
+  <tr data-page-node-id="64QKUWN07SsoWKWCbtYzfh">
+    <td data-page-node-id="KGvwCuGaTBcdQyWPAjJj7q"><b data-page-node-id="c878BLFtOlnH8YIMWZA4SD">GridMap + MeshLibrary</b></td>
+    <td data-page-node-id="8laX2rlvmmwogsGfl4A77t">地面 / 礁石 / 建筑等<b data-page-node-id="ntCdUR1Yy9XhfGe3aaLIkf">格状</b>地貌</td>
+    <td data-page-node-id="G9kjFnQkcpk4HKzwsKbgp6">Godot 原生格网摆放；mesh 与材质共享；同 mesh 格子实例化提交</td>
+    <td data-page-node-id="hxMcAAp4kUFdnTEhOF6StE">单元格是立方体，高低差靠多层 cell 表达，需提前规划层数</td>
+  </tr>
+  <tr data-page-node-id="y9vJ1fU1sIDOFWrKsEcFTZ">
+    <td data-page-node-id="TcDqndfnY5EbinkUflCf8h"><b data-page-node-id="Ym5Vd04QNmNzT1dgCRLuc3">MultiMeshInstance3D</b></td>
+    <td data-page-node-id="1ppn78Y74M5YH5OT2ELOWp">同一造型的<b data-page-node-id="mngrX3qZ85Pb1pLmkbzm89">大量重复</b>（波浪、浪花、碎石）</td>
+    <td data-page-node-id="KLiKKrzyLTCgw8aACviQgM">1 次绘制承担 N 个实例；项目已在子弹 / 星星 / 碎片上用此法</td>
+    <td data-page-node-id="JkrNJjhctZCQKbVWAEcVBp">每实例只能调变换与颜色，不能各自换材质</td>
+  </tr>
+  <tr data-page-node-id="ZBgpH66uoRpu70MVyRBJzq">
+    <td data-page-node-id="pEAQXFkKGPJOMfuiZaSRos"><b data-page-node-id="RdibBL5jptypCWHXzHFowu">合并 mesh</b>（<code data-page-node-id="yQHyA1WB8JKQ99PcSX7HG2">VoxelModel.build_blocks</code>）</td>
+    <td data-page-node-id="vxYXp3WrXTAPvzO3Lt7usX">整行 / 整段的静态地貌</td>
+    <td data-page-node-id="5pSokTAkUZSnxKhIdcFlA6">最简单；现有 <code data-page-node-id="6O5iDmPvW8HR2B7OYktl28">island_scene.vox</code> 已用此法</td>
+    <td data-page-node-id="MMhwTtZpQfTvm6Dx069cMB">合并后无法单独移动其中一块，行滚动时需整行重建</td>
+  </tr>
+</table>
+
+<p data-page-node-id="RsZtznvuB8rbQfHANZcLfn">建议组合：<b data-page-node-id="rT3Al6n2ch8JA3iW38saU6">重复小件走 MultiMesh（波浪），格状地貌走 GridMap，一次性的整块地形走合并 mesh</b>。
+当前 <code data-page-node-id="8TIAEoDBN49rEGJ0VmH7Lo">VoxelModel.shaded_material()</code> 在 <code data-page-node-id="Rn1PsrIqnwoeHP0U7DPlIO">_make_island</code> / <code data-page-node-id="bcifAzXkKzMg7c1LQhNFwH">_make_reef</code> /
+<code data-page-node-id="qZSEd67avsfl0LFhVRqlDB">_make_wreck</code> / <code data-page-node-id="6yZtg7uiL1oERh9UFYlx8h">_spawn_vox_decor</code> 里<b data-page-node-id="zTiD6tOOtu4DCt9WJzOhTP">每个摆件都 new 一份</b>——
+瓦片化后改为 MeshLibrary 共享资源，可顺带修掉材质重复。</p>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="0mnAixBuXeXcUVM5VsXwmN">8. 性能账</h2>
+
+<h3 data-page-node-id="A20VFXDFNgkFuJjG63cX3E">当前位置：第 3 关（黄昏防线）</h3>
+<table data-page-node-id="nj1c7F5a5Balf74R4wquKq">
+  <tr data-page-node-id="AtJ72Wt1YeVB7B88WeB2ie"><th data-page-node-id="WGBb5wyxiFblJceRWZaapB">项</th><th data-page-node-id="7vDLnmRAcphnxeMyTZvgDr">数量</th><th data-page-node-id="F7GSIiKOsQbmBkJ0eKAkUW">绘制提交</th><th data-page-node-id="1a2Cl4KgeJ4ejrQ0kAE04C">备注</th></tr>
+  <tr data-page-node-id="dV2TGw1VP6BbWlrFIQ54tZ"><td data-page-node-id="y6VEJXAVS8Vnpr5arcHF6p">海面</td><td data-page-node-id="3i1hLeJGma0xUpcjBDyrKI">1</td><td data-page-node-id="TCWexKqzuT3ESGb7qxI3zQ">1</td><td data-page-node-id="KmZFt2i1TqL6AmPe5bwRiR">纯色 <code data-page-node-id="lGanqA8zOeKDs1tB3wLk4l">PlaneMesh(72×300)</code></td></tr>
+  <tr data-page-node-id="BBsjodRaklKLkCoec96eLM"><td data-page-node-id="PMlnICxV91aQ5tSbIG6DY3">波浪块</td><td data-page-node-id="WsjQ4145zmF3ZebB5C0DMM"><b data-page-node-id="hjmBpK1BeU5IdIvGBgsDkt">46</b></td><td class="no" data-page-node-id="g3DVoro5b8SiLzkkGzQGcC">46</td><td data-page-node-id="gYkSmURmbcuLZ62JBRE0zB"><code data-page-node-id="rCtLWYKKj0G3dQrjYI4J2I">for i in 46</code>，共享 mesh 但各自提交</td></tr>
+  <tr data-page-node-id="mLnit2TBZfVVXFT6NkfHJ8"><td data-page-node-id="guIutQGTohJwIxGsi439an">云</td><td data-page-node-id="dGMUSoKt7i4PDAEAa9Imse">5 组 × 4~6 = 20~30</td><td class="mid" data-page-node-id="Ke8Q0wVHDwWJbgDGguBlxs">20~30</td><td data-page-node-id="B4AjCatGcU8RP8q2ZsIjYn">半透明、不投影</td></tr>
+  <tr data-page-node-id="MvBf7qA81QQG3Bn7xMyUIJ"><td data-page-node-id="sGQFagywgYpWK0XqTFXaJS">地貌摆件</td><td data-page-node-id="RDLXXkOHpa2P2Zcu6dr1J8">2 体素岛 + 6 礁 + 4 沉船 = <b data-page-node-id="aay3vFpU9xYxr4kKGiBodU">12</b></td><td class="mid" data-page-node-id="SoZ9LgBUjHgnTapAvVVg8m">12</td><td data-page-node-id="YzxsKDNlcpcBWsw7joBQ6P"><b data-page-node-id="OG3m89VBzfODv1dvrDtJXq">12 份重复材质</b></td></tr>
+  <tr data-page-node-id="mOKAMvv5Gf60MQv1bDCUXC"><td data-page-node-id="c7zMT8hG1PCTIDeOyA2qeF">火焰</td><td data-page-node-id="CdVe7SQ7ajCEHOOGmLNYdC">8</td><td data-page-node-id="zUxE1qjSkZF8yzEAaIGLfz">8</td><td data-page-node-id="b2UmfdOB0y1xJ89YnDNl9C">沉船子节点</td></tr>
+  <tr data-page-node-id="d3QaxWYbYsX4OrqPCGx40n"><td colspan="2" data-page-node-id="PF9OBx0BlBogSvMi3EfXoH"><b data-page-node-id="pJvD73pgIh1WVfFy1J1ysg">合计</b></td><td class="no" data-page-node-id="vgSSHrCIsLVLKhbTWXDW7y"><b data-page-node-id="oFjEGtpCBdC6mq6hj69XM5">约 87~97</b></td><td data-page-node-id="lmEjpSt3KZUMI8MduAWAA2">不含单位 / 子弹（后者走 MultiMesh）</td></tr>
+</table>
+
+<h3 data-page-node-id="lrwWpynYGHOX4Cjnn5Zqa3">瓦片化后（预期）</h3>
+<table data-page-node-id="niwq9qMNGOSgymkUhnE5Wf">
+  <tr data-page-node-id="1w4n7lufv2wnmoKw0v8SW7"><th data-page-node-id="WLqiYTI629FKtrW59sBc5O">项</th><th data-page-node-id="8pHomvbmjqj3jYvCgcXibB">改造</th><th data-page-node-id="LGOpyUvrcuVZ4p3YG2gMru">绘制提交</th></tr>
+  <tr data-page-node-id="uXZQBM9N8NGvHCmvg2YMQo"><td data-page-node-id="xU3L0fWPCbgPjaMEvdv3vD">海面</td><td data-page-node-id="UbAKFX0ce82Kmw4aynmJOQ">纹理平铺（UV 滚动）</td><td class="ok" data-page-node-id="XyD9OQaZgKoBELLAYkSBFY">1</td></tr>
+  <tr data-page-node-id="dkTnc2O32tSXtqs9DmjZgl"><td data-page-node-id="31xVn6Icq6Np6Tx4B2kvFu">波浪</td><td data-page-node-id="JE1je7I2PHMilnkknndbd3">46 → 1 个 MultiMesh（每帧更新 46 个实例变换，开销可忽略）</td><td class="ok" data-page-node-id="oxzZE3iakEQJmPUYJUJXqu">0~1</td></tr>
+  <tr data-page-node-id="xR4BsfBHfCcEEy1sQuXTcs"><td data-page-node-id="eLYPFzj5sdEm6rPEyof9H0">云</td><td data-page-node-id="CFEY2PV0bPbqnGIJhOFpX3">各组内合并为 1 mesh（5 次）</td><td class="ok" data-page-node-id="NNh4Z3A2BeZn2tB8SZZdvy">5</td></tr>
+  <tr data-page-node-id="3aBn6N2wO5lK1wyb32taPH"><td data-page-node-id="rgKG6L5ue3vCLc0WmZFCNL">地貌</td><td data-page-node-id="5KO58yk6jNxBQpSLs7HPB1">GridMap 实例化 + 共享材质</td><td class="ok" data-page-node-id="ChLulgnCdrIHcfctoCI4hE">按 mesh 种类数（约 5~10）</td></tr>
+  <tr data-page-node-id="nDD2DTjzYCQv1r1ssEgP8m"><td colspan="2" data-page-node-id="8vqlbGGeE1mIcDkDA9RQkG"><b data-page-node-id="5B3tAFxbLXLu0M4KZEPM1t">合计</b></td><td class="ok" data-page-node-id="95eNng9caYtc6YtdWikeSF"><b data-page-node-id="reWe1pA8wsQBMN0cXwwAZg">约 15~25</b></td></tr>
+</table>
+
+<div class="note" data-page-node-id="gpyAXtHHvbNHEhcBb8W7BU"><b data-page-node-id="qAv24haGTcIIciB7zSBoIO">补充：像素对齐</b>。正交 <code data-page-node-id="hpMJjnPyqGTCPfxikdUsaj">size = 34</code> 时 720 / 34 ≈ <b data-page-node-id="R1zZOmB7r6CHM1TgyE5Y8s">21.18 px/世界单位</b>（非整数），
+滚动时拼接处会有亚像素抖动；改成 <code data-page-node-id="btFQNO7BfRDuCCRDh77njW">size = 36</code> 则 720 / 36 = <b data-page-node-id="mGm2RXJ8F5uNXyRwGAYvc3">20 整除</b>，可彻底消除。
+代价是取景略微变宽，需要与现有构图一起评估——<b data-page-node-id="JfLvs2MJ2uCX5MdiZfCUDu">这是可选项，不是前置条件</b>。</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="F3N8Rwv2Xz3CR2DJtE45l5">9. 与既有 spec 管线的关系</h2>
+
+<table data-page-node-id="ZzpYhe0TWs9piWY6gqo4CB">
+  <tr data-page-node-id="5KrfX1hutOMiILyZoDSdgd"><th data-page-node-id="MhoTNKGfnPuWMw0BWRwBg3">复用</th><th data-page-node-id="7s0bBkv3joaGpV9jDuCHTB">不复用（须另立）</th></tr>
+  <tr data-page-node-id="s1UFkp7ZgT7O1xMEsdj774">
+    <td data-page-node-id="iImmqD0xKsMB2o7O0motVS">
+      <ul data-page-node-id="nDH1OTmadSQgjndCnafkLt">
+        <li data-page-node-id="u8mR0Hn9mXMDbmBBY0Mc8D"><code data-page-node-id="CRCwCWUoOL7ydElX4CpjA1">voxspec.py</code> 的 <code data-page-node-id="tA89XDwitAV3wCu5iDHEIs">_op_*</code> 实现（box/symbox/oct/ring/profile/dots/paint）可直接 import</li>
+        <li data-page-node-id="57bQ1pTaYDqjxqgX4EUo6Y"><code data-page-node-id="h9jnQ04VRLJyZCStTGfaVl">voxlib.write_vox</code> 落盘出口（一行不改）</li>
+        <li data-page-node-id="c2K11tgvReEDklQ03ZTkPb">连通性 / 调色板校验思路</li>
+        <li data-page-node-id="m18dMq2NUEliKkw14R1ijC"><code data-page-node-id="fyvF3Vf1Iv9xSBTYxYUGBB">gen_spec.py</code> 的批量 + 预览流程</li>
+      </ul>
+    </td>
+    <td data-page-node-id="eBUfSUlhfjBsRKtWvVdDi5">
+      <ul data-page-node-id="0wyDVfNjoyEB1ok91b0ChQ">
+        <li data-page-node-id="oEw7RJSQXtjWOpOA1F3ANU"><code data-page-node-id="bw1inrii9j9CsGTGZJwQuR">category</code> 现只允许 <code data-page-node-id="X49phXaQj00Rr9Y1LOHIQC">air|ground</code>，且<b data-page-node-id="fcGCXJulIRVDCQvDn7AnAk">强制左右对称</b>——
+            地形瓦片天然不对称（海边、崖壁）</li>
+        <li data-page-node-id="IDBGS3oSYxNC7947FNO2q5"><code data-page-node-id="27ck5lPVCj0HMTjiG6Av7d">BAND</code> 量级带（宽 11~21 / 长 ≤29 / 体素 175~3000）是<b data-page-node-id="oZOrdujiDFo58N4V1K918B">单位</b>实测值，对瓦片不适用</li>
+        <li data-page-node-id="zjcuElc3vdOEEmyvVNixO2">敌机 <code data-page-node-id="jowcFg2OKY6xMMEgKzVMhD">facing</code> 必须 +Y 的规则不适用于瓦片</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
+<div class="note" data-page-node-id="RWHzCReyKzglcGDW51o0lY"><b data-page-node-id="Dl6PLd9tkaBuba3KspFxUs">建议</b>：按 <code data-page-node-id="ERJtGd5kmqf3GTLvWeIQIu">§9.5</code> 的精神另立 <b data-page-node-id="tosxy9c5tL6g5EvFWgcmeC">terrain schema</b>（<code data-page-node-id="Wu3FW9b5wxTBia8U3AF1zw">voxspec</code> 中增加
+<code data-page-node-id="VZMeR0hJvZ4r7JONzHn327">category: "terrain"</code> 分支，或新建 <code data-page-node-id="8U8TZabnVfrayguzrE84GV">terrainspec.py</code> 而 <code data-page-node-id="tDOmyWzFt3hgj7YKSKqeKY">from voxspec import _op_*</code>），
+<b data-page-node-id="WkB8gi1suBIwveF3dRPiwv">共用 op 实现、不共用校验与 schema</b>。这样既不撑爆单位 op 集合，又不重复实现展开逻辑。</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="WwKGLMHVI6zgpgDzCn1Byx">10. 落地路径</h2>
+
+<table data-page-node-id="vx2ne9YZlJYWRo6hYbzpFI">
+  <tr data-page-node-id="dtJA2JDDLvQY3peKxYkhPr"><th data-page-node-id="TrWoUZNAT78MYepucoCe3F">阶段</th><th data-page-node-id="p5fVoiNYBsbbgCkiM0zYFy">内容</th><th data-page-node-id="mDryBkvknzYdlFmUu9m4uf">验收标准</th></tr>
+  <tr data-page-node-id="TwhmUj2DFNs8QpkoHaSTas">
+    <td data-page-node-id="uCXBiyfrF0VaByt16zVUDK"><b data-page-node-id="imfjktHfU5DTl7rMDLfC2L">1</b> 定规格</td>
+    <td data-page-node-id="cEVbXnWfJLDvEHOayFtbOe">把 §6 三个数写入 <code data-page-node-id="xDFyBvrhtgXAqvjTdvl0kr">tools/vox/README.md</code> 作为约定；
+        产出 1×1 与 2×2 的接缝测试瓦片</td>
+    <td data-page-node-id="0lFB1k7mCAG7F28MEKIxqr">平铺后接缝处体素连续、无半格错位、无可见缝</td>
+  </tr>
+  <tr data-page-node-id="PgaRqiSuxivnf5s6D6HozF">
+    <td data-page-node-id="Oe0i1Wqf7dRrpPCdJ2QhRC"><b data-page-node-id="vwO3CBGWuqmWMV96aDD0mv">2</b> 海面</td>
+    <td data-page-node-id="MtZYTm6PZ7WILCbm6BFLAt">最独立、收益最直接：46 波浪 → MultiMesh 或纹理平铺</td>
+    <td data-page-node-id="tpIhAKr6BoL6Uou9pVRZv9">绘制提交减少 45；水面运动观感不退化</td>
+  </tr>
+  <tr data-page-node-id="1AaRpCj5vHPyRRXmfSDgpi">
+    <td data-page-node-id="MP0PWKrChhD6FwjpoEGmue"><b data-page-node-id="9P6MnE1bkqAuNvLahB1W34">3</b> pirate 试点</td>
+    <td data-page-node-id="hHygD1KUcUojKVhzg1CbyN">用已就绪的 4 张切片 + 新建排布表（<code data-page-node-id="E0rAvmgpPrZPZQkZnGtGHz">stages.gd</code> 同构），接成一个可玩关卡段</td>
+    <td data-page-node-id="pykHL1meY1O0g6OHeCtvbg">跑通「瓦片本体 → 排布 → 渲染」全链；不改动现有 3 关</td>
+  </tr>
+  <tr data-page-node-id="um2kVstk6xc6DOyjqw313f">
+    <td data-page-node-id="xFAtt0AW0HR4DdaiClb59v"><b data-page-node-id="JN49PMMGhdhaEj0uhNrsT2">4</b> 现有地貌</td>
+    <td data-page-node-id="AxOqtfZaUBEazCURw1fKao">验证后再决定是否把 <code data-page-node-id="2qohZub6o16CyZvPF8TdRq">_make_island/_make_reef/_make_wreck</code> +
+        <code data-page-node-id="zQnW9oOxXETbFEMHRZiJ9H">_decor_spot</code> 换行式瓦片</td>
+    <td data-page-node-id="HabW6SRLuZ9hDlANlvT2iQ">三关地貌不退化；布局可复现、可设计</td>
+  </tr>
+</table>
+
+<div class="warn" data-page-node-id="6ZyLG9IAEMcW9ogYCGAXy3"><b data-page-node-id="YVpO2q5XdQBagK3XqL3WN1">顺序很重要</b>：先从阶段 2（海面）入手，它是完全独立的（不触碰布局与瓦片规格）；
+pirate 试点作为阶段 3 而不是阶段 1——<b data-page-node-id="vn1xkh03rymkHBGyMV76vC">4 张切片尚未接入 <code data-page-node-id="QFFawhWZ65x8b1aMVDNKle">game.gd</code>，这正是最好的试点时机</b>，
+但试点前必须先有 §6 的规格，否则接缝问题会在试点里反复出现。</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="sTXbqww0vw2TaHFFAZKgzQ">11. 风险与边界</h2>
+
+<ul data-page-node-id="4MMzmfWFk4Qjc4UaUgDXKH">
+  <li data-page-node-id="NvCvDFIFRXL5dKjk9Q9JE7"><b data-page-node-id="h8BqGPQjjy5Guqt8ZGlaH0">瓦片化不省单块美术工作量。</b>它省的是重复摆放与绘制。所以真正双赢的组合是
+      <b data-page-node-id="XDm1tg307Utb91MIwFsD8W">AI spec 产瓦片本体 + 数据表排布</b>——前者把单块成本压到十几个 op，后者把摆放压到一行数据。</li>
+  <li data-page-node-id="kMPJXClMpChPGCrrIWOhPS"><b data-page-node-id="e8b7jmChauNt9ymA61IZRq">单位不要瓦片化。</b>player / boss / E1~E10 是唯一造型，正交 34 下已要求 11~21 体素宽，
+      瓦片化直接毁掉辨识度（<code data-page-node-id="hVZEFCvZirnkGIuAXKWKgy">specs/PROMPT.md</code> 的「换 silhouette」纪律会失效）。</li>
+  <li data-page-node-id="zjBNOtX8QzlUVZYvoIy86K"><b data-page-node-id="BnTzUnI7sGLBb6u48xmS4J">别为做瓦片而扩张 op 集合。</b><code data-page-node-id="wFtiVvNVkegRSfzx0GEZP8">§9.2</code> 记录过这个教训：为过闸门往 op 里塞条件参数，
+      spec 会退化成编程语言。地形需要 noise / scatter / 分带时，那些属于 terrain schema，不该混进单位 op。</li>
+  <li data-page-node-id="c2mVxRv3LGN5hoZ0wHsnMJ"><b data-page-node-id="NZHI192nFVF2pVWTxEiqDt">GridMap 的层数要提前规划。</b>单元格是立方体，地貌高低差（海面 / 沙滩 / 台地 / 建筑）
+      需要多层 cell；若把不同高度的东西塞进同一层，会出现互相穿插。</li>
+  <li data-page-node-id="nCeB9xWHZe8blPMBt6Oxpy"><b data-page-node-id="t0tFDEeaolGTJI9OLER3TZ">镜像瓦片要同步翻转绕序。</b>体素模型镜像后三角面绕序反转，会被背面剔除，
+      表现为「一块瓦片凭空消失」或「看到内部底面」。</li>
+</ul>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="gN9YPyw9nOMmbnMhV6IFBd">12. 待定决策清单（开工前需拍板）</h2>
+
+<table data-page-node-id="CRAtBUGfS1Jg1tRj7HidQn">
+  <tr data-page-node-id="GPelruVjmHdzdhs4CkdtdS"><th data-page-node-id="DDWrBTLD6mEHNkP5bCwR4N">决策</th><th data-page-node-id="70mWXCDnJG5tvfNp9aAZYr">候选</th><th data-page-node-id="sd1Q2bsCarHVsv1kY5AQBl">建议</th><th data-page-node-id="brPVpwkPz1xgMtS21vr7W5">影响面</th></tr>
+  <tr data-page-node-id="LiVxyAUKF5ycPlC0kTbFiQ">
+    <td data-page-node-id="zLXohLj7oW2LUs52CYFjpA">瓦片边长</td>
+    <td data-page-node-id="WqUDCTGJigZiCmYj3SBHxO">16 体素(4.8) / 32 体素(9.6) / 整数世界单位</td>
+    <td class="ok" data-page-node-id="eH5ho0ovja070jHyOFBmqy">16 体素 = 4.8 世界单位</td>
+    <td data-page-node-id="E8FezL90EcrjstiqXcEsmi">列数 13、行数 48；决定地形细节粒度</td>
+  </tr>
+  <tr data-page-node-id="cdch0JHkQlKi3DYKgsQUJX">
+    <td data-page-node-id="wCCvw9h6JwVMTUvdFYl0Dl">锚点</td>
+    <td data-page-node-id="8dcT6HtuavJ37Z1jSHmAwF">AABB 中心（现状） / 底面中心 / 角点</td>
+    <td class="ok" data-page-node-id="fmaAGg7hxknm18DYQnJTCl">底面中心，且<b data-page-node-id="c0Sox6Y3nkFOUfcJZT4t6F">不改</b> <code data-page-node-id="Hx2e2QJGMbrhGRXUZDVR80">voxel_model.gd</code> 默认行为</td>
+    <td data-page-node-id="YGzM4TTZhRuC9fXNVezoMg">决定能否稳定拼装；误改会波及全部既有资产</td>
+  </tr>
+  <tr data-page-node-id="2nQbpLS8QWynw2TiuSFtNA">
+    <td data-page-node-id="Y3mmDb95WAu7G8d7XbZjo2">北向与旋转</td>
+    <td data-page-node-id="fdgdxyKGhgxKjsYZsymD29">rot 四向 + flip 独立标志</td>
+    <td class="ok" data-page-node-id="n3eqJDNhEfO359wjKrzCGL">vox +Y = 游戏 -Z；rot ∈ {0,90,180,270}；flip 需翻转绕序</td>
+    <td data-page-node-id="zk21Az0sJWMuh4Wi038VCX">决定旋转拼图是否正确</td>
+  </tr>
+  <tr data-page-node-id="heOEOHV38hTTZ56rSwVkm2">
+    <td data-page-node-id="9pF7LJStB2xYMIM9YHk6f3">渲染层</td>
+    <td data-page-node-id="od6YofOrGguQnelrEBCkqO">GridMap / MultiMesh / 合并 mesh</td>
+    <td class="ok" data-page-node-id="XxdyPe8GA15UhNBQsX36m6">三者组合，按件类型分派</td>
+    <td data-page-node-id="v1PqSsaqeKcg92tpgF6VOh">决定改造工作量与绘制提交数</td>
+  </tr>
+  <tr data-page-node-id="jr3a6wFY1uejEzuWaqjaVZ">
+    <td data-page-node-id="1IZXlxMnNzGKthNmOJGghg">是否改相机 size</td>
+    <td data-page-node-id="tQWT2QAuqzLGGifwZ3Yjte">34（现状） / 36（整除 20px）</td>
+    <td class="mid" data-page-node-id="5TjBCfH9qFGEnIQBWyHnkv">暂不改，瓦片接入后按观感再评估</td>
+    <td data-page-node-id="Dh9EH5uCdtkCg0rResuvZA">影响取景与像素对齐</td>
+  </tr>
+</table>
+
+<p style="margin-top:40px;color:#5a6486" data-page-node-id="aLPwWi6YKzaZG1EA57XPjY">— 生成于 2026-09-11 · demo-game ·
+依据 <code data-page-node-id="R1q7IYF4sCZ1xf8zz52DcA">game.gd</code>（<code data-page-node-id="wzdUTl0gHb7mE037R1SjNe">_build_ground</code> / <code data-page-node-id="gqCgLCQis00wE9byeeSBGD">_decor_spot</code> / 回绕逻辑）、
+<code data-page-node-id="aV9mvF1WGe2z8PVkwtm90u">stages.gd</code>、<code data-page-node-id="NUmnkqCNfhn2Nyp3j5R9XK">voxel_model.gd</code>、<code data-page-node-id="0EuTDILOiwBglFtZVxoAkr">voxspec.py</code>、
+<code data-page-node-id="kbORVkzQSQXqA8Ubmf1LHj">tools/vox/README.md</code>（§3.6 / §3.7 / §6）、
+<code data-page-node-id="2v1zg0SSDoTiNspr05XWa0">llmdoc/ai-voxel-pipeline.html</code>（§9.5）的代码走查结论。
+<b data-page-node-id="BfD9b9Ge1X09PbaKWEG95P">当前状态：仅方案，未开工。</b></p>
+
+</body>
+</html>
