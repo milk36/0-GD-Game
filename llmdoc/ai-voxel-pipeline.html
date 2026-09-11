@@ -492,6 +492,36 @@ XYZI 顺序差异（spec 排序写盘 vs gen_units 插入序）无功能影响�
 assembly 合成预览（多部件单位初筛的正确打开方式）与初筛清单的迭代。
 这印证了 §8 的判断：造型判断必须靠图，工具链要把「看图→定位→修」的路径铺短。</div>
 
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="bT9yG5vZfWx7rQ2eNdMgIh">12. 批量生产首批（E8~E10 · 2026-09-11）</h2>
+
+<p data-page-node-id="cU0zH6wAgXy8sR3fOeNhJi">E7 接入三关后（cf2e5b9），阶段 2 正式启动。
+首批三个新单位一次成稿：<b data-page-node-id="dV1aI7xBhYz9tS4gPfOiKj">E8 飞翼轰炸机</b>（21×18×2，207 体素，
+无尾大三角飞翼）、<b data-page-node-id="eW2bJ8yCiAu0uT5hQgPjLk">E9 双体炮艇</b>（11×16×4，418 体素，
+双船身 + 中央桥炮塔）、<b data-page-node-id="fX3cK9zDjBv1uU6iRhQkMl">E10 浮空盾堡</b>（17×17×8，423 体素，
+核心塔 + 能量环）。</p>
+
+<ul data-page-node-id="gY4dL0aEkCw2vV7jSiRlNm">
+  <li data-page-node-id="hZ5eM1bFlDx3wW8kThSmOn"><b data-page-node-id="iA6fN2cGmEy4xX9lUiTnPo">op 集合按需扩展了一次</b>：
+    E10 的环形能量盾用现有 op 表达不了——按 §8 原则补了 <code data-page-node-id="jB7gO3dHnFz5yY0mVjUoQp">ring</code> op
+    （欧氏圆环，r_in=0 即圆盘），没有往 spec 里塞代码。这是「遇到表达不了的造型补一个 op」纪律的首次执行。</li>
+  <li data-page-node-id="kC8hP4eIoGa6zZ1nWkVpRq"><b data-page-node-id="lD9iQ5fJpHb7aA2oXlWqSr">量级带警告拦住了一次真问题</b>：
+    E9 双体首稿宽 9（船身 half=4），编译器警告越带——加宽到 half=5（11）后通过。校验器在批量场景的价值得到实证。</li>
+  <li data-page-node-id="mE0jR6gKqIc8bB3pYmXrTs"><b data-page-node-id="nF1kS7gLrJd9cC4qZnYsUt">初筛一次通过</b>：三单位拼接触表
+    一次评审全过（E10 获「优秀」）。至此视觉初筛共 5 单位次，其中 3 个零返工。</li>
+  <li data-page-node-id="oG2lT8hMsKe0eE5rAoZtVu"><b data-page-node-id="pH3mU9iNtLf1fF6sBpYuWv">行为与波次</b>：E8 慢速直压 +
+    慢速环形投弹（hp10）；E9 快速冲撞 + 前向点射（hp4）；E10 极缓 + 环形/自机狙交替（hp24，小 boss 级）。
+    波次编排：E9 入关 2 一次、关 3 两次；E8 关 3 两次；E10 关 3 终波。回归脚本 _check_enemies 覆盖 E1~E10
+    （10 敌机 30 帧更新无报错）。</li>
+</ul>
+
+<div class="note" data-page-node-id="qI4nV0jOuMg2gG7tCqAvXw"><b data-page-node-id="rJ5oW1kPvNh3hH8uDrBwYx">踩坑（GDScript）</b>：
+vz 速度表从链式三元改为字典 <code data-page-node-id="sK6pX2lQwOi4iI9vFsCxZy">.get()</code> 后，
+<code data-page-node-id="tL7qY3mRxPj5jJ0wGtDyZa">var vz :=</code> 因 Variant 无法推断类型而解析失败——
+且表现为 headless 进程静默挂起而非报错退出。<b data-page-node-id="uM8rZ4nSyQk6kK0xHuEzBb">带类型注解
+<code data-page-node-id="vN9sA5oTzRl7lL1yIvAdCc">var vz: float =</code> 才稳</b>。</div>
+
 <p style="margin-top:40px;color:#5a6486" data-page-node-id="e3DA6HNZurzdFebfJRB4p6">— 生成于 2026-09-11 · demo-game ·
 依据 <code data-page-node-id="c2tkOvYgZ7605K0zJfPY2U">tools/vox/README.md</code>、<code data-page-node-id="njGAsgBFUZbYJcGpp4pBt0">gen_units.py</code>、<code data-page-node-id="hM8il8FCy7N5Brs7esFZga">gen_pirate.py</code>、
 <code data-page-node-id="XhCPnGf7d8kuzKy5fIKu2M">vox_reader.gd</code>、<code data-page-node-id="mhCobl1KvhkZwvosSboJfo">voxel_model.gd</code>、<code data-page-node-id="Dd12SFQVql98QCGs0DUMyq">asset_audit.gd</code> /

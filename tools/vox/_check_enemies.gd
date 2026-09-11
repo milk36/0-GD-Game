@@ -10,7 +10,7 @@ func _initialize() -> void:
 	await process_frame
 
 	print("--- _meshes 加载情况 ---")
-	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4", "E5", "E6", "E7", "E7R"]:
+	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4", "E5", "E6", "E7", "E7R", "E8", "E9", "E10"]:
 		var m: Mesh = inst._meshes[k]
 		var a: AABB = m.get_aabb()
 		print("  %-4s surfaces=%d aabb=%s" % [k, m.get_surface_count(), str(a.size)])
@@ -23,6 +23,9 @@ func _initialize() -> void:
 	inst._spawn_air("E5", 4.0, 5, 0.0)
 	inst._spawn_air("E6", 8.0, 40, 0.0)
 	inst._spawn_air("E7", -10.0, 5, 0.0)
+	inst._spawn_air("E8", -12.0, 10, 0.0)
+	inst._spawn_air("E9", 12.0, 4, 2.0)
+	inst._spawn_air("E10", 0.0, 24, 0.0)
 	for i in 30:
 		inst._update_enemies(1.0 / 60.0)
 		await process_frame

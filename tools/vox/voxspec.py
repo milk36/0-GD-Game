@@ -58,7 +58,7 @@ PALETTES = {
 # 量级带（§9.6 实测：assets/vox/units/ 主体资产），越带只警告不拦截。
 BAND = {"width": (11, 21), "length": (5, 29), "voxels": (150, 3000)}
 
-SOLID_OPS = ("box", "symbox", "oct", "profile", "dots")
+SOLID_OPS = ("box", "symbox", "oct", "ring", "profile", "dots")
 PAINT_OPS = ("paint",)
 ALL_OPS = SOLID_OPS + PAINT_OPS
 
@@ -174,6 +174,26 @@ def _op_oct(v, c, op, palette):
             v[(x, y, z)] = edge_col if (x, y) in edge_cells else col
 
 
+def _op_ring(v, c, op, palette):
+    """欧氏圆环填充：r_in^2 <= dx^2+dy^2 <= r_out^2（能量盾 / 环形机轮廓）。
+    r_in=0 即实心圆盘（disc）。"""
+    ri = op.get("r_in", 0)
+    ro = op["r_out"]
+    if not (0 <= ri < ro):
+        raise SpecError("ring 须满足 0 <= r_in < r_out（收到 %r/%r）" % (ri, ro))
+    col = _col(op["col"], palette)
+    cx, cy = op["cx"], op["cy"]
+    cells = []
+    for dy in range(-ro, ro + 1):
+        for dx in range(-ro, ro + 1):
+            d2 = dx * dx + dy * dy
+            if ri * ri <= d2 <= ro * ro:
+                cells.append((cx + dx, cy + dy))
+    for z in _rng(op["z"], "z"):
+        for (x, y) in cells:
+            v[(x, y, z)] = col
+
+
 def _op_profile(v, c, op, palette):
     """剖面拉伸：沿 y 逐行按 half 表铺 z 层。
 
@@ -253,7 +273,8 @@ def _op_paint(v, c, op, palette):
 
 
 _OP_IMPL = {"box": _op_box, "symbox": _op_symbox, "oct": _op_oct,
-            "profile": _op_profile, "dots": _op_dots, "paint": _op_paint}
+            "ring": _op_ring, "profile": _op_profile, "dots": _op_dots,
+            "paint": _op_paint}
 
 
 def compile_part(ops, c, palette):

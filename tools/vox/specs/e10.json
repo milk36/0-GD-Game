@@ -1,0 +1,28 @@
+{
+  "name": "E10",
+  "category": "air",
+  "facing": "+Y",
+  "palettes": ["enemy"],
+  "axis": 9,
+  "bbox": [19, 19, 8],
+  "notes": "浮空盾堡：中央暗红装甲核心（oct 塔，品红描边）+ 外围浅粉能量环（ring op 首次投产）+ 十字约束辐条 + 底部稳定环 + 四向炮口。小 boss 级缓速环形弹幕单位。",
+  "parts": [
+    {
+      "file": "E10.vox",
+      "ops": [
+        { "op": "ring", "cx": 9, "cy": 9, "r_in": 6, "r_out": 8, "z": [2, 3],
+          "col": "EC" },
+        { "op": "box", "x": [9, 9], "y": [3, 15], "z": [2, 3], "col": "EC" },
+        { "op": "box", "x": [3, 15], "y": [9, 9], "z": [2, 3], "col": "EC" },
+        { "op": "oct", "cx": 9, "cy": 9, "r": 3, "cut": 1, "z": [1, 5],
+          "col": "ED", "edge": { "col": "ER", "mode": "cheb" } },
+        { "op": "oct", "cx": 9, "cy": 9, "r": 2, "cut": 1, "z": [6, 6], "col": "EH" },
+        { "op": "dots", "col": "ER", "pts": [[9, 9, 7]] },
+        { "op": "ring", "cx": 9, "cy": 9, "r_in": 3, "r_out": 4, "z": [0, 0],
+          "col": "ET" },
+        { "op": "dots", "col": "ER",
+          "pts": [[15, 9, 2], [3, 9, 2], [9, 15, 2], [9, 3, 2]] }
+      ]
+    }
+  ]
+}

@@ -201,6 +201,7 @@ op 分两类（**solid / paint 语义分离**，§9.2）：
 |---|---|---|
 | `box` / `symbox` | solid | 闭区间实心块；symbox 自动镜像 |
 | `oct` | solid | 八边形柱（`cx,cy,r,cut`），`edge` 可换外缘色（`mode: ring\|cheb`） |
+| `ring` | solid | 欧氏圆环（`cx,cy,r_in,r_out,z`，`r_in=0` 即圆盘）——能量盾 / 环形轮廓 |
 | `profile` | solid | 沿 y 逐行按 `half` 表铺层（`z` 为层→色表）；`edge:{z,within,col}` 表达「翼尖红」类相对条件；`x0` 支持翼段从 dx>2 起 |
 | `dots` | solid | 点枚举（数学刻线等零星装饰的兜底，别用它写主体） |
 | `paint` | solid 之外 | **只改已存在体素的颜色，绝不新增**——覆盖涂色不会长出新块 |

@@ -58,6 +58,9 @@ const ENEMY_VOX := {
 	"E6": "res://assets/vox/units/E6.vox",     # 精英炮舰（双炮塔 + 舰桥 + 三联引擎）
 	"E7": "res://assets/vox/units/E7.vox",     # 武装直升机机身（AI 体素管线 spec 产出，朝向稳定不自转）
 	"E7R": "res://assets/vox/units/E7R.vox",   # 直升机主旋翼层（挂机身顶部，单独绕 Y 旋转）
+	"E8": "res://assets/vox/units/E8.vox",     # 飞翼轰炸机（无尾三角飞翼，spec 批量产出）
+	"E9": "res://assets/vox/units/E9.vox",     # 双体炮艇（双船身 + 中央桥炮塔，spec 批量产出）
+	"E10": "res://assets/vox/units/E10.vox",   # 浮空盾堡（核心塔 + 能量环，spec 批量产出，ring op 首投产）
 }
 # 敌机 .vox 统一按 0.3 世界单位/体素 缩放（与玩家机同一精度；Boss 单独用 0.5）
 const ENEMY_SCALE := 0.3
@@ -1043,7 +1046,8 @@ func _spawn_group(list: Array) -> void:
 		if t == "E1" or t == "E2":
 			_spawn_ground(t, x)
 		else:
-			var hp: int = {"E3": 3, "E4": 4, "E5": 5, "E6": 40, "E7": 5}.get(t, 3)
+			var hp: int = {"E3": 3, "E4": 4, "E5": 5, "E6": 40, "E7": 5,
+					"E8": 10, "E9": 4, "E10": 24}.get(t, 3)
 			_spawn_air(t, x, int(hp), float(ent.get("vx", 0.0)))
 
 
@@ -1075,7 +1079,8 @@ func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 	n.scale = Vector3.ONE * ENEMY_SCALE
 	n.material_override = VoxelModel.shaded_material()
 	add_child(n)
-	var vz := scroll_spd + (10.0 if type == "E3" else 5.0 if type == "E4" else 1.5 if type == "E6" else 2.5 if type == "E7" else 3.0)
+	var vz: float = scroll_spd + ({"E3": 10.0, "E4": 5.0, "E6": 1.5, "E7": 2.5, "E8": 2.0,
+			"E9": 8.0, "E10": 1.5}.get(type, 3.0))
 	n.position = Vector3(x, 4.3, -46.0)  # 空中单位与玩家同一飞行高度层
 	var e := {"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "vx": vx, "vz": vz, "x0": x, "mode": 0}
 	if type in ["E3", "E7"]:  # 旋翼机：旋翼独立成层（E3R/E7R）挂机身顶部，运行时只旋转这一层
@@ -1171,6 +1176,32 @@ func _update_enemies(delta: float) -> void:
 				if gp.z > -44.0 and float(e["ft"]) <= 0.0:
 					e["ft"] = 2.4
 					_fire_aimed(n.global_position, 7.5, 2, 20.0)
+			"E8":
+				# 飞翼轰炸机：缓慢直压，定期向四周散布慢速炸弹（投弹）
+				n.position.z += float(e["vz"]) * delta
+				e["ft"] = float(e["ft"]) - delta
+				if gp.z > -40.0 and float(e["ft"]) <= 0.0:
+					e["ft"] = 3.2
+					_fire_ring(gp, 8, 4.5, float(e["age"]))
+			"E9":
+				# 双体炮艇：快速冲撞 + 前向点射压制
+				n.position += Vector3(float(e["vx"]) * 0.6, 0, float(e["vz"])) * delta
+				e["ft"] = float(e["ft"]) - delta
+				if float(e["ft"]) <= 0.0:
+					e["ft"] = 1.8
+					_fire_aimed(n.global_position, 6.5, 1, 0.0)
+			"E10":
+				# 浮空盾堡：极缓推进 + 微幅横移，环形弹幕与自机狙交替（小 boss 级）
+				n.position.z += float(e["vz"]) * delta
+				n.position.x = float(e["x0"]) + sin(float(e["age"]) * 0.5) * 2.0
+				e["ft"] = float(e["ft"]) - delta
+				if gp.z > -40.0 and gp.z < 8.0 and float(e["ft"]) <= 0.0:
+					e["ft"] = 2.0
+					e["mode"] = 1 - int(e["mode"])
+					if int(e["mode"]) == 1:
+						_fire_ring(gp, 12, 6.0, float(e["age"]))
+					else:
+						_fire_aimed(gp, 7.0, 3, 16.0)
 			"E4":
 				n.position += Vector3(float(e["vx"]) * 0.2 + sin(float(e["age"]) * 2.0) * 1.5, 0, float(e["vz"])) * delta
 				e["ft"] = float(e["ft"]) - delta
