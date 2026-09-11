@@ -1683,11 +1683,15 @@ func _show_settlement(p_victory: bool) -> void:
 func _update_camera(_delta: float) -> void:
 	var target := Vector3(player.position.x * 0.62, 0, -3.0)
 	var off: Vector3
-	if cam_mode == 0:
-		var pitch := deg_to_rad(68.0)
-		off = Vector3(0, 40.0 * sin(pitch), 40.0 * cos(pitch))
-	else:
-		off = Vector3(0, 42.0, 0.01)
+	match cam_mode:
+		0:
+			var pitch := deg_to_rad(68.0)
+			off = Vector3(0, 40.0 * sin(pitch), 40.0 * cos(pitch))
+		1:
+			off = Vector3(0, 42.0, 0.01)
+		2:
+			# 等距机位：标准 isometric（偏移 1:1:1，俯角 35.26°），与 unit_review 审查姿态一致
+			off = Vector3(28.0, 28.0, 28.0)
 	cam.position = target + off
 	if shake > 0.0:
 		cam.position += Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * shake * 1.6
@@ -1697,7 +1701,7 @@ func _update_camera(_delta: float) -> void:
 func _refresh_hud() -> void:
 	hud_score.text = "【%s】SCORE %d    ★ %d（+%d）    BOMB %d/%d" % [stage_name, score, int(save["stars"]), star_cnt, bombs, bombs_max]
 	hud_armor.text = "护甲 " + "■".repeat(maxi(armor, 0)) + "□".repeat(maxi(armor_max - armor, 0)) + "    救援 %d/%d    歼灭 %d" % [rescued, survivor_total, escaped]
-	hud_info.text = "FPS %d  敌弹 %d  F1/F2 相机[68°/90°]  F3 阴影[%s]  F4 压测[%s]  Esc 暂停  H 机库" % [
+	hud_info.text = "FPS %d  敌弹 %d  F1/F2/F5 相机[68°/90°/等距]  F3 阴影[%s]  F4 压测[%s]  Esc 暂停  H 机库" % [
 		Engine.get_frames_per_second(), eb.count, "开" if sun.shadow_enabled else "关", "开" if stress else "关"]
 	if boss.is_empty() or bool(boss.get("entering", true)):
 		hud_boss.visible = false
@@ -1722,6 +1726,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				cam_mode = 0
 			KEY_F2:
 				cam_mode = 1
+			KEY_F5:
+				cam_mode = 2
 			KEY_F3:
 				sun.shadow_enabled = not sun.shadow_enabled
 			KEY_F4:
