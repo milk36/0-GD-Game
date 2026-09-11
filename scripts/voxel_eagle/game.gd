@@ -56,6 +56,8 @@ const ENEMY_VOX := {
 	"E4": "res://assets/vox/units/E4.vox",     # 战斗机（后掠翼，自机狙）
 	"E5": "res://assets/vox/units/E5.vox",     # 巡航机（重型机身，五连发扇形）
 	"E6": "res://assets/vox/units/E6.vox",     # 精英炮舰（双炮塔 + 舰桥 + 三联引擎）
+	"E7": "res://assets/vox/units/E7.vox",     # 武装直升机机身（AI 体素管线 spec 产出，朝向稳定不自转）
+	"E7R": "res://assets/vox/units/E7R.vox",   # 直升机主旋翼层（挂机身顶部，单独绕 Y 旋转）
 }
 # 敌机 .vox 统一按 0.3 世界单位/体素 缩放（与玩家机同一精度；Boss 单独用 0.5）
 const ENEMY_SCALE := 0.3
@@ -1041,7 +1043,7 @@ func _spawn_group(list: Array) -> void:
 		if t == "E1" or t == "E2":
 			_spawn_ground(t, x)
 		else:
-			var hp: int = {"E3": 3, "E4": 4, "E5": 5, "E6": 40}.get(t, 3)
+			var hp: int = {"E3": 3, "E4": 4, "E5": 5, "E6": 40, "E7": 5}.get(t, 3)
 			_spawn_air(t, x, int(hp), float(ent.get("vx", 0.0)))
 
 
@@ -1073,12 +1075,12 @@ func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 	n.scale = Vector3.ONE * ENEMY_SCALE
 	n.material_override = VoxelModel.shaded_material()
 	add_child(n)
-	var vz := scroll_spd + (10.0 if type == "E3" else 5.0 if type == "E4" else 1.5 if type == "E6" else 3.0)
+	var vz := scroll_spd + (10.0 if type == "E3" else 5.0 if type == "E4" else 1.5 if type == "E6" else 2.5 if type == "E7" else 3.0)
 	n.position = Vector3(x, 4.3, -46.0)  # 空中单位与玩家同一飞行高度层
 	var e := {"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "vx": vx, "vz": vz, "x0": x, "mode": 0}
-	if type == "E3":  # 无人机：旋翼独立成层（E3R）挂在机身顶部，运行时只旋转这一层
+	if type in ["E3", "E7"]:  # 旋翼机：旋翼独立成层（E3R/E7R）挂机身顶部，运行时只旋转这一层
 		var rotor := MeshInstance3D.new()
-		rotor.mesh = _meshes["E3R"]
+		rotor.mesh = _meshes[type + "R"]
 		rotor.material_override = VoxelModel.shaded_material()
 		# 旋翼层底面落在机身顶面：按两者 AABB 反推（子节点继承 0.3 缩放，局部值不乘）
 		rotor.position = Vector3(0, n.mesh.get_aabb().end.y - rotor.mesh.get_aabb().position.y, 0)
@@ -1158,6 +1160,17 @@ func _update_enemies(delta: float) -> void:
 				var rotor: Node3D = e.get("rotor")
 				if rotor != null:
 					rotor.rotate_y(delta * 14.0)  # 只转旋翼层：机身朝向稳定，旋翼转得快也读得出机型
+			"E7":
+				# 武装直升机：缓慢下压 + 正弦侧移，双管机炮对玩家短点射
+				n.position.x = clampf(float(e["x0"]) + sin(float(e["age"]) * 1.1) * 5.0, -13.0, 13.0)
+				n.position.z += float(e["vz"]) * delta
+				var heli_rotor: Node3D = e.get("rotor")
+				if heli_rotor != null:
+					heli_rotor.rotate_y(delta * 12.0)  # 主旋翼比无人机略慢一档
+				e["ft"] = float(e["ft"]) - delta
+				if gp.z > -44.0 and float(e["ft"]) <= 0.0:
+					e["ft"] = 2.4
+					_fire_aimed(n.global_position, 7.5, 2, 20.0)
 			"E4":
 				n.position += Vector3(float(e["vx"]) * 0.2 + sin(float(e["age"]) * 2.0) * 1.5, 0, float(e["vz"])) * delta
 				e["ft"] = float(e["ft"]) - delta

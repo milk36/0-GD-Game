@@ -10,7 +10,7 @@ func _initialize() -> void:
 	await process_frame
 
 	print("--- _meshes 加载情况 ---")
-	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4", "E5", "E6"]:
+	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4", "E5", "E6", "E7", "E7R"]:
 		var m: Mesh = inst._meshes[k]
 		var a: AABB = m.get_aabb()
 		print("  %-4s surfaces=%d aabb=%s" % [k, m.get_surface_count(), str(a.size)])
@@ -22,6 +22,7 @@ func _initialize() -> void:
 	inst._spawn_air("E4", 0.0, 4, 0.0)
 	inst._spawn_air("E5", 4.0, 5, 0.0)
 	inst._spawn_air("E6", 8.0, 40, 0.0)
+	inst._spawn_air("E7", -10.0, 5, 0.0)
 	for i in 30:
 		inst._update_enemies(1.0 / 60.0)
 		await process_frame
@@ -35,5 +36,9 @@ func _initialize() -> void:
 	var rotor: Node3D = e3.get("rotor")
 	print("  E3 旋翼子节点=", rotor != null, " 旋转=", str(rotor.rotation.snappedf(0.01)) if rotor else "-",
 		" 机身旋转=", str((e3["n"] as Node3D).rotation.snappedf(0.01)))
+	var e7: Dictionary = inst.enemies[6]
+	var heli_rotor: Node3D = e7.get("rotor")
+	print("  E7 旋翼子节点=", heli_rotor != null, " 旋转=", str(heli_rotor.rotation.snappedf(0.01)) if heli_rotor else "-",
+		" x漂移=", str(snappedf((e7["n"] as Node3D).position.x, 0.01)))
 	print("OK")
 	quit(0)
