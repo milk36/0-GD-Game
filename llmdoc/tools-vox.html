@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>体素工具链 tools/vox · MagicaVoxel ↔ Godot 工作流说明</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 960px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.8em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+  }
+  h2 { color: #ff2a6d; margin-top: 40px; text-shadow: 0 0 12px rgba(255, 42, 109, 0.35); }
+  h3 { color: #ffe600; margin-top: 24px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  pre {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; color: #b7c4ef; line-height: 1.5;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #2a3554; padding: 8px 14px; text-align: left; }
+  th { background: #131a2e; color: #00f0ff; }
+  .note {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .warn {
+    background: #1c1420; border-left: 4px solid #ff2a6d;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .warn b { color: #ff2a6d; }
+</style>
+</head>
+<body>
+
+<h1>▚ 体素工具链 tools/vox · 工作流说明</h1>
+
+<p>「方块雄鹰」的美术全面走 <b>MagicaVoxel .vox 资产管线</b>：所有单位造型与关卡地貌
+由 Python 脚本程序化生成 .vox，Godot 侧通过导入插件 + 运行时解析器接入。
+本文是工具链的总览文档；逐函数细节与最新数值以仓库内
+<code>tools/vox/README.md</code> 为准（本文与其同源，README 更细）。</p>
+
+<div class="note">
+<b>为什么直接读写 .vox 文件？</b> MagicaVoxel 没有 CLI、没有脚本 API、不能 headless 导出，
+只当<b>查看器与手工微调工具</b>。所有自动化走「Python 直接读写 .vox」
+（格式为 ephtracy 公开的 RIFF），纯标准库、零第三方依赖，Python 3.8+ 即可运行。
+</div>
+
+<!-- ================================================================ -->
+<h2>1. 文件清单</h2>
+
+<table>
+  <tr><th>文件</th><th>类型</th><th>作用</th></tr>
+  <tr><td><code>voxlib.py</code></td><td>核心库</td><td>.vox 读 / 写 / 等距预览渲染（纯标准库）</td></tr>
+  <tr><td><code>gen_units.py</code></td><td>生成器</td><td>玩家机 / Boss / E1~E6 敌机 → <code>assets/vox/units/*.vox</code></td></tr>
+  <tr><td><code>gen_pirate.py</code></td><td>生成器</td><td>海盗关卡地图切片（海面瓦片/岛/要塞/帆船）→ <code>assets/vox/pirate/*.vox</code></td></tr>
+  <tr><td><code>gen_scene.py</code></td><td>示例生成器</td><td>程序化小岛（值噪声高度场 + 树 + 小屋），主题化改调色板即可</td></tr>
+  <tr><td><code>_smoke.gd</code></td><td>冒烟测试</td><td>headless 跑真实场景，检查体素岛挂载（World 子树 / AABB）</td></tr>
+  <tr><td><code>_check_enemies.gd</code></td><td>回归测试</td><td>headless 生成敌机 + 跑更新循环，检查 .vox 加载与炮头 look_at</td></tr>
+  <tr><td><code>asset_audit.gd</code></td><td>量化审计</td><td>绕序/法线硬边/光照溢出/朝向分布四张表（headless 可跑）</td></tr>
+  <tr><td><code>asset_review.gd</code></td><td>视觉验收</td><td>每个资产离屏渲染 PNG（需 GPU，会短暂开窗）</td></tr>
+  <tr><td><code>ingame_view.gd</code></td><td>视角核对</td><td>按游戏真实相机参数渲染，核对实际观感与比例（认物争议时用）</td></tr>
+  <tr><td><code>scene_shot.gd</code></td><td>截图工具</td><td>任意场景按 1280×720 离屏拍 PNG（改 <code>SCENE</code> 换场景）</td></tr>
+  <tr><td><code>pngsheet.py</code></td><td>辅助</td><td>多张 PNG 拼接触表（纯标准库 PNG 解码，替代 PIL）</td></tr>
+  <tr><td><code>_preview_*.png</code> / <code>_sheet_*.png</code></td><td>产物</td><td>生成器输出的等距预览/精灵表（自检用，不参与游戏）</td></tr>
+</table>
+
+<p>配套的运行时与共享脚本（不在 tools/ 下，但同属工具链一环）：
+<code>scripts/voxel_eagle/vox_reader.gd</code>（GDScript 运行时 .vox → ArrayMesh 解析器）、
+<code>survivor_unit.gd</code> / <code>rescue_ring.gd</code>（幸存者外观与营救环唯一构建入口）、
+<code>scenes/survivor_test.tscn</code>（幸存者手感调试场景）。</p>
+
+<!-- ================================================================ -->
+<h2>2. 标准工作流</h2>
+
+<pre>① 改生成器（gen_units.py / gen_pirate.py / gen_scene.py）
+② python 生成器.py               # 同时输出 .vox 与 _preview_*.png
+③ 看预览图确认 → 双击 .vox 用 MagicaVoxel 手工精修 → 保存
+④ 切回 Godot 编辑器窗口 1~2 秒   # 自动重导入生成 .mesh
+⑤ 运行游戏 / 跑回归脚本          # ingame_view.gd 看游戏内实际读感</pre>
+
+<div class="warn"><b>认物要看两张图</b>：等距图（看层次）与
+<code>_sheet_enemies_topdown.png</code> 游戏相机同向俯视图（看实际读感）——
+改完造型两张都要看，只看等距图会漏掉"俯视认不出"的问题。</div>
+
+<!-- ================================================================ -->
+<h2>3. 核心约定（改模型前必读）</h2>
+
+<ul>
+  <li><b>分辨率</b>：所有单位按 <b>0.3 世界单位/体素</b> 建模（Boss 例外 0.5），
+      game.gd 统一 <code>scale=0.3</code>。「体素数 = 细节量」，敌机须与玩家机
+      （15×19）、Boss（17×24）同量级，否则正交 34 相机里就是几个认不出的方块。</li>
+  <li><b>坐标系</b>：MagicaVoxel Z-up，Godot Y-up →
+      <code>godot(x,y,z) = vox(x,z,y)</code>；生成器坐标 x=左右（只画右半边再镜像）、
+      y=前后（小=游戏 -Z）、z=高低。</li>
+  <li><b>朝向</b>：地面炮台（E1H）炮管沿 <b>-Y</b>（look_at 让 -Z 指向目标）；
+      空中单位（E3~E6）机头朝 <b>+Y</b>（迎向玩家）。</li>
+  <li><b>贴地对齐</b>：由模型 AABB 自动反推偏移，<b>改模型高度不必动 game.gd</b>。</li>
+  <li><b>调色板</b>：颜色索引 <code>ci ∈ 1..255</code>，取色 <code>pal[ci-1]</code>
+      （用成 <code>pal[ci]</code> 会全错/品红）；单文件上限 255 色。</li>
+  <li><b>场景图节点</b>：写入时自动补 <code>nTRN→nGRP→nSHP</code>——
+      Godot 导入插件的硬性要求，手写字节时务必带上。</li>
+</ul>
+
+<h3>单位资产尺寸表（gen_units.py 产物）</h3>
+<table>
+  <tr><th>资产</th><th>体素尺寸</th><th>说明</th></tr>
+  <tr><td>player.vox</td><td>15×19×6</td><td>玩家机，青色座舱脊线是俯视识别特征</td></tr>
+  <tr><td>boss.vox</td><td>17×24×6</td><td>方舟战舰（scale 0.5）</td></tr>
+  <tr><td>E1.vox / E1H.vox</td><td>11×11×3 / 11×19×6</td><td>炮台基座 + 双管炮塔（地面单位）</td></tr>
+  <tr><td>E2.vox</td><td>15×15×8</td><td>环形机：能量环 + 悬浮核心 + 四发射器</td></tr>
+  <tr><td>E3.vox + E3R.vox</td><td>15×13×4 / 19×17×1</td><td>四旋翼无人机拆两层：机身（朝向稳定）+ 旋翼层（挂机身顶部单独绕 Y 旋转，AABB 组装同 E1 底座/炮头模式）</td></tr>
+  <tr><td>E4.vox</td><td>19×20×5</td><td>后掠翼战斗机</td></tr>
+  <tr><td>E5.vox</td><td>19×24×7</td><td>重型巡洋机，白色识别带</td></tr>
+  <tr><td>E6.vox</td><td>21×29×14</td><td>精英炮舰：尖艏 + 多层甲板 + 三联引擎</td></tr>
+</table>
+
+<h3>海盗关卡切片（gen_pirate.py 产物，待确认后接入）</h3>
+<table>
+  <tr><th>切片</th><th>体素数</th><th>说明</th></tr>
+  <tr><td>pirate_sea.vox</td><td>~4.1k</td><td>64×64 海面瓦片，正弦周期整除边长可无缝平铺</td></tr>
+  <tr><td>pirate_island.vox</td><td>~21k</td><td>海盗岛：沙滩/棕榈/栈桥/小屋/篝火/黑旗</td></tr>
+  <tr><td>pirate_fort.vox</td><td>~9k</td><td>要塞岛：石墙垛口 + 四门火炮 + 塔楼</td></tr>
+  <tr><td>pirate_ship.vox</td><td>~8.6k</td><td>三桅帆船：金框炮门 + 两层方帆 + 骷髅黑旗</td></tr>
+</table>
+
+<div class="note"><b>海盗地图两条设计约定</b>：
+① 不写水体积素——所有内容从 z=0 往上长（贴海面），体素水块会和游戏海面片打架；
+② 切成多张独立文件，运行时按关卡段位按需加载，避免一次性解析超大地图。
+海面瓦片别用"高度场+大面积浪花"（等距预览糊成浮冰），用单层水面+颜色分带表现浪纹；
+帆船只留外壳/甲板/底，体素数可砍 2/3。</div>
+
+<!-- ================================================================ -->
+<h2>4. voxlib.py API 速查</h2>
+
+<pre>import voxlib
+
+d       = voxlib.read_vox("x.vox")        # models/palette/instances/trn
+blocks  = voxlib.vox_to_colors("x.vox")   # {(x,y,z):(r,g,b)}，Z-up，含实例平移
+info    = voxlib.write_vox("out.vox", voxels, size=(72,72,29))
+                                        # 自动去重建调色板 + 补场景图节点
+w, h    = voxlib.render_iso(voxels, "preview.png", cell=5, up_axis="z")
+                                        # 2:1 等距预览（画家算法，仅自检用）
+
+python voxlib.py inspect &lt;file.vox&gt;      # 命令行：结构/尺寸/调色板/实例</pre>
+
+<!-- ================================================================ -->
+<h2>5. 验证流程（改完模型/材质后跑一遍）</h2>
+
+<table>
+  <tr><th>步骤</th><th>命令</th><th>看什么</th></tr>
+  <tr><td>① 冒烟</td><td><code>-s res://tools/vox/_smoke.gd</code>（headless）</td><td>World 子树数量、体素岛 AABB 与贴海高度</td></tr>
+  <tr><td>② 敌机回归</td><td><code>-s res://tools/vox/_check_enemies.gd</code>（headless）</td><td>.vox 加载、生成、更新循环、炮头 look_at</td></tr>
+  <tr><td>③ 量化审计</td><td><code>-s res://tools/vox/asset_audit.gd</code>（headless）</td><td>绕序 100% 朝外 / 全硬边 / 顶面亮度&lt;1.0（线性空间）/ 非轴法线 0%</td></tr>
+  <tr><td>④ 视觉验收</td><td><code>-s res://tools/vox/asset_review.gd</code>（需 GPU）+ <code>pngsheet.py</code></td><td>逐资产等距图拼成接触表一次看完</td></tr>
+  <tr><td>⑤ 游戏视角</td><td><code>-s res://tools/vox/ingame_view.gd</code></td><td>1280×720 全景 + 同尺度特写，核对认物与比例</td></tr>
+</table>
+
+<div class="warn"><b>headless / 离屏渲染三坑</b>：
+① 临时脚本必须 <code>extends SceneTree</code> 且 <code>_initialize()</code> 里显式
+<code>quit()</code>，否则进程挂住被 timeout 杀；含 <code>await</code> 的函数调用方也必须 await。
+② <code>Camera3D</code> 先 <code>add_child</code> 入树再 <code>look_at()</code>（依赖全局变换）。
+③ 离屏渲染不能用 <code>--headless</code>（dummy 渲染器出不了内容），必须带 GPU 跑。</div>
+
+<!-- ================================================================ -->
+<h2>6. .vox 格式与踩坑速查</h2>
+
+<pre>"VOX " + int32 version(150)
+└─ MAIN
+   ├─ SIZE : x, y, z                 模型尺寸
+   ├─ XYZI : numVoxels + (x,y,z,ci)  ci ∈ 1..255，0=空
+   ├─ RGBA : 256 × (r,g,b,a)         第 k 项 ↔ 索引 k+1
+   ├─ nTRN/nGRP/nSHP                 场景图（Godot 导入插件硬性要求）</pre>
+
+<table>
+  <tr><th>现象</th><th>根因</th><th>处理</th></tr>
+  <tr><td>只生成 .import 没有 .mesh</td><td>缺场景图节点，插件崩</td><td>write_vox 已自动补；手写字节务必带上</td></tr>
+  <tr><td>load(.vox) 返回 null</td><td>导入链未成功</td><td>排查导入；运行时有 VoxReader 回退</td></tr>
+  <tr><td>模型躺倒</td><td>忘 Z-up→Y-up</td><td><code>Vector3i(x, z, y)</code></td></tr>
+  <tr><td>颜色全错/品红</td><td><code>pal[ci]</code></td><td>正确 <code>pal[ci-1]</code></td></tr>
+  <tr><td>改了 .vox 游戏里还是旧模型</td><td>编辑器未重扫描</td><td>切回编辑器窗口等 1~2 秒</td></tr>
+  <tr><td>法线"上下颠倒"观感</td><td>绕序 + generate_normals 平滑混面</td><td>按 0-2-1/0-3-2 排列 + 逐面写死硬边法线（voxel_model.gd）</td></tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>7. 已知限制</h2>
+
+<ul>
+  <li>单文件 255 色、单模型 256³（.vox 规范上限）。</li>
+  <li><code>render_iso</code> 纯 Python 光栅化，几万体素量级可用，更大就慢。</li>
+  <li><code>_r</code> 旋转已支持解码，但「多旋转实例组合」场景未做端到端回归。</li>
+  <li>运行时依赖 <code>.godot/imported/*.mesh</code>，缺失时自动回退 VoxReader（可用，启动略慢）。</li>
+</ul>
+
+<p style="margin-top:40px;color:#5a6486">— 生成于 2026-09-11 · demo-game · 依据 tools/vox/README.md（同源提炼，细节以 README 为准）</p>
+
+</body>
+</html>

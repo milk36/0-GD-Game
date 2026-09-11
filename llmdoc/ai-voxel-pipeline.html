@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="wuUg984mfi1sOjBAPlEkpy">
+<head data-page-node-id="BAZn86KLjRmpzbEw8sAypB">
+<meta charset="UTF-8" data-page-node-id="qPCNwZqt1vmkh894Rc84RS">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="DeGq5kEmMi9WtEpGDshrp4">
+<title>AI 驱动体素资产 · 方案评估与推荐架构</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 960px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.8em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+  }
+  h2 { color: #ff2a6d; margin-top: 40px; text-shadow: 0 0 12px rgba(255, 42, 109, 0.35); }
+  h3 { color: #ffe600; margin-top: 24px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  pre {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; color: #b7c4ef; line-height: 1.5;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #2a3554; padding: 8px 14px; text-align: left; vertical-align: top; }
+  th { background: #131a2e; color: #00f0ff; }
+  .note {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .warn {
+    background: #1c1420; border-left: 4px solid #ff2a6d;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .warn b { color: #ff2a6d; }
+  .ok { color: #6ee7a8; }
+  .no { color: #ff2a6d; }
+  .mid { color: #ffe600; }
+  figure { margin: 24px 0; }
+  figcaption { color: #5a6486; font-size: 0.9em; text-align: center; margin-top: 8px; }
+</style>
+</head>
+<body data-page-node-id="EgVBL5rDGbFZkvyMHYeiAC">
+
+<h1 data-page-node-id="H8muB6IXy3NBgalJGzkdLN">▚ AI 驱动体素资产 · 方案评估与推荐架构</h1>
+
+<p data-page-node-id="FYPCcz0UyuuThdC3xEgW0o">「方块雄鹰」现有体素管线是<b data-page-node-id="DuFbZdNSlZk2UdY6QM3SeB">确定性 Python 生成器</b>（<code data-page-node-id="eeAZF0fNv0oFDv2IUpFyam">voxlib.py</code> +
+<code data-page-node-id="RdMdN5i5NNDFGH7GABYSQ1">gen_units.py</code> / <code data-page-node-id="LPUGYznRi03WbeMrKke6lm">gen_pirate.py</code> / <code data-page-node-id="nJIhmlNlXjbjwg2q5DLIDY">gen_scene.py</code>）。
+本文评估：能否用<b data-page-node-id="CA36SjJbtNPUIQcbxeeUXQ">大模型 + 提示词</b>驱动体素资产生产，以及是否存在比「让模型直接生成体素」
+更方便的方式。结论：<b data-page-node-id="VvItONkV5vZAIidnAQNKGG">有</b>——把大模型放在「描述意图」层，让它产出<b data-page-node-id="Nkl0z5dniKiOUGxv63PInm">声明式 spec</b>，
+由确定性编译器负责落地；本仓库完成该闭环所需的基建已具备约八成。</p>
+
+<div class="note" data-page-node-id="KQtxi0U5cX3pWcGo1ZucPV">
+<b data-page-node-id="WAIhsBrowi3YkCHQ3Cyau8">一句话结论</b>：让大模型直接吐体素坐标，是所有方案里最不方便的一种。
+真正的杠杆点是<b data-page-node-id="v7z2tBZygTlceJHcWN56Xt">降低模型的输出规模</b>——从「几千个体素坐标」降到「十几个部件描述」，
+把正确性交给编译器，把判断力交给预览图。
+</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="hIp89rUpz1l29QCRpToVSB">1. AI 介入的四个层级</h2>
+
+<table data-page-node-id="qUzz1seK20eOcHwyJ6A6aU">
+  <tr data-page-node-id="Ax9RUCCtadrz9mxrYQM9rS"><th data-page-node-id="j45r6pDg6aIbOAlXFnO568">层级</th><th data-page-node-id="BA9PbSNrhzDWxbZW6G2cUg">做法</th><th data-page-node-id="BNp57Beywb4MNSxvEaWqYR">模型输出规模</th><th data-page-node-id="1oAgauSQ86QU4jkOFAJgHY">主要失败模式</th><th data-page-node-id="rD7fe5kUNiVaDsHmAOL9yE">结论</th></tr>
+  <tr data-page-node-id="vZztPlzhUsVLDBGVdysN2j">
+    <td data-page-node-id="yZkUXEngPJ15YtZWfcXctf"><b data-page-node-id="z6AIGIkAFEDJQeqKAdZBcF">L0</b> 直接吐体素</td>
+    <td data-page-node-id="tFj0Vh5bFqZfeSHlag5io3">模型直接写 <code data-page-node-id="lSN2syDp8CcCMazfEBw7YJ">{(x,y,z):color}</code> 字典或 .vox 字节</td>
+    <td data-page-node-id="DIKsnc3thmUED0Y4ZJ5ZS4">O(体素数)，动辄上万 token</td>
+    <td data-page-node-id="Sjx0ao44Ap2HyPTCRcHUVh">空间想象力弱 → 不对称 / 穿模 / 漂浮块；超 255 色；每次结果不可复现</td>
+    <td class="no" data-page-node-id="rYO3aPSvUMhpYBh4XH9byi">反模式</td>
+  </tr>
+  <tr data-page-node-id="rIQcxiyxT9lo4p50KVW3fd">
+    <td data-page-node-id="UVpnf8QEuzfwas7lJea7fH"><b data-page-node-id="fnNhcr9cb2i7Et2zJyuO0e">L1</b> 写生成器代码</td>
+    <td data-page-node-id="IZzNyFpDFKrGHl8AkWX099">提示词 → 模型写 <code data-page-node-id="Fy4RCEKVb8lQ8Lfwdh7fG9">build_e7()</code> → 跑 <code data-page-node-id="hr94nMvdO4XCTd9UE8jx7g">gen_units.py</code></td>
+    <td data-page-node-id="QtzXNn1GRtCxVUIKx1EX2Y">O(行数)，数百 token</td>
+    <td data-page-node-id="d9pBlPwtVvK8fcewS35iMd">坐标仍靠猜；但可 review、可重跑、可 diff，靠预览图闭环</td>
+    <td class="mid" data-page-node-id="q7qWRWJsXpRE8SGDkV25ng">现状，性价比高</td>
+  </tr>
+  <tr data-page-node-id="XsGyUJegLZj2Xpmfz41KF5">
+    <td data-page-node-id="8bBlS1ylRK2jzc31smKGdk"><b data-page-node-id="hFijctP83yycJsQiS1nz81">L2</b> 产声明式 spec</td>
+    <td data-page-node-id="nYrYSSkw42D0Ie9QfUJwMw">提示词 → 模型写 JSON 部件描述 → 编译器展开为体素表</td>
+    <td data-page-node-id="jneCdT5eeVNUuKb7SyG4EG">O(部件数)，数十 token</td>
+    <td data-page-node-id="A0wauKhD5rUXpYbnm9htmP">表达力受 op 集合限制（可逐步扩展）</td>
+    <td class="ok" data-page-node-id="2kQ7crrfdYf9eFGjTua2YW">推荐主攻</td>
+  </tr>
+  <tr data-page-node-id="P7MhFIa6EeEN8bKRAGYFRd">
+    <td data-page-node-id="1G5RVVvOlYgygVGBGjOlnI"><b data-page-node-id="WUm3FSDAq5V72IQEozMmVO">L3</b> 生成式 3D</td>
+    <td data-page-node-id="gT5fmhWkk4UNCzdJLRlHuZ">文生 / 图生 3D → 体素化 → 调色板量化</td>
+    <td data-page-node-id="BiICUORf6L98qZRZyWBkZI">—（模态转换）</td>
+    <td data-page-node-id="zslmDf1lmX6kuP6Y6hUoZd">失去轴对齐方块风格；无对称 / 朝向 / 尺度保证；体素数易爆</td>
+    <td class="mid" data-page-node-id="Xja7S3I2SBss3pnHJcQScw">仅适合不规则地貌</td>
+  </tr>
+</table>
+
+<p data-page-node-id="OWP95iFzGTSiGv2WqUcuPe"><b data-page-node-id="DbHyKWsz80F41Qp76JAiUm">L0 与 L2 的差别全在输出规模。</b>模型不是不会建模，而是不该被要求去当坐标计算器：
+要求它逐格写出 3000 个体素，等于把「造型判断」和「整数运算」两件事捆在一起交给一个
+不擅长算术的部件。这一层的 token 成本与出错率都随体素数线性上涨，而 L2 的输出随
+<b data-page-node-id="5HMiv579Fn77zG7WFygEnK">部件数</b>变化——一个 3000 体素的 E6 炮舰，用 spec 描述大约只需要 15~20 个 op。</p>
+
+<div class="warn" data-page-node-id="XxqDXCKNcikWzfV8ZEFvG7"><b data-page-node-id="FTOz4J45zn5RKxXK6EO7Qp">当前的 L1 已经在用，只是人肉驱动。</b>
+<code data-page-node-id="SGHkH37QunHuq1GGNDDkhd">gen_units.py</code> 里每个 <code data-page-node-id="Gfro4KwbYHAS8VqMHkkXkv">build_eX()</code> 都是「一次提示词 → 一段代码」的产物。
+L1 的隐含成本是<b data-page-node-id="hAcFbtowLAW7JbH7XA0y3X">每次改动都要人读代码确认有没有写错坐标</b>，而 L2 把这段确认
+转移给了编译器——这是 L2 相对 L1 的实际收益。</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="9z83itSgU0LBXyPC4VKc3J">2. 为什么必须有编译器挡在中间</h2>
+
+<p data-page-node-id="djkIemqGKxoFGB2p1enQEe">本工程的资产约束比一般项目硬，而这些约束<b data-page-node-id="JW4twtHt7rAogJ0L93zMHk">放在编译器里是免费的，放在提示词里是碰运气</b>：</p>
+
+<table data-page-node-id="OejHqjJV8QfbwsheV7vxfV">
+  <tr data-page-node-id="2VLC3ZKzvRnY8o24SGHGSg"><th data-page-node-id="mieXlpbzDF6my04kDSM0Kl">约束</th><th data-page-node-id="5hlYeM52KxAK3hNyU3dvKh">出处 / 判据</th><th data-page-node-id="asCPtHwZBnst3CLXhHyCyG">放在提示词里的后果</th></tr>
+  <tr data-page-node-id="aFSoHgv8hZD9pQportbAr5">
+    <td data-page-node-id="M9kp3I4VLhdZD7u8kvXwzA">调色板 ≤ 255 色</td>
+    <td data-page-node-id="3rk6i3wSvjlDD7OScwf7e6"><code data-page-node-id="5gTRNoBcvsjPrH6eyajxc9">voxlib.write_vox()</code> 超出直接抛错</td>
+    <td data-page-node-id="99k2lilTKnsJQS28Xub177">模型编出渐变配色 → 生成中断</td>
+  </tr>
+  <tr data-page-node-id="JjhUNUyTpqTjyaPo0MAeXk">
+    <td data-page-node-id="2uwEaxM3qAQW1GCRSS6b9q">单位须 11~29 体素宽</td>
+    <td data-page-node-id="ruzi2xLCIpO0ECkcE5PiT0">README 第 119 行：正交 34 相机下过小则「认不出是什么」</td>
+    <td data-page-node-id="eiI1hY9CFD3kNdlz0tfMsp">造出 5 体素宽的装饰性敌机，游戏里不可辨</td>
+  </tr>
+  <tr data-page-node-id="BVRKi07dd09t52mhJQaI61">
+    <td data-page-node-id="iYkR2HoXe38tIYiWmsJvd6">左右对称</td>
+    <td data-page-node-id="ZKG3nH9mF59yPUoWGJhShp"><code data-page-node-id="24ATDeQMkyeiso9YcTD1F6">_sym()</code> / <code data-page-node-id="u4GPpCLOOE9cwN7NsHhCLZ">put()</code> 的 2c-x 镜像</td>
+    <td data-page-node-id="LZpwgdDc1O4GcENHFBeP0O">俯视下机体扭曲，「不像飞机」</td>
+  </tr>
+  <tr data-page-node-id="fEEYCpeLFK6mjSkxCOTcRw">
+    <td data-page-node-id="yGWxHpbcOtKrDflAadtX7k">轴对齐 + 无漂浮体素</td>
+    <td data-page-node-id="deqf0bAfEd5pI9UbvoHc79"><code data-page-node-id="wOJeB30LpKWl0WED2H9SQA">asset_audit.gd</code>：面中心内推 0.25 格须落在实心内</td>
+    <td data-page-node-id="LVRVG849GkHe0tLw1fSkJr">出现悬空方块，网格出现内面朝外的脏面</td>
+  </tr>
+  <tr data-page-node-id="BQBIOGjQFvU63YouMumVbC">
+    <td data-page-node-id="h26FoVK6bCLBNmUVeW1QKF">朝向（地面 -Y / 空中 +Y）</td>
+    <td data-page-node-id="sfFV3T53Z7YYv6LnPaH4uf"><code data-page-node-id="nup6KG3imChXVdArcV54BK">look_at</code> 让 -Z 指向目标，<code data-page-node-id="450hT48II7cM9ThfYtt3ZN">godot_z = vox_y</code></td>
+    <td data-page-node-id="h1TElF2ubgUbrXivJJ6Lko">炮口朝后、机头背对玩家</td>
+  </tr>
+  <tr data-page-node-id="Z6JwEAGEIc2IFMSRq2i6Wx">
+    <td data-page-node-id="Sq2IbjzL0k5nIFPf6yDIqP">SEED 可复现</td>
+    <td data-page-node-id="RuMKmQVboqztNDO1a23etY">地貌生成依赖固定种子</td>
+    <td data-page-node-id="l8XvsGekhRWZzo94uRdR1u">每次重跑结果不同，无法回归比对</td>
+  </tr>
+</table>
+
+<div class="note" data-page-node-id="qmKLJIFpKj6NF368phAseC"><b data-page-node-id="4XpA1ogoHNchCUSGxEAGFF">架构原则</b>：编译器应是<b data-page-node-id="wwZTcqO7cMLtsEdrYDV3gP">唯一写 .vox 的出口</b>。
+大模型无论输出什么，都被这一层拦下——不合法就报错，不达标就回灌。
+这让「模型胡编」的后果从「产出坏资产并进了游戏」降级为「一次失败的重试」。</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="UXqTcob6oRld5qUr9gQg5N">3. 推荐架构</h2>
+
+<figure data-page-node-id="bFRtcmy3rPizF7OnSkwDvA">
+<svg viewBox="0 0 680 265" width="100%" role="img" xmlns="http://www.w3.org/2000/svg" data-page-node-id="Zflpx7ExiHFEAKf3HFuYsZ">
+<title>提示词驱动体素资产的推荐三层架构</title>
+<desc data-page-node-id="cGxvHX8MiSpm3B00UyLqJm">人类给出提示词，大模型产出声明式 spec，确定性编译器把 spec 展开为体素表并落盘为 .vox，预览与审计脚本产出机器可读判据，不达标则回灌给大模型修正。</desc>
+<defs data-page-node-id="I5s14fTiXu1NPwrvU4sDwT">
+<marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" data-page-node-id="kdwBGKNrBBFLhGiNnSeudn">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" data-page-node-id="BQpPldRNUe4lQynZB2JWbH"/>
+</marker>
+</defs>
+<g data-page-node-id="MkPws3rRFPf58aVZflzT2o">
+<rect x="40" y="50" width="150" height="60" rx="8" fill="#3C3489" stroke="#AFA9EC" stroke-width="0.5" data-page-node-id="1NGitsfIxGWOsW2xDoJXI7"/>
+<text x="115" y="73" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#CECBF6" data-page-node-id="2dZgmwGpwCh0RHgdRMv9Tm">提示词 + 参考图</text>
+<text x="115" y="93" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#AFA9EC" data-page-node-id="AQvBHEiTgbXDaYSn9jnSEq">人类意图</text>
+</g>
+<g data-page-node-id="yv588WikMsfkCufDF71p4V">
+<rect x="250" y="50" width="150" height="60" rx="8" fill="#3C3489" stroke="#AFA9EC" stroke-width="0.5" data-page-node-id="JZIh26EAm9TUbdZ2dRONuV"/>
+<text x="325" y="73" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#CECBF6" data-page-node-id="cTMC7C4doJBV1csuWAmCEN">LLM 产 spec</text>
+<text x="325" y="93" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#AFA9EC" data-page-node-id="2bzrqPJjLTRKQJxoqtxlIO">JSON 部件描述</text>
+</g>
+<g data-page-node-id="HEQaNXCAtTTqnltMyLQPZx">
+<rect x="460" y="50" width="150" height="60" rx="8" fill="#085041" stroke="#5DCAA5" stroke-width="0.5" data-page-node-id="o9Y2z0PX5dDj6skLsBCcbt"/>
+<text x="535" y="73" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#9FE1CB" data-page-node-id="rdBrWPSq04ETGfzLLomIbU">确定性编译器</text>
+<text x="535" y="93" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5DCAA5" data-page-node-id="xeJpzZ4LcoC0JYh3fCrzjK">spec → 体素表</text>
+</g>
+<path d="M190 80 L250 80" fill="none" stroke="#AFA9EC" stroke-width="1.5" marker-end="url(#ar)" data-page-node-id="m7YOvRK3zDPynVZaDiGmA7"/>
+<path d="M400 80 L460 80" fill="none" stroke="#5DCAA5" stroke-width="1.5" marker-end="url(#ar)" data-page-node-id="TE64a0zYHDvthvd1KOCzvQ"/>
+<path d="M535 110 L535 170" fill="none" stroke="#5DCAA5" stroke-width="1.5" marker-end="url(#ar)" data-page-node-id="9pacygqB2btGYGcR7FdqCA"/>
+<g data-page-node-id="11cF9UeGEmqwjvHa3zzWcZ">
+<rect x="460" y="170" width="150" height="60" rx="8" fill="var(--color-background-secondary, #131a2e)" stroke="#2a3554" stroke-width="0.5" data-page-node-id="GGYtBfqkZD8ExaZw51Iz6R"/>
+<text x="535" y="193" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#cdd3e8" data-page-node-id="dLPA5dsGh26ViNMr4F2A9t">write_vox 落盘</text>
+<text x="535" y="213" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#8a94b8" data-page-node-id="R7XN2tE9Qecu7kAtTtaAB4">.vox + PNG 预览</text>
+</g>
+<g data-page-node-id="rx8bDZ4ACDfwZsO4XY1GFj">
+<rect x="250" y="170" width="150" height="60" rx="8" fill="var(--color-background-secondary, #131a2e)" stroke="#2a3554" stroke-width="0.5" data-page-node-id="6vJfM7E2pAwEqofspTNZ7g"/>
+<text x="325" y="193" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#cdd3e8" data-page-node-id="DrxLeZ51CDpvQaOBEF24Ag">预览 + 审计</text>
+<text x="325" y="213" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#8a94b8" data-page-node-id="xDXYJDseR3jnPsx8ghVDlG">机器可读判据</text>
+</g>
+<path d="M460 200 L400 200" fill="none" stroke="#5DCAA5" stroke-width="1.5" marker-end="url(#ar)" data-page-node-id="9RlwanErccS9oW7yXACAi7"/>
+<path d="M315 170 L315 110" fill="none" stroke="#AFA9EC" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar)" data-page-node-id="2rVrmCQimy46OIA0FlnZpF"/>
+<text x="232" y="140" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#AFA9EC" data-page-node-id="5TGbDq3wuPRqYTVul1cUmH">不达标 → 回灌修正</text>
+<text x="340" y="255" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5a6486" data-page-node-id="QTxKU0kIciT8a5Yp6NUQ48">编译器是唯一写 .vox 的出口：≤255 色 · 强制镜像 · 漂浮体素剔除 · SEED 可复现</text>
+</svg>
+<figcaption data-page-node-id="QOuyf31KsYQo6VI9WmFuHR">图 1 · 提示词驱动体素的推荐闭环。人机分工：模型负责「像什么」，编译器负责「对不对」，预览图负责「认不认得出」。</figcaption>
+</figure>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="8zEi6kwDsuVHm0jwMkCU32">4. 声明式 spec 草案</h2>
+
+<p data-page-node-id="ELPV4ARuI4CDQlhzvseWYA">spec 的 op 集合不需要从零设计——<code data-page-node-id="jsTdYF8qVCATm8qCzxVX7l">gen_units.py</code> 里的建模原语
+<code data-page-node-id="4olN21QByJL0CsA1o5Q75c">_sym</code> / <code data-page-node-id="o5vcZ9UvsIWg3suiU9RGMj">_symbox</code> / <code data-page-node-id="D7FrMCMc7TkFkhKqWTyZvd">_oct_skip</code> 以及
+<code data-page-node-id="AubyME1YgMFLCTHVFmYgOe">build_player()</code> 的 <code data-page-node-id="b73h9ZPQgkYV3afSrrotJl">half[]</code> 剖面表、<code data-page-node-id="lct5xhKR3EYsQOaLjjUFoG">build_e2()</code> 的
+<code data-page-node-id="UPlYIkurlbsHbxOWtUt1rZ">hypot</code> 环，本身就已经是一套 op 了。把它们从 Python 函数提升为 spec 的指令即可。</p>
+
+<h3 data-page-node-id="KkUJf7CRjxzAFNAILlg8p2">op 集合（对齐现有实现）</h3>
+<table data-page-node-id="FioAmX92nd4IuJyD4okKzb">
+  <tr data-page-node-id="Qkda40ALa58rfGoBCifkXL"><th data-page-node-id="k9HARGnzjX6MTgp45o0aUk">op</th><th data-page-node-id="qU1WaDgEVqxEi6TdynqFE8">对应现有代码</th><th data-page-node-id="hVQvg9AlsYb9BtbbfSA2y8">参数</th></tr>
+  <tr data-page-node-id="QE71VI5lRkYj1kA5Y0VI3f"><td data-page-node-id="SBGfRJVgekD2GRVHoIn3h1"><code data-page-node-id="QLELUHhuo4BUxjtvbe5m2R">dot</code></td><td data-page-node-id="l5j1ZfLttYDPVayPefyO6S"><code data-page-node-id="RMa8zuUvAWZ3Zjq7kgna7w">put(x,y,z,col)</code></td><td data-page-node-id="FpHmgHEuH3oPBwuYKlE8tW">单点体素</td></tr>
+  <tr data-page-node-id="ODkCiPD9cvwhjqXH92DG9l"><td data-page-node-id="CxwjB7PghfXF1zN234Xuk1"><code data-page-node-id="F47zpWvmjTxqHplWCFJOeC">symdot</code></td><td data-page-node-id="qpkPMIN5BmK03hewCI672H"><code data-page-node-id="gw61m2dwbw6YrD9EVVW0bB">_sym(v,c,x,y,z,col)</code></td><td data-page-node-id="Z56ak2BoPU3CidQzxrJV73">单点 + 自动镜像到 2c-x</td></tr>
+  <tr data-page-node-id="5g8Glsom4hvYvVNCp3x2SQ"><td data-page-node-id="0lSCufDGdxG4OGA7BWFrPR"><code data-page-node-id="DAg8VpAh91fr6uHSVZpvps">box</code> / <code data-page-node-id="AbIGoW6yPCY7NYkTegbFuo">symbox</code></td><td data-page-node-id="DGN6rkTkI82Nu4UnzoFEtX"><code data-page-node-id="GSbCGKiNov5DCVqbi6YRgo">_symbox(...)</code></td><td data-page-node-id="nambcPJrqV7M0d25HhuZAR">x0..x1 / y0..y1 / z0..z1 区间填充</td></tr>
+  <tr data-page-node-id="akDAfJe32A4xlNW6cYOFH7"><td data-page-node-id="GPkQlymXAp0acnNpgRyYhA"><code data-page-node-id="ADzC1qFARZzQcquSwRg1eu">profile</code></td><td data-page-node-id="5iHLjG9oYS8W6kwX2G4QaZ"><code data-page-node-id="hYECfAGA69cBPeznpBCsvH">build_player()</code> 的 <code data-page-node-id="GCmHu4W9gMPV7YdJVfNe2N">half[]</code></td><td data-page-node-id="vytqt0I7r6cXuURdrfA91Q">沿 y 的半宽表，生成流线机身/机翼</td></tr>
+  <tr data-page-node-id="CO0D98r867wUpYh5YMFV77"><td data-page-node-id="jhaf3ELgVX7m49mL77ttkF"><code data-page-node-id="R32sgwdvAmv0OaT10vr2G9">oct</code></td><td data-page-node-id="b8lvuBxe314wclAZTljsR5"><code data-page-node-id="amqPPCsb99zdWoqgMmDUoi">_oct_skip(dx,dy,r,cut)</code></td><td data-page-node-id="1KemLJYUPmDDb1TebingWI">切角方形 → 八边形（炮塔/环体轮廓）</td></tr>
+  <tr data-page-node-id="d4z9Hqt8DLHRGHOp1alUBZ"><td data-page-node-id="cW4gGUBTqy2wyVP8ZxvY5q"><code data-page-node-id="ukMLFVdiQOQqFRQyMZGpBC">ring</code> / <code data-page-node-id="oL0us0Zqis3pmUPh7OUVDD">disc</code></td><td data-page-node-id="B9EXQrVoJlL4ppyQf6xlCF"><code data-page-node-id="rYgU1EUpYIdbhyh9fltE05">build_e2()</code> 的半径区间</td><td data-page-node-id="EQ4l6c2dyhwYHsetcA2PWM">环形 / 圆盘填充</td></tr>
+  <tr data-page-node-id="lm8Q1pXQE0lNrGkL3Unzuh"><td data-page-node-id="Yo6RDa5wWhs1HFoggPHHoM"><code data-page-node-id="yDApqYAfm3ACl2szqK7Z52">mirror_fill</code></td><td data-page-node-id="HJWIGMDrgkAg8nuqG7W7Ck">生成器统一约定</td><td data-page-node-id="cSMYaFEUZhgnBlPwYyJXTg">声明镜像轴 c，整段对称</td></tr>
+</table>
+
+<h3 data-page-node-id="IpeN3j0UenSKECatvGp5OF">示例：用 spec 描述一架新敌机</h3>
+<pre data-page-node-id="G6gGRMQk6olKNzFzp4cQTE">{
+  "name": "E7", "category": "air", "facing": "+Y",
+  "palette": "enemy",                 // 引用 gen_units.py 的命名调色板，不可自由造色
+  "axis": 9,                          // 镜像轴 c
+  "bbox": [19, 21, 7],                // 上限由 category 约束校验
+  "ops": [
+    { "op": "profile", "axis": "y", "half": [3,4,5,7,8,9,9,9,8,7,6,5,4,3,3,3,3,2,1,1],
+      "z": [1,2], "col": "EH" },                       // 三角后掠翼
+    { "op": "symbox", "x": [0,2], "y": [0,3], "z": [1,3], "col": "EG" },   // 机身
+    { "op": "symbox", "x": [0,0], "y": [11,14], "z": [3,4], "col": "EC" }, // 座舱盖
+    { "op": "symbox", "x": [0,0], "y": [17,20], "z": [2,2], "col": "EW" }, // 白机鼻
+    { "op": "symdot", "x": [8], "y": [6,7,8], "z": [1], "col": "ER" },     // 翼尖红
+    { "op": "symbox", "x": [6,6], "y": [7,12], "z": [0,2], "col": "ET" }   // 翼下吊舱
+  ]
+}</pre>
+
+<p data-page-node-id="jAtSlnefeLiWmhep2PgZaz">同一个 E7 用 L1（Python 代码）写约 60~80 行，用 L2 spec 约 15 行——
+模型的输出规模降低一个数量级，且<b data-page-node-id="G2bI5dDbFiwah8UtgT7mEz">对称性、调色板、包围盒由编译器保证，模型不必「记得」</b>。</p>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="HTCt4oATU7NtBNCJeRrUoR">5. 编译器职责与校验项</h2>
+
+<p data-page-node-id="jKko45AbigiiCtz80dRO9y">编译器（建议 <code data-page-node-id="9FViVk3qagnBDrIv3RolY8">tools/vox/voxspec.py</code>）只做三件事：
+<b data-page-node-id="F5F0KRVSTMmFxQArduBlb2">展开</b> op → 体素表、<b data-page-node-id="DRtTbwYiPDduft3d1E6njS">校验</b>约束、<b data-page-node-id="C6axgLlHO4XF0iHGxf9HQh">落盘</b>（直接复用 <code data-page-node-id="ayZtzM4M3BSmNADFAzt1N5">voxlib.write_vox</code>，不改动它）。</p>
+
+<table data-page-node-id="L1BAL9eqUCG9M1je4xupqn">
+  <tr data-page-node-id="hfqi2cYraZpRS1ktVxfgTO"><th data-page-node-id="vmysd7vf0tvgKMliRKh8An">校验项</th><th data-page-node-id="Zm0qx99BYf5EMJogNHeDTd">判据</th><th data-page-node-id="o46urWx2CfmQl8T7nkHtYL">失败动作</th></tr>
+  <tr data-page-node-id="3gE6fIS8YtBaNOWzNNVmoh"><td data-page-node-id="ZMB6qZHjUVAZQK25ijLb4F">调色板</td><td data-page-node-id="PnS4CutIWT97Bnbqr53WLC">引用命名调色板，颜色数 ≤ 255</td><td class="no" data-page-node-id="RqAT2fOZSbFaflz35qSTCj">报错，拒绝生成</td></tr>
+  <tr data-page-node-id="CcQcGvF2UmBZydlupfPYkh"><td data-page-node-id="Q9dmt3N9691bccf3H6CVTS">包围盒量级</td><td data-page-node-id="08FzAEZEMS6R3iA8oJh2c1">air 单位宽 15~29，ground 单位 9~19</td><td class="mid" data-page-node-id="FCCFHcUDT8zkIKFjqKvMvw">警告 + 列出实际尺寸</td></tr>
+  <tr data-page-node-id="e8fBdEbLPRNrdu25sqpDQ0"><td data-page-node-id="Nm5BDQqt1Lmf6QtxVLxToK">左右对称</td><td data-page-node-id="oHtK5r5vS4ICb04uYS38mU">逐 (y,z) 行做镜像比对</td><td class="no" data-page-node-id="uuiF7hW6dfFrXJFmgIdiV4">报错（或按 axis 自动补对称）</td></tr>
+  <tr data-page-node-id="PtWCNf7FzxapnUgFWEXUmM"><td data-page-node-id="SbKylgwzkeDu5lpLfGFgjA">连通性</td><td data-page-node-id="mPzPDBwY0NUWNiXPuZpWTb">flood fill，主连通分量应覆盖 ≥99% 体素</td><td class="mid" data-page-node-id="ZuKCOlpUjHzH1MVlfHe423">警告 + 输出漂浮块坐标</td></tr>
+  <tr data-page-node-id="CcAiLwuLjcEsIkSejQCAse"><td data-page-node-id="vIvojwYUfOAosTc9S3DB3E">朝向</td><td data-page-node-id="KGmAzps8lRh6kJTbpqc32q"><code data-page-node-id="iulATuHADspprVlnQ3kAZO">facing</code> 与 category 默认值一致</td><td class="no" data-page-node-id="GZVUs5VaHDGGo669k8MsxF">报错</td></tr>
+  <tr data-page-node-id="aMdcKztsxFBGAEQ2OjtK5V"><td data-page-node-id="tMLRIwuKBVwdT4BZpdLbw3">可复现</td><td data-page-node-id="gCMod3PJNWGOU2NBGZCSWD">同 spec 重跑，输出体素哈希一致</td><td class="no" data-page-node-id="xhEG7inDSdMhNBRpGDoJTb">报错（编译器本身确定性，用于回归闸门）</td></tr>
+</table>
+
+<div class="note" data-page-node-id="x4uwavn7oEv8FBYaDMWqij"><b data-page-node-id="upprjvKSz3bpUJ4e6FpGeN">零回归闸门（阶段 0 的验收标准）</b>：把现有
+<code data-page-node-id="Msd3Q4KR9KmbqpbaPY29BS">build_player()</code> / <code data-page-node-id="zA0dSBihchENJ89jEgt8Tj">build_e4()</code> 反向导出为 spec，重跑后
+<b data-page-node-id="iyliNA0lZgshbPUroWmqZg">与现有 <code data-page-node-id="U9Ew5HX6foVOKvoL4sbKXb">assets/vox/units/*.vox</code> 逐体素比对必须完全一致</b>。
+达不到就说明 op 集合漏了原语，补齐即可——这保证「引入 spec」不引入任何视觉回归。</div>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="yFrM8CiNK09TyqLVDi0ATq">6. 本仓库已具备的基建</h2>
+
+<p data-page-node-id="XgFVZ03tkVuhPFdLJv825r">上图闭环里除了「spec 编译器」，其余环节<b data-page-node-id="wqYt291TPXEayo4xzB6ExA">仓库里都已存在且 headless 可跑</b>，
+这正是落地成本低的原因：</p>
+
+<table data-page-node-id="DhEQHuLLp5Dj3McNKkxKld">
+  <tr data-page-node-id="RGfjn9LqTyTtVfVRJPKl2s"><th data-page-node-id="iS9TWNcfAAQmvlcy9gqNkc">环节</th><th data-page-node-id="RwuRDaZXlZPCCEksWPcnT1">现有资产</th><th data-page-node-id="RSzhi7OHd6IJG8NTNnZ46U">在闭环中的角色</th></tr>
+  <tr data-page-node-id="9nCTFtrX0Cp3Qm1E44TAnQ">
+    <td data-page-node-id="PKYsQNHVsf4EOAesG8iCtK">真实资产渲染</td>
+    <td data-page-node-id="btkY4Z7jxywb87qHFxktr6"><code data-page-node-id="TC78jg4btfRMUlwHjYK5qZ">asset_review.gd</code>（play / iso 双机位）</td>
+    <td data-page-node-id="nbGniSkMJuseWWTLqvR4kw">直接调用游戏自身的生成函数取资产，保证与运行时一致</td>
+  </tr>
+  <tr data-page-node-id="w4j5WZUEEvcVIO7WTnvdol">
+    <td data-page-node-id="V7lKTfDFNXfptQAV39FmoD">认物判定</td>
+    <td data-page-node-id="gkK7HVsKD93Ho1uXGkMMrr"><code data-page-node-id="vwqb6sgOFad1vNclxw4buw">ingame_view.gd</code>（照抄游戏相机：正交 34 / (0,30,12)）</td>
+    <td data-page-node-id="XntasW4jGgfY76cHZGwuuQ">回答「实际看着像不像」，这是 L2 唯一无法替代的一步</td>
+  </tr>
+  <tr data-page-node-id="l7IKsgUIY86fcfK3QonSFQ">
+    <td data-page-node-id="3H6yqZPPnzLnBZWuU6xktK">量化判据</td>
+    <td data-page-node-id="sB4R7PvF7Gb5SJYiZ9YzTT"><code data-page-node-id="TniOZ47737ItIT94RtV7N3">asset_audit.gd</code>（绕序 / 硬边 / 光照预算 / 朝向分布四张表）</td>
+    <td data-page-node-id="1M0kGCW2FBA1d9s4ieUXCS">可直接解析成机器可读报告，回灌给模型</td>
+  </tr>
+  <tr data-page-node-id="xJ797Py6spQciVifLhcqpE">
+    <td data-page-node-id="dtnkhFDPXzue2HySYZDTzl">回归</td>
+    <td data-page-node-id="xgNGKwQD9Jm1CeWEJExlEq"><code data-page-node-id="NBj4Nyrk5T9DIryK1IKPDW">_check_enemies.gd</code>（加载 + 更新循环 + 炮头 look_at）</td>
+    <td data-page-node-id="FuRCCjMLlmtI7gTOTRpXw7">新资产接入后的一致性检查</td>
+  </tr>
+  <tr data-page-node-id="INHf3I3UsKvh0MRvfvG9Xc">
+    <td data-page-node-id="7vWeXOBl9Af61gM3NJBnou">接触表</td>
+    <td data-page-node-id="hZuMFPpPK5yr9ihQPHjOB5"><code data-page-node-id="kfS7BF1K5jV46nFdvo46Yw">pngsheet.py</code></td>
+    <td data-page-node-id="kegyLFh3ZtNyWK1KH0pGJx">把 N 张预览拼成一张，便于一次对比与附件投喂</td>
+  </tr>
+  <tr data-page-node-id="yrRUdVS0S5EIOMRNEgsVtG">
+    <td data-page-node-id="PcY2EDoENohgPvtmtwike5">落盘</td>
+    <td data-page-node-id="bZ83va4CiSVczrvS0OaUdK"><code data-page-node-id="r8Me1HrHYOwQPf1VG1zlTf">voxlib.write_vox()</code></td>
+    <td data-page-node-id="jj2oBOP3NGS0eM8tbf3hrI">编译器直接复用，<b data-page-node-id="PBEViT8Zx7hGHc3qj7hrH9">一行都不用改</b></td>
+  </tr>
+</table>
+
+<h3 data-page-node-id="nMM3PkA1YVjcM2ZISHKPaC">附：被忽略的现成通道 —— <code data-page-node-id="nP6yEEfChWdKeMluseZb57">addons/godot_ai</code></h3>
+<p data-page-node-id="KCGolr6Buju6x8f2ehdrd1">工程已在 <code data-page-node-id="8zGT4ZYfPxmqMMYUawJiwj">project.godot</code> 的 <code data-page-node-id="rfNUkk0mNynCKu5VCbruGz">[editor_plugins]</code> 中启用
+<code data-page-node-id="amt9CtKiwv2AC1Ne1mJoXa">res://addons/godot_ai/plugin.cfg</code>，并有 autoload
+<code data-page-node-id="TV7wTSLn6TsbBGY5SXZhDh">_mcp_game_helper</code>。这是 Godot 内部的 MCP 桥，意味着大模型可以<b data-page-node-id="mpAT8QbfgTvkjCj0ZSx7gw">直接操纵
+编辑器里的场景与资源</b>，而不只是生成文件。若接通，「生成 → 在编辑器里看 → 改」
+可以不出对话完成。它与本文的 spec 方案<b data-page-node-id="cdZqQXf7GPqZeDqgzYpNot">不冲突</b>：spec 定义「产出什么」，
+MCP 桥定义「在哪儿看和改」。</p>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="13GrAdM8IL3GHxtqSgANJ3">7. 落地路径</h2>
+
+<table data-page-node-id="e5jDwrtxhMjCHbXbb1dzXH">
+  <tr data-page-node-id="E1F1gnsebNqWN9F3OCSIbw"><th data-page-node-id="9Ps2yM1Ig00oea6GIkU7Zt">阶段</th><th data-page-node-id="GiezwjCl0QVU26uAGhQPfk">交付物</th><th data-page-node-id="iKyl3rdggLlBCB5MIf5PLx">验收标准</th></tr>
+  <tr data-page-node-id="Dzl3xsiCWpiL1XSNk3P0au">
+    <td data-page-node-id="zi718DVMZnAusudD475DSA"><b data-page-node-id="ZgJYnJMKVOo3vYmMorNE5w">0</b> 零回归闸门</td>
+    <td data-page-node-id="ZJA09gxO0ibvSFSChhu6hJ"><code data-page-node-id="mGQVcP1MWkKElCArie09Kt">voxspec.py</code> 骨架 + spec schema；把 <code data-page-node-id="sUz2X9sZFtOAHVVFN74Nl1">build_player()</code> /
+        <code data-page-node-id="E3nBiD4pY6KQeocZqs4WRh">build_e4()</code> 反向导出为 spec</td>
+    <td data-page-node-id="G0kWFBITUrhOR1ROj5H9Zq">重跑输出与现有 .vox <b data-page-node-id="qrQbbAojMcMkHbQW9MtGOk">逐体素一致</b></td>
+  </tr>
+  <tr data-page-node-id="O8MbHdV82myDqkxb7sVcbB">
+    <td data-page-node-id="07PTES8h53kq3JkbWQSQdN"><b data-page-node-id="g967AodCgcDbpgvlp9TaUj">1</b> 一条命令出图</td>
+    <td data-page-node-id="umhOr5UNNuIgbs2B712SxZ"><code data-page-node-id="ErfPY6mt4BFUjb6MDnCjVJ">gen_spec.py</code>：读 spec → write_vox → 调 asset_review / ingame_view → 出接触表</td>
+    <td data-page-node-id="Rvg3NTyBTkjdZ5rmhSKbRc">单个 spec 文件产出 .vox + 预览 + 审计报告</td>
+  </tr>
+  <tr data-page-node-id="yYvkRnjz2BIsyi6MQknLG5">
+    <td data-page-node-id="CzhDiULtYrTgzNndbsC5sK"><b data-page-node-id="wDhwlPKLcDaMT1U53dBWrj">2</b> 模型产 spec</td>
+    <td data-page-node-id="1XstHytVxHtpLHEexWVKdK">提示词模板（内嵌 schema 与约束清单）+ 回灌循环（预览图 + audit 报告 → 模型）</td>
+    <td data-page-node-id="zhp3v1LAozUIE8p5mjL9qW">给一句造型描述能稳定产出通过全部校验的 spec</td>
+  </tr>
+  <tr data-page-node-id="oYhNPRgMXELT6JyRfJSrWK">
+    <td data-page-node-id="ewFDDIOQaTq67zD1vQDYnE"><b data-page-node-id="HgHmRIUb6JBYC64cucHFHK">3</b> 图生体素（可选）</td>
+    <td data-page-node-id="klBfwckBqAiCoG3pwyxrRL">概念图 / 参考截图 → 体素化 + 吸附到游戏命名调色板</td>
+    <td data-page-node-id="WHOjqsoo4GsNrqHnfceB9P">保留现有 Sky Force 美术方向的前提下产出可用轮廓</td>
+  </tr>
+</table>
+
+<p data-page-node-id="v5NsXfn6Bv1LClIDJH6KgL">阶段 0~1 <b data-page-node-id="gHNrc2DX3nwl8EM3S2eOzA">不依赖任何模型</b>，是纯重构，风险最低且立刻可用；
+阶段 2 才引入大模型，此时所有约束已经被编译器兜住。</p>
+
+<!-- ================================================================ -->
+<h2 data-page-node-id="JX68mpu7uRELZbjhqXPTDz">8. 诚实的边界与风险</h2>
+
+<div class="warn" data-page-node-id="1EYUpCHeGwhLRPQHYRBaNI"><b data-page-node-id="f270Z7oTcGrrFpiwYRlXJq">LLM 的空间想象力是天花板。</b>
+L2 能大幅降低 token 与畸形输出，但「这个造型在正交 34 相机下认不认得出」这类判断，
+目前仍必须靠图。因此<b data-page-node-id="nR22nAVn5Qws3NCSIHEYVj">预览图人审这一步不能省</b>——它是方案的安全阀，不是可选项。</div>
+
+<ul data-page-node-id="i1jkKofX70CTQANAPs03r2">
+  <li data-page-node-id="YzNQ1o5PNDkISMUV9S97zu"><b data-page-node-id="Ze6jrVbBYkMZyUHKyLGcun">迁移现有资产不划算。</b>player / boss / E1~E6 已调好，为统一格式而反推 spec
+      是纯成本。阶段 0 只反推 1~2 个资产作为编译器验证样本，其余按需迁移。</li>
+  <li data-page-node-id="oDOpjTuV6eSfCMuIGxVY6G"><b data-page-node-id="y2Z26TL62fERyE2oaTOzO9">op 集合表达力有限。</b>spec 天然不如 Python 自由。须保留可扩展性：
+      遇到表达不了的造型，应<b data-page-node-id="HZxI2IFLsVluiFCUq9i0Im">补一个 op</b>，而不是往 spec 里塞代码（会重新引入 L1 的问题）。</li>
+  <li data-page-node-id="RNbiaacTVlnfqMOG0xtuVl"><b data-page-node-id="07JQjXTM5v1Cav2louUdXB">生成式 3D（L3）与现有美术风格冲突。</b>本作是轴对齐体素风，光滑 mesh 体素化后
+      观感不同；且无对称 / 朝向 / 尺度保证，AABB 贴地对齐逻辑需重算。建议只用于不规则地貌
+      （岛 / 礁 / 沉船），不用于单位。</li>
+  <li data-page-node-id="fOTz48rQNCVbFHVI1D3gt5"><b data-page-node-id="XBWEqDvp28uAarJaqRED5r">真正划算的场景是「批量造新内容」</b>：后续关卡敌机、更多海盗地图切片。
+      单件精修仍以 MagicaVoxel 手工微调最高效。</li>
+</ul>
+
+<p style="margin-top:40px;color:#5a6486" data-page-node-id="e3DA6HNZurzdFebfJRB4p6">— 生成于 2026-09-11 · demo-game ·
+依据 <code data-page-node-id="c2tkOvYgZ7605K0zJfPY2U">tools/vox/README.md</code>、<code data-page-node-id="njGAsgBFUZbYJcGpp4pBt0">gen_units.py</code>、<code data-page-node-id="hM8il8FCy7N5Brs7esFZga">gen_pirate.py</code>、
+<code data-page-node-id="XhCPnGf7d8kuzKy5fIKu2M">vox_reader.gd</code>、<code data-page-node-id="mhCobl1KvhkZwvosSboJfo">voxel_model.gd</code>、<code data-page-node-id="Dd12SFQVql98QCGs0DUMyq">asset_audit.gd</code> /
+<code data-page-node-id="6tinJDk4Lh9W9TodE2r5Os">asset_review.gd</code> / <code data-page-node-id="4LB5wXhZ8xVegexHdwzXH9">ingame_view.gd</code> 的代码走查结论</p>
+
+</body>
+</html>

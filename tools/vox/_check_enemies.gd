@@ -10,7 +10,7 @@ func _initialize() -> void:
 	await process_frame
 
 	print("--- _meshes 加载情况 ---")
-	for k in ["E1", "E1H", "E2", "E3", "E4", "E5", "E6"]:
+	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4", "E5", "E6"]:
 		var m: Mesh = inst._meshes[k]
 		var a: AABB = m.get_aabb()
 		print("  %-4s surfaces=%d aabb=%s" % [k, m.get_surface_count(), str(a.size)])
@@ -31,5 +31,9 @@ func _initialize() -> void:
 		print("  %-4s pos=%s" % [e["t"], str(n.position.snappedf(0.01))])
 	var e1: Dictionary = inst.enemies[0]
 	print("  E1 炮头旋转=", str((e1["head"] as Node3D).rotation.snappedf(0.01)))
+	var e3: Dictionary = inst.enemies[2]
+	var rotor: Node3D = e3.get("rotor")
+	print("  E3 旋翼子节点=", rotor != null, " 旋转=", str(rotor.rotation.snappedf(0.01)) if rotor else "-",
+		" 机身旋转=", str((e3["n"] as Node3D).rotation.snappedf(0.01)))
 	print("OK")
 	quit(0)

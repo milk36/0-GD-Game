@@ -292,8 +292,8 @@ def build_e2():
 
 
 def build_e3():
-    """E3 四旋翼无人机（17×17×6 → 5.1×5.1×1.8）：中央机身 + 座舱玻璃 + 4 条
-    斜向悬臂 + 四片长桨旋翼（中心对称，绕 Y 自转读得出在转）+ 下挂机炮。"""
+    """E3 四旋翼无人机·机身（15×15×4）：中央机身 + 座舱玻璃 + 4 条斜向悬臂 +
+    四个旋翼吊舱 + 下挂机炮。桨叶在 E3R.vox（独立旋翼层，运行时只转这一层）。"""
     c = 8
     v = {}
     # 机身（机头朝 +Y，y 4..13）
@@ -318,22 +318,36 @@ def build_e3():
                 v[(ax, ay, 2)] = ET
                 v[(ax - sy, ay - sx, 2)] = ET
             px, py = c + sx * 6, 8 + sy * 5
-            # 旋翼吊舱
+            # 旋翼吊舱（桨叶另出 E3R，装配后桨盘恰在吊舱上方 1 格，与旧单体版同观感）
             for ox in (-1, 0, 1):
                 for oy in (-1, 0, 1):
                     if abs(ox) + abs(oy) > 1:
                         continue
                     v[(px + ox, py + oy, 2)] = ET
                     v[(px + ox, py + oy, 3)] = EG
-            v[(px, py, 4)] = EC                                    # 桨毂
-            for d in range(-3, 4):                                 # 长桨叶（十字）
-                col = EC if abs(d) == 3 else (EL if abs(d) == 2 else EH)
-                v[(px + d, py, 4)] = col
-                v[(px, py + d, 4)] = col
     # 下挂机炮
     _symbox(v, c, c, c + 1, 6, 9, 0, 0, ET)
     v[(c, 10, 0)] = ET
     v[(c, 11, 0)] = ER
+    return v
+
+
+def build_e3_rotor():
+    """E3 旋翼层（19×17×1）：四个吊舱位置各一组「桨毂 + 十字长桨」，单独成层
+    挂在机身上方，运行时只旋转这一层（机身朝向稳定、读得出机型轮廓）。
+    桨盘整体中心对称于机身 AABB 中心 (8, 8) → 旋转轴不偏心。"""
+    c = 8
+    v = {}
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            px, py = c + sx * 6, 8 + sy * 5
+            v[(px, py, 0)] = EC                                    # 桨毂
+            for d in range(-3, 4):                                 # 长桨叶（十字）
+                if d == 0:
+                    continue
+                col = EC if abs(d) == 3 else (EL if abs(d) == 2 else EH)
+                v[(px + d, py, 0)] = col
+                v[(px, py + d, 0)] = col
     return v
 
 
@@ -610,6 +624,7 @@ def main():
         ("E1H.vox", build_e1_head(), "_preview_E1H.png", 6),
         ("E2.vox", build_e2(), "_preview_E2.png", 6),
         ("E3.vox", build_e3(), "_preview_E3.png", 6),
+        ("E3R.vox", build_e3_rotor(), "_preview_E3R.png", 6),
         ("E4.vox", build_e4(), "_preview_E4.png", 6),
         ("E5.vox", build_e5(), "_preview_E5.png", 6),
         ("E6.vox", build_e6(), "_preview_E6.png", 6),

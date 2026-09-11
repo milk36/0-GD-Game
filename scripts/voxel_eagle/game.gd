@@ -19,7 +19,7 @@ const RescueRing = preload("res://scripts/voxel_eagle/rescue_ring.gd")
 const VOX_DECOR_PATH := "res://assets/vox/island_scene.vox"
 const VOX_DECOR_COUNT := 2        # 体素场景岛数量，0 = 关闭
 const VOX_DECOR_SCALE := 0.1      # 仅运行时解析路径使用（1 体素 = 0.1 世界单位）
-const VOX_DECOR_REPLACE := false  # true = 体素岛替换全部草岛，false = 叠加为额外地貌
+const VOX_DECOR_REPLACE := true   # true = 体素岛替换全部旧程序化草岛（已开启；暗礁/沉船仍为程序化，待 vox 化）
 
 # ---- 数值 ----
 const PLAYER_SPEED := 24.0
@@ -51,7 +51,8 @@ const ENEMY_VOX := {
 	"E1": "res://assets/vox/units/E1.vox",     # 炮台底座（地面单位，贴地摆放）
 	"E1H": "res://assets/vox/units/E1H.vox",   # 炮台炮头（含前伸炮管，look_at 指向玩家）
 	"E2": "res://assets/vox/units/E2.vox",     # 环形机（中空方环 + 悬浮核心）
-	"E3": "res://assets/vox/units/E3.vox",     # 无人机（四旋翼，绕 Y 自转）
+	"E3": "res://assets/vox/units/E3.vox",     # 无人机机身（四旋翼悬臂，朝向稳定不转）
+	"E3R": "res://assets/vox/units/E3R.vox",   # 无人机旋翼层（挂机身顶部，单独绕 Y 旋转）
 	"E4": "res://assets/vox/units/E4.vox",     # 战斗机（后掠翼，自机狙）
 	"E5": "res://assets/vox/units/E5.vox",     # 巡航机（重型机身，五连发扇形）
 	"E6": "res://assets/vox/units/E6.vox",     # 精英炮舰（双炮塔 + 舰桥 + 三联引擎）
@@ -1075,6 +1076,14 @@ func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 	var vz := scroll_spd + (10.0 if type == "E3" else 5.0 if type == "E4" else 1.5 if type == "E6" else 3.0)
 	n.position = Vector3(x, 4.3, -46.0)  # 空中单位与玩家同一飞行高度层
 	var e := {"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "vx": vx, "vz": vz, "x0": x, "mode": 0}
+	if type == "E3":  # 无人机：旋翼独立成层（E3R）挂在机身顶部，运行时只旋转这一层
+		var rotor := MeshInstance3D.new()
+		rotor.mesh = _meshes["E3R"]
+		rotor.material_override = VoxelModel.shaded_material()
+		# 旋翼层底面落在机身顶面：按两者 AABB 反推（子节点继承 0.3 缩放，局部值不乘）
+		rotor.position = Vector3(0, n.mesh.get_aabb().end.y - rotor.mesh.get_aabb().position.y, 0)
+		n.add_child(rotor)
+		e["rotor"] = rotor
 	enemies.append(e)
 	return e
 
@@ -1146,7 +1155,9 @@ func _update_enemies(delta: float) -> void:
 					_fire_ring(gp, 14, 7.6, float(e["age"]) + 0.22)
 			"E3":
 				n.position += Vector3(float(e["vx"]), 0, float(e["vz"])) * delta
-				n.rotate_y(delta * 7.0)
+				var rotor: Node3D = e.get("rotor")
+				if rotor != null:
+					rotor.rotate_y(delta * 14.0)  # 只转旋翼层：机身朝向稳定，旋翼转得快也读得出机型
 			"E4":
 				n.position += Vector3(float(e["vx"]) * 0.2 + sin(float(e["age"]) * 2.0) * 1.5, 0, float(e["vz"])) * delta
 				e["ft"] = float(e["ft"]) - delta
