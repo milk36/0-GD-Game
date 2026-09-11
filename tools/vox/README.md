@@ -12,7 +12,18 @@
 |---|---|
 | `tools/vox/voxlib.py` | 核心库：.vox 读 / 写 / 等距预览渲染（纯标准库，零依赖） |
 | `tools/vox/gen_scene.py` | 示例生成器：程序化小岛（地形+海洋+树+小屋） |
+| `tools/vox/gen_units.py` | 单位生成器：玩家机 / Boss / **E1~E6 敌机** → `assets/vox/units/*.vox` |
+| `tools/vox/gen_pirate.py` | 海盗关卡地图切片生成器：海面瓦片 / 海盗岛 / 要塞 / 帆船 → `assets/vox/pirate/*.vox` |
 | `tools/vox/_smoke.gd` | 冒烟测试：headless 跑真实场景，检查体素岛是否挂载成功 |
+| `tools/vox/_check_enemies.gd` | 敌机回归：headless 生成 E1~E5 + 跑更新循环，检查 .vox 加载与炮头 look_at |
+| `tools/vox/asset_audit.gd` | 量化审计：绕序/法线硬边/光照溢出（headless 可跑，输出表格） |
+| `tools/vox/asset_review.gd` | 视觉验收：把每个资产离屏渲染成 PNG（需要 GPU，会短暂开窗） |
+| `tools/vox/ingame_view.gd` | 按游戏真实相机参数渲染：核对实际观感、物体比例、认物 |
+| `tools/vox/scene_shot.gd` | 把任意场景按 1280×720 离屏拍成 PNG（改 `SCENE` 即可换场景） |
+| `scripts/voxel_eagle/survivor_unit.gd` | 幸存者单位唯一构建入口（网格/双臂/叹号/姿态/营救参数/绳索位姿），游戏与测试场景共用 |
+| `scripts/voxel_eagle/rescue_ring.gd` | 机上营救进度计时圈（屏幕对齐的 ImmediateMesh 圆环，半径=触发距离） |
+| `scripts/voxel_eagle/survivor_test.gd` + `scenes/survivor_test.tscn` | 幸存者外观测试场景（开局 10 个，可切换机位/缩放/阴影） |
+| `tools/vox/pngsheet.py` | 把多张 PNG 拼成接触表（纯标准库 PNG 解码，替代 PIL） |
 | `scripts/voxel_eagle/vox_reader.gd` | GDScript 运行时 .vox 解析器 → ArrayMesh |
 | `assets/vox/island_scene.vox` | 产物：小岛场景（72×72×29，32946 体素，14 色） |
 | `assets/vox/island_scene_preview.png` | 产物：等距预览图（自检用，不参与游戏） |
@@ -88,6 +99,75 @@ voxlib.render_iso(voxels, "preview.png", cell=5, up_axis="z")
 
 2:1 等距投影，画家算法（自下而上 + 由远及近），顶面/右侧/左侧分别 1.0 / 0.76 / 0.55 明度。
 纯 Python 光栅化，`cell=5` 的 3 万体素约 2~4 秒；只做自检，别拿它当生产渲染器。
+
+---
+
+## 3.5 gen_units.py —— 单位造型（玩家机 / Boss / E1~E6）
+
+```bash
+python gen_units.py        # 输出 assets/vox/units/*.vox + _preview_*.png
+```
+
+造型全部用 `put(x, y, z, col)` / `_sym()` 程序化写出来，坐标约定 **x=左右（只画 x>=c 的右半边，再按 `2c-x` 镜像）、y=前后（数值小 = 游戏 -Z）、z=高低**，
+与 `vox_reader.gd` 的 `godot(x,y,z) = vox(x,z,y)` 配套。
+
+### ⚠️ 分辨率约定（不要改错）
+
+**所有单位按 0.3 世界单位/体素建模，在 `game.gd` 里统一 `scale = 0.3`（Boss 例外，0.5）。**
+所以「体素数 = 造型细节量」，敌机必须和玩家机（15×19）、Boss（17×24）落在同一量级，
+否则在正交 34 的相机里就是"几个大方块"，认不出是什么 —— 初版敌机只有 3~5 体素宽（E1 才 9 体素、
+E6 才 101 体素），就是这个毛病：看着"太简单、看不出是什么"。重做后是 11~25 体素宽、175~3413 体素。
+
+| 资产 | 尺寸（体素） | 世界尺寸（×0.3） | 说明 |
+|---|---|---|---|
+| `player.vox` | 15×19×6 | 4.5×5.7×1.8 | 玩家机，青色座舱脊线是俯视主要识别特征 |
+| `boss.vox` | 17×24×6 | 8.5×12×3.0（×0.5） | Boss 方舟战舰 |
+| `E1.vox` | 11×11×3 | 3.3×3.3×0.9 | 炮台基座（地面单位，贴海面摆放） |
+| `E1H.vox` | 11×19×6 | 3.3×5.7×1.8 | 双管炮塔，炮管朝 **-Y**（游戏 -Z），`look_at` 转向玩家 |
+| `E2.vox` | 15×15×8 | 4.5×4.5×2.4 | 环形机：厚壁能量环 + 环心悬浮核心 + 四座发射器 |
+| `E3.vox` | 19×17×5 | 5.7×5.1×1.5 | 四旋翼无人机，X 形悬臂 + 十字母桨，绕 Y 自转 |
+| `E4.vox` | 19×20×5 | 5.7×6.0×1.5 | 后掠翼战斗机，机头朝 **+Y**（迎向玩家） |
+| `E5.vox` | 19×24×7 | 5.7×7.2×2.1 | 重型巡洋机，矩形直翼 + 双发吊舱 + 白色识别带 |
+| `E6.vox` | 21×29×14 | 6.3×8.7×4.2 | 精英炮舰：尖艏 + 多层甲板 + 主/副炮 + 舰桥青窗 + 三联引擎 |
+
+**朝向约定（踩过坑）**：地面炮台（E1H）的炮管要沿 **-Y**，因为 `look_at` 让节点的 -Z 指向目标，
+而 `godot_z = vox_y`；空中单位（E3~E6）则是机头朝 **+Y**（游戏 +Z，正对玩家）。
+
+**贴地对齐**：体素网格以「块的整数键均值」居中，键与几何中心差半格，所以 `game.gd::_spawn_ground`
+用 `-mesh.get_aabb().position.y * ENEMY_SCALE` 反推；E1 炮头偏移也由两者 AABB 反推
+（`base_aabb.end.y - head_aabb.position.y`，head 继承父节点缩放所以不用再乘），**改模型高度不必改 game.gd**。
+
+**敌机字符画已清零**：`game.gd` 里旧的 `ART_*` 常量与 `PAL_ENEMY` 调色板已全部删除。
+剩下的程序化方块只有地貌（草岛 / 暗礁 / 沉船）与幸存者（`survivor_unit.gd`），不属于"单位造型"。
+
+**认物要看两张图**：`asset_review.gd` 出的是等距图（看层次），
+`_sheet_enemies_topdown.png` 是各资产的 `*_play.png`（游戏相机同向俯视，看实际读感）——改完造型两张都要看。
+
+---
+
+## 3.6 gen_pirate.py —— 海盗关卡地图切片
+
+```bash
+python gen_pirate.py       # 输出 assets/vox/pirate/*.vox + _preview_*.png + _preview_layout.png
+```
+
+| 切片 | 体素数 | 说明 |
+|---|---|---|
+| `pirate_sea.vox` | ~4.1k | 64×64 开放海面瓦片，正弦周期整除边长 → 可无缝平铺 |
+| `pirate_island.vox` | ~21k | 海盗岛：沙滩 / 棕榈林 / 木栈桥 / 红顶小屋 / 篝火 / 黑旗 |
+| `pirate_fort.vox` | ~9k | 要塞岛：石墙垛口 + 四门火炮 + 中央塔楼 + 黑旗 |
+| `pirate_ship.vox` | ~8.6k | 三桅帆船：金框炮门 + 红漆舷缘 + 两层方帆 + 艉楼提灯 + 骷髅黑旗 |
+
+两条设计约定（都踩过坑）：
+
+1. **不写水体积素**。所有内容从 `z=0` 往上长，落到游戏里就是"贴着海面"——与既有草岛/暗礁/沉船
+   的摆放方式一致。写体素水块会和游戏的海面片打架。
+2. **切成多张独立文件**，运行时可只加载关卡当前段需要的那几张，避免一次性解析一张超大地图。
+   `_preview_layout.png` 是排布预览（海面瓦片铺 2×6，按行进方向摆上帆船/要塞/海岛），
+   用来一次看清整体效果与相对比例。
+
+海面瓦片注意别用"高度场 + 大面积浪花"（等距预览会糊成一块块浮冰），改用**单层水面 + 颜色分带**表现浪纹。
+帆船船体只保留外壳/甲板/底（内部空腔不可见），体素数能砍掉 2/3。
 
 ---
 
@@ -171,6 +251,11 @@ const VOX_DECOR_REPLACE := false  # true = 体素岛替换全部草岛
 
 换模型只改 `VOX_DECOR_PATH`；数量改 `VOX_DECOR_COUNT`。
 
+**单位（玩家机 / Boss / E1~E5）走的是另一条路径**：`VoxReader.read_mesh()` 运行时解析，不依赖编辑器导入产物。
+玩家机 / Boss 直接写死在 `_build_player()` 与 `_spawn_boss()` 里；E1~E5 由顶部的 `ENEMY_VOX` 路径表 +
+`_load_vox_mesh()` 统一加载（失败退化为占位方块，保证流程可跑）。换敌机造型 = 改 `gen_units.py` 重跑，
+或直接用 MagicaVoxel 改 `assets/vox/units/*.vox`，重开游戏即生效。
+
 ---
 
 ## 8. 验证
@@ -182,16 +267,105 @@ python voxlib.py inspect D:/Tools/MagicaVoxel-0.99.7.2-win64/vox/chr_knight.vox
 # 2) Godot 侧：headless 跑真实场景，打印 World 子节点与体素岛 AABB
 "D:/Tools/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64_console.exe" \
   --headless --path "D:/GithubProjects/Godot-game/0-demo-game" -s res://tools/vox/_smoke.gd
+
+# 3) 量化审计（绕序 / 法线风格 / 光照预算，headless）
+"...Godot...console.exe" --headless --path <项目> -s res://tools/vox/asset_audit.gd
+
+# 3b) 敌机回归：E1~E5 .vox 加载 + 生成 + 更新循环（含 E1 炮头 look_at），headless
+"...Godot...console.exe" --headless --path <项目> -s res://tools/vox/_check_enemies.gd
+
+# 4) 视觉验收（需要 GPU，会短暂开窗；输出到 %TEMP%/vox_review）
+"...Godot...console.exe" --path <项目> -s res://tools/vox/asset_review.gd
+python pngsheet.py sheet.png 4 --scale 0.9 <临时目录>/*_iso.png   # 拼接触表便于一次看完
+
+# 5) 游戏相机视角：核对"实际看到的样子"与物体比例（认物/尺寸争议时最有用）
+"...Godot...console.exe" --path <项目> -s res://tools/vox/ingame_view.gd
+# → ingame_wide.png（1280×720 全景，与游戏窗口同尺度）+ ingame_closeup.png（同尺度并排特写）
 ```
 
 期望输出：`World children=60`、`体素大岛数量=2`，每座 `aabb_size=(7.2, 2.9, 7.2)`、`pos.y≈1.3`。
 
 > 写临时 headless 脚本时注意：脚本必须 `extends SceneTree`，且在 `_initialize()` 里显式 `quit()`，
-> 否则进程不会退出，会被 timeout 杀掉。
+> 否则进程不会退出，会被 timeout 杀掉。若脚本里有 `await`，调用方必须 `await` 该函数，
+> 否则协程挂起后主流程直接 `quit()`，后续输出全部丢失。
+>
+> 离屏渲染三个坑：① `Camera3D` 必须**先 `add_child` 入树再 `look_at()`**（`look_at` 依赖全局变换，
+> 未入树会报错且朝向不变 → 渲出空图）；② `SubViewport.size` 要在使用前就设好，别等第一帧才 resize；
+> ③ 离屏渲染不能用 `--headless`（dummy 渲染器出不了内容），必须带 GPU 跑。
+
+### 审计脚本怎么用（改完模型/材质后跑一遍）
+
+`asset_audit.gd` 输出四张表：
+
+| 表 | 看什么 | 健康值 |
+|---|---|---|
+| ① 绕序 | 「反向朝外」与「存储法线朝外」两列 | 都是 100% |
+| ② 法线风格 | 硬边 / 平滑 | 硬边 = 全部三角面，平滑 = 0 |
+| ③ 光照预算 | 各朝向面在线性空间的最亮通道 | 顶面 <1.0（无 `*` 截断） |
+| ④ 逐资产朝向分布 | 侧面占比、非轴法线比例 | 非轴法线 = 0%（体素面必须轴对齐） |
+
+⚠️ 亮度要在**线性空间**算：Godot 会把 `albedo_color` 与 `light_color` 都转成线性再相乘，
+在线性 >1 才截断。用 sRGB 数值直接相乘会得出"严重过曝"的错误结论。
+
+判朝外用的是严格判据：面中心沿法线内推 0.25 格应落在实心体素内、外推 0.25 格应在空处。
+注意体素网格以「块中心」居中（`c = pos + 0.5 - center`），键与几何中心差半格——
+判据里必须按 `Vector3(k) + (0.5,0.5,0.5) - mean_key` 还原，否则单块模型会误报全 0%。
 
 ---
 
-## 9. 已知限制
+## 9. 幸存者外观测试场景
+
+改动幸存者造型/尺寸或讨论"看得清不清"时，直接跑这个场景，不必等关卡波次刷出来：
+
+**打开方式**：编辑器里打开 `scenes/survivor_test.tscn` → **F5（运行当前场景）**
+
+| 键 | 作用 |
+|---|---|
+| `方向键` / `WASD` | 开飞机（与游戏同速 24 单位/秒，飞行高度 4.5） |
+| `1` | 游戏尺度（正交 34 / 相机 (0,30,12)，与游戏内完全一致，截图就用它） |
+| `2` | 特写（正交 8，看块面与双臂） |
+| `3` | 救援跟拍（3/4 侧前方跟随飞机，看营救全流程） |
+| `4` | 缩放循环 0.6 → 0.9 → 1.2（对比"放大是否更好认"） |
+| `5` | 背景明暗（深海底色 ↔ 亮灰底，亮底更利于看轮廓截图） |
+| `6` | 阴影开关（排查"身边大黑块"是不是投影） |
+| `7` | 叹号显隐（游戏内叹号只在玩家 8 格内出现） |
+| `T` | 一键演示营救：飞机瞬移到第 6 个幸存者上方 + 自动切跟拍，播完整起吊过程 |
+| `R` | 重置全部幸存者（被救起的会复原，解除定格） |
+| `空格` | 暂停/继续（同时定格营救推进，便于截图） |
+| `Esc` | 退出 |
+
+营救判定与游戏完全一致（阈值都在 `survivor_unit.gd`）：悬停进入 **4.5 格** → 开始起吊；
+超出 **6.0 格** → 绳索收回；**0.6 秒**拉升 **2.2 格** 并缩到 **0.25 倍** → 计入"已救"，
+播 `eagle_rescue` 音效（C5-E5-G5-C6 上行琶音，0.6s，合成器在 `scripts/tetris/sfx_synth.gd`）。
+
+机上还有一圈**营救进度计时圈**（`rescue_ring.gd`）：半径 = `RESCUE_TRIGGER`（4.5），
+所以它同时也是"营救判定范围"的可视化；从 12 点方向顺时针填充，青色填充 / 白色底圈，
+救起后转黄并保留 0.3 秒再消失。实现要点：
+- 用 `ImmediateMesh` 每帧重建两段三角带（底圈 + 填充弧），不依赖 shader，GL Compatibility 可用；
+- `aim()` 直接套用相机 basis → 屏幕空间正圆（不必自己去算投影）；
+- 材质开 `no_depth_test`，否则会被机身/海面挡住。
+
+
+> 注意：`3` 救援跟拍有存在的必要——游戏尺度的相机是近乎俯视，飞机机身会投影成一条线并**挡住**被吊起的人。
+> 另外营救绳索只有 0.16 格粗，在游戏尺度（正交 34 / 720p）下约 **3 像素**宽，
+> 实际游戏里很可能"看不见绳子"；要更醒目就把 `game.gd::_build_player` 里的
+> `rm.size = Vector3(0.16, 0.16, 1.0)` 改成 0.3~0.4。
+
+命令行直接出图（不用手点）：
+
+```bash
+"...Godot...console.exe" --path <项目> -s res://tools/vox/scene_shot.gd
+# CLOSEUP=true → 特写机位；NO_SHADOW=true → 关阴影对比
+```
+
+> 造型常量集中在 `survivor_unit.gd`：`SCALE`(0.6) / `ARM_PIVOT`(肩部支点 y=3.1) / `ARM_WAVE`(挥臂角 2.4) /
+> `MARK_Y`(叹号高度 6.4) / `MARK_SCALE`(0.55)。改这几个数就能调外观，游戏与测试场景同时生效。
+>
+> 换算：节点 scale 0.6、基点 y=0.5，所以「局部 y」× 0.6 + 0.5 = 世界高度。
+> 当前叹号占世界 y∈[3.6, 5.25]（**高于玩家飞行高度 4.5**）、角色头顶在 y=2.0，
+> 即叹号底距头顶 1.6 格；`MARK_Y ≈ 4.2` 可让它贴着头顶。
+
+## 10. 已知限制
 
 - 单文件最多 255 色（.vox 调色板上限）；单模型最大 256³。
 - `render_iso` 是纯 Python 光栅化，几万体素级别尚可，再大就慢。
