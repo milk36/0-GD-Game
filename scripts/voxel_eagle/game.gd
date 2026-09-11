@@ -1133,27 +1133,35 @@ func _spawn_survivor(x: float) -> void:
 	hud_center.text = "飞到幸存者上方悬停即可施救"
 
 
-## 幸存者落点：优先锚到前方漂过的地貌顶面（体素岛滩涂 → 暗礁 → 沉船），
+## 幸存者落点：优先锚到前方漂来的地貌顶面（体素岛滩涂 → 暗礁 → 沉船），
 ## 站在实体上比空海面合理且显眼；没有合适地貌才落空海面（旧行为兜底）。
-## 锚定后随世界滚动同步移动；营救起吊以 anchor_y 为立足面（见 _update_survivors）。
+## ⚠️ 选点与出生都必须按「全局 z」= world.z + 局部 z 计算：world.z 随时间无界
+## 增长，地貌局部 z 早已回绕成大负数，按局部 z 找永远落空；兜底若写固定
+## 局部 -50，全局 z = world.z-50 也在视野外（>24 判错过），出生即被回收。
 func _survivor_anchor(fallback_x: float) -> Dictionary:
-	for win in [Vector2(-95.0, -38.0), Vector2(-150.0, -30.0)]:  # 先近后远
+	var wz := world.position.z
+	for win in [Vector2(-60.0, -35.0), Vector2(-110.0, -60.0)]:  # 全局 z：视野前方，先近后远
 		var cands: Array = []
+		var gz: float
 		for isl in islands:
-			if isl.has_meta("vox_island") and isl.position.z >= win.x and isl.position.z <= win.y:
+			gz = wz + isl.position.z
+			if (isl.has_meta("vox_island") and absf(isl.position.x) <= 18.0
+					and gz >= win.x and gz <= win.y):
 				var p := _island_coast_spot(isl)
 				if p != Vector3.INF:
 					cands.append(p)
 		for rf in reefs:
-			if rf.position.z >= win.x and rf.position.z <= win.y:
+			gz = wz + rf.position.z
+			if absf(rf.position.x) <= 18.0 and gz >= win.x and gz <= win.y:
 				cands.append(Vector3(rf.position.x, rf.position.y + rf.mesh.get_aabb().end.y, rf.position.z))
 		for wk in wrecks:
-			if wk.position.z >= win.x and wk.position.z <= win.y:
+			gz = wz + wk.position.z
+			if absf(wk.position.x) <= 18.0 and gz >= win.x and gz <= win.y:
 				cands.append(Vector3(wk.position.x, wk.position.y + wk.mesh.get_aabb().end.y, wk.position.z))
 		if not cands.is_empty():
-			var pos: Vector3 = cands[randi() % cands.size()]
-			return {"pos": pos}
-	return {"pos": Vector3(fallback_x, SurvivorUnit.BASE_Y, -50.0)}
+			return {"pos": cands[randi() % cands.size()]}
+	# 兜底：空海面，全局 -50（约 7s 航程到玩家区），局部 = 全局 - world.z
+	return {"pos": Vector3(clampf(fallback_x, -13.0, 13.0), SurvivorUnit.BASE_Y, -50.0 - wz)}
 
 
 ## 体素岛滩涂取点：从 .vox 列高表缓存里挑一列低矮岸带（顶面 ≤4 体素），
