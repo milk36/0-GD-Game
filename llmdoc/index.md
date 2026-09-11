@@ -8,4 +8,4 @@
 | [tetris-design.html](tetris-design.html) | 赛博朋克俄罗斯方块：游戏设计规划（视觉规范/规则/技术方案/里程碑） |
 | [tetris-game.html](tetris-game.html) | 赛博朋克俄罗斯方块：实现说明（文件结构/场景树/踩坑记录/验证结果） |
 | [tetris-items-design.html](tetris-items-design.html) | 俄罗斯方块增量需求：风/雨/雷电道具系统 + 消除粒子特效（含设计决策与验收标准） |
-| [voxel-eagle-design.html](voxel-eagle-design.html) | 方块雄鹰：Sky Force 类体素弹幕射击设计规划（玩法/体素视觉/技术方案/里程碑与 M0-M3.10 实施记录；**当前进度：全部交付**——3 关选关/奖牌解锁/悬停救援/Boss/机库/存档/BGM+音效/金属红涂装/地貌差异/高度分层，玩家机+Boss 已迁移 MagicaVoxel .vox 资产管线（gen_units.py 生成，旧字符画已删），遗留：E1~E5 迁移、难度分级） |
+| [voxel-eagle-design.html](voxel-eagle-design.html) | 方块雄鹰：Sky Force 类体素弹幕射击设计规划（玩法/体素视觉/技术方案/里程碑与 M0-M3.14 实施记录；**当前进度：全部交付**——3 关选关/奖牌解锁/悬停救援/Boss/机库/存档/BGM+音效/金属红涂装/地貌差异/高度分层，玩家机+Boss+E1~E6 敌机均已迁移 MagicaVoxel .vox 资产管线（gen_units.py 生成，game.gd 内敌机字符画已清零），美术已全面转 MagicaVoxel 工作流；另产出海盗关卡地图切片 gen_pirate.py（4 张独立 .vox，待确认后接入）；遗留：难度分级、海盗关卡整合） |

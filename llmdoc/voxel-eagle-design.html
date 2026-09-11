@@ -750,7 +750,51 @@ var n = a[Mesh.ARRAY_NORMAL]   # 修前：朝上的青色/亮灰面 法线Y ∈ 
 <p><b>影响范围与收益</b>：玩家机、E1~E6、Boss、岛屿、暗礁、沉船、波浪、幸存者等全部体素网格一并修正，整体立体感与可读性显著提升（修复后玩家机顶面亮灰甲板 + 青色脊线 + 红翼尖 + 黄尾喷全部正确显示）。</p>
 <p><b>复盘（诚实记录）</b>：M3.11 把现象归因为"金属材质压暗"、M3.12 据此移除金属材质，均属<b>误判后的次级处理</b>——真正病因是绕序。材质移除按需求方意愿保留（不影响正确性）。教训：现象（"看不见顶面"）应先验证渲染管线（法线/绕序/剔除），再怀疑材质与配色。</p>
 
-<p style="margin-top:40px;color:#5a6486">— 设计定稿于 2026-09-10 · M0/M2/M3 交付于 2026-09-10 · M3.5~M3.13 打磨交付于 2026-09-10 · demo-game 项目 · Godot 4.7.2 · 玩法蓝本 Sky Force Reloaded / 建模风格 Minecraft-like 体素</p>
+<h3 id="m314-log">14.10 M3.14 E1~E6 迁移 + 海盗关卡地图切片（2026-09-10）</h3>
+<p><b>① E1~E6 全面迁移 MagicaVoxel 资产</b>（玩家机/Boss 管线的第二批，<b>敌机字符画清零</b>）：</p>
+<ul>
+  <li><code>tools/vox/gen_units.py</code> 新增 6 类敌机造型（配色沿用旧 <code>PAL_ENEMY</code> 色值，材质/观感连续）：<code>E1.vox</code> 炮台底座（3×3×1 装甲基座）、<code>E1H.vox</code> 炮头（含前伸炮管，游戏内 look_at 指向玩家）、<code>E2.vox</code> 环形机（真正中空方环 + 环心悬浮核心，修掉旧字符画"实心方块无环孔"）、<code>E3.vox</code> 四旋翼无人机、<code>E4.vox</code> 后掠翼战斗机、<code>E5.vox</code> 重型巡航机（白识别块改善暗红一片的辨识度）、<code>E6.vox</code> 精英炮舰（9×6×4，双炮塔 + 舰桥青窗 + 三联引擎；旧字符画是 9×5 平板 + 2 粉点）；</li>
+  <li><code>game.gd</code>：新增 <code>ENEMY_VOX</code> 路径表 + <code>_load_vox_mesh()</code>（与玩家机/Boss 同一条 <code>VoxReader.read_mesh</code> 路径，失败退化为占位方块）；<code>_meshes</code> 里 E1/E1H/E2/E3/E4/E5/E6 全部改走 .vox；<b>删除</b> ART_TURRET（本就无引用的死常量）/ ART_TURRET_BASE / ART_TURRET_HEAD / ART_RING / ART_DRONE_BODY / ART_DRONE_ROTOR / ART_WING / ART_WING_TOP / ART_RAIDER / ART_RAIDER_TOP / ART_ELITE，以及 <code>PAL_ENEMY</code> —— <b>game.gd 内已无任何敌机字符画</b>；</li>
+  <li>朝向约定（踩过坑）：<code>godot(x,y,z)=vox(x,z,y)</code> 且 <code>look_at</code> 让节点 -Z 指向目标 → 地面炮台炮管必须沿 <b>-Y</b>；空中单位机头朝 <b>+Y</b>（游戏 +Z，正对玩家）；</li>
+  <li>地面单位（E1/E2）摆放由写死 <code>y=0.05</code> 改为按网格 AABB 底面对齐海面（体素网格以"块整数键均值"居中，键与几何中心差半格），E1 炮头偏移 1.1→1.45 使炮头底面正好落在底座顶面；</li>
+  <li>✅ 验证：<code>asset_audit.gd</code> 逐资产表显示 E1~E6 非轴法线（平滑）= 0%（硬边正确）；新增 <code>tools/vox/_check_enemies.gd</code> headless 跑通"生成 6 类 + 30 帧更新循环"，E1 炮头 look_at 旋转正常；<code>ingame_view.gd</code> 增出 <code>ingame_enemies.png</code>（游戏正交 34 相机下 E1~E6 + 玩家机并排），体积比例合理。</li>
+</ul>
+<p><b>② 海盗关卡地图内容（先生成、待确认后再接）</b>：</p>
+<ul>
+  <li>新增 <code>tools/vox/gen_pirate.py</code>，产出 <code>assets/vox/pirate/</code> 下 4 张<b>独立切片</b>（避免一次性解析一张超大地图）：<code>pirate_sea.vox</code>（64×64 开放海面瓦片，正弦周期整除边长可无缝平铺）、<code>pirate_island.vox</code>（海盗岛：沙滩/棕榈林/木栈桥/红顶小屋/篝火/黑旗瞭望点）、<code>pirate_fort.vox</code>（要塞岛：石墙垛口 + 四门火炮 + 中央塔楼 + 黑旗）、<code>pirate_ship.vox</code>（三桅帆船：金框炮门 + 红漆舷缘 + 两层方帆 + 艉楼提灯 + 骷髅黑旗）；</li>
+  <li>设计约定：<b>不写水体积素</b>，所有内容从 z=0 往上长 —— 落到游戏里就是"贴着海面"，与既有草岛/暗礁/沉船的摆放方式一致（体素水块会和游戏海面片打架）；</li>
+  <li>海面瓦片踩坑：早期版本用"高度场 + 大面积浪花"，等距预览里糊成一块块浮冰；改为<b>单层水面靠颜色分带</b>表现浪纹、只留极少数浪尖抬起一格；</li>
+  <li>帆船踩坑：初版 DECK=13 + 全实体船体 → 像一只方砖；改为 DECK=9、只保留外壳/甲板/底（内部空腔不可见），体素数 20485 → 8636，并加两级艉楼台阶；</li>
+  <li>另有 <code>_preview_layout.png</code> 关卡排布预览：把海面瓦片铺成 2×6、按行进方向摆上帆船/要塞/海盗岛，用于一次性确认整体效果与相对比例。</li>
+</ul>
+
+<h3 id="m315-log">14.11 M3.15 敌机精度重做：3~5 体素 → 11~25 体素（2026-09-10）</h3>
+<div class="risk"><b>反馈："E1~E5 现在看效果太简单了，完全看不出是什么。" —— 判断正确，是<b>分辨率</b>问题，不是配色问题。</b></div>
+<p><b>根因</b>：敌机与玩家机/Boss 的<b>细节密度</b>差约 3 倍。玩家机 15×19 体素 × 0.3 缩放 = 4.5×5.7 世界单位（≈0.3 单位/体素），
+Boss 17×24 × 0.5；而旧敌机是 3~5 体素宽却用 scale = 1.0 —— 一个 5 体素宽的模型只有"5 个大色块"，
+在正交 34 的相机里根本画不出形状（实测 E1 仅 9 体素、E2 49、E4 25、E6 101；对比玩家 512、Boss 1035）。</p>
+<p><b>修法</b>：敌机全部改为按 <b>0.3 世界单位/体素</b> 建模（对齐玩家机精度），`game.gd` 新增
+<code>const ENEMY_SCALE := 0.3</code>，<code>_spawn_ground</code> / <code>_spawn_air</code> 统一
+<code>n.scale = Vector3.ONE * ENEMY_SCALE</code>；接地对齐改为 <code>-aabb.position.y * ENEMY_SCALE - 0.15</code>；
+E1 炮头偏移改为按两者 AABB 反推（<code>base_aabb.end.y - head_aabb.position.y</code>，head 继承父节点缩放故不用再乘），
+<b>以后改模型高度不必再动 game.gd</b>。</p>
+<table>
+  <tr><th>资产</th><th>体素尺寸</th><th>世界尺寸（×0.3）</th><th>造型要点</th></tr>
+  <tr><td>E1 / E1H</td><td>11×11×3 / 11×19×6</td><td>3.3×3.3×0.9 / 3.3×5.7×1.8</td><td>八边形装甲基座 + 双管防空炮塔（后部配重抵消炮管前倾，避免 look_at 时炮塔画圈）</td></tr>
+  <tr><td>E2</td><td>15×15×8</td><td>4.5×4.5×2.4</td><td>真环 + 环心悬浮核心 + 4 座顶置发射器 + 黄铜加强箍（中心贯通，俯视看得穿环孔）</td></tr>
+  <tr><td>E3</td><td>19×17×5</td><td>5.7×5.1×1.5</td><td>X 形悬臂 + 四片十字母桨 + 座舱玻璃 + 下挂机炮</td></tr>
+  <tr><td>E4</td><td>19×20×5</td><td>5.7×6.0×1.5</td><td>三角后掠翼 + 翼面刻线 + 红翼尖 + 翼尖吊舱 + 双垂尾 + 进气道</td></tr>
+  <tr><td>E5</td><td>19×24×7</td><td>5.7×7.2×2.1</td><td>矩形直翼 + 双发吊舱 + 白色识别带（解决"暗红一片认不出"）</td></tr>
+  <tr><td>E6</td><td>21×29×14</td><td>6.3×8.7×4.2</td><td>尖艏舰体 + 多层甲板 + 前/后双联主炮 + 四座舷侧副炮 + 舰桥青窗 + 烟囱 + 三联引擎</td></tr>
+</table>
+<p>体素数 175~3413、三角面 540~4244，与玩家机（512 / 1236）、Boss（1035 / 1964）同量级。
+E6 迭代了三版（29×20 → 21×26 → <b>17 宽 × 26 长</b>）：前两版在俯视相机里都是"宽胖浮台"，
+必须收窄 + 加大艏锥才读得出舰型。</p>
+<p><b>验证</b>：<code>asset_audit.gd</code> 非轴法线全部 0%；<code>_check_enemies.gd</code> 通过；
+新增 <code>tools/vox/_sheet_enemies_topdown.png</code>（把各资产的 <code>*_play.png</code> 拼成接触表）
+——<b>认物要同时看等距图（看层次）和俯视图（看游戏内实际读感）</b>，只看等距图容易误判。</p>
+
+<p style="margin-top:40px;color:#5a6486">— 设计定稿于 2026-09-10 · M0/M2/M3 交付于 2026-09-10 · M3.5~M3.15 打磨交付于 2026-09-10 · demo-game 项目 · Godot 4.7.2 · 玩法蓝本 Sky Force Reloaded / 建模风格 Minecraft-like 体素</p>
 
 </body>
 </html>
