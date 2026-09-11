@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/voxel_eagle/unit_review.gd" id="1_review"]
+
+[node name="UnitReview" type="Node3D"]
+script = ExtResource("1_review")

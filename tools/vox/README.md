@@ -27,6 +27,7 @@
 | `scripts/voxel_eagle/rescue_ring.gd` | 机上营救进度计时圈（屏幕对齐的 ImmediateMesh 圆环，半径=触发距离） |
 | `scripts/voxel_eagle/survivor_test.gd` + `scenes/survivor_test.tscn` | 幸存者外观测试场景（开局 10 个，可切换机位/缩放/阴影） |
 | `tools/vox/pngsheet.py` | 把多张 PNG 拼成接触表（纯标准库 PNG 解码，替代 PIL） |
+| `scenes/unit_review.tscn` + `scripts/voxel_eagle/unit_review.gd` | 单位审查场景：全单位 4×3 阵列，快捷键切机位（1=正交 34 游戏机位认物 / 2 等距 / 3 特写） |
 | `scripts/voxel_eagle/vox_reader.gd` | GDScript 运行时 .vox 解析器 → ArrayMesh |
 | `assets/vox/island_scene.vox` | 产物：小岛场景（72×72×29，32946 体素，14 色） |
 | `assets/vox/island_scene_preview.png` | 产物：等距预览图（自检用，不参与游戏） |
@@ -232,7 +233,15 @@ gen_units.py**（§9.4：不迁移，spec 是验证样本兼漂移检测基准�
 双 part：机身 + 独立旋翼层）——一句描述 → spec → 编译器拦错（漏镜像）→
 初筛 2 轮（新增 assembly 合成预览）→ `--write` 落盘 `E7.vox` / `E7R.vox`。
 多部件单位的初筛看 `_spec_preview_<name>_all.png`（装配合成图）。
-E7 尚未接入 game.gd 的 ENEMY_VOX 表（同海盗切片「待确认后接入」惯例）。
+E7 已接入三关波次（与批量产出的 E8/E9/E10 一同，见 `stages.gd`）。
+
+### 单位审查场景（认物快捷键）
+
+`scenes/unit_review.tscn`（F5 运行当前场景）：player / boss / E1~E10 全部摆成 4×3 阵列，
+旋翼旋转、E1 炮头扫摆。**快捷键 `1` = 正交 34 / (0,30,12) 游戏机位**（与 game.gd
+完全一致，认物用这个）；`2` 等距（看层次）、`3` 特写（正交 8 看块面）、
+`←/→` 切单位、`S` 全家福/单看、`R` 自转、`Esc` 退出。
+spec 管线的视觉验收优先用本场景，等距 PNG 只做初筛。
 
 ---
 
