@@ -93,6 +93,7 @@ var waves: Array = []          # 波浪装饰 dict 列表（含相位）
 var islands: Array = []        # 草岛 Node3D
 var reefs: Array = []          # 暗礁岩石 Node3D
 var wrecks: Array = []         # 燃烧沉船 Node3D
+var _decor: Array = []         # islands+reefs+wrecks 快照（构建期一次拼接，_process 穿模剔除用）
 var fires: Array = []          # 火焰动画 dict 列表
 var clouds: Array = []         # 云朵 dict 列表（视差）
 var survivors: Array = []      # 幸存者 dict 列表（含 anchor_y 立足面高度）
@@ -345,6 +346,7 @@ func _build_ground() -> void:
 		reefs.append(_make_reef())
 	for i in int(stage_def["wrecks"]):
 		wrecks.append(_make_wreck())
+	_decor = islands + reefs + wrecks  # 波浪穿模剔除用的只读快照（成员只在构建期变，避免每帧拼接）
 
 	# 天空云朵：4~6 块相互重叠拼成蓬松云团，高空慢速飘过战场（半透明、不投影）
 	var cloud_mat := StandardMaterial3D.new()
@@ -798,7 +800,6 @@ func _process(delta: float) -> void:
 
 	# 世界滚动 + 地貌回绕与动画
 	world.position.z += scroll_spd * delta
-	var decor: Array = islands + reefs + wrecks
 	for wd in waves:
 		var wn: Node3D = wd["n"]
 		wn.position.y = 0.07 + 0.045 * sin(elapsed * 2.2 + float(wd["ph"]))
@@ -808,7 +809,7 @@ func _process(delta: float) -> void:
 		# 波浪穿模剔除：靠近岛屿/礁石/沉船时隐藏
 		var wgp := wn.global_position
 		var blocked := false
-		for d in decor:
+		for d in _decor:
 			var dp: Vector3 = d.position
 			if absf(dp.x - wgp.x) < 5.0 and absf(world.position.z + dp.z - wgp.z) < 5.0:
 				blocked = true
@@ -1277,10 +1278,10 @@ func _update_enemies(delta: float) -> void:
 					e["ft"] = 3.2
 					_fire_ring(gp, 8, 4.5, float(e["age"]))
 			"E9":
-				# 双体炮艇：快速冲撞 + 前向点射压制
+				# 双体炮艇：快速冲撞 + 前向点射压制（进屏才开火，对齐 E7/E8/E10 门限）
 				n.position += Vector3(float(e["vx"]) * 0.6, 0, float(e["vz"])) * delta
 				e["ft"] = float(e["ft"]) - delta
-				if float(e["ft"]) <= 0.0:
+				if gp.z > -40.0 and float(e["ft"]) <= 0.0:
 					e["ft"] = 1.8
 					_fire_aimed(n.global_position, 6.5, 1, 0.0)
 			"E10":
@@ -1475,8 +1476,10 @@ func _damage_enemy(e: Dictionary, dmg: int) -> void:
 		_burst(gp, COL_PINK, 12)
 		_burst(gp, COL_WHITE, 6)
 		SFX.play("eagle_boom")
-		var reward: int = {"E1": 5, "E2": 8, "E3": 3, "E4": 3, "E5": 10, "E6": 40}.get(e["t"], 5)
-		var pts: int = {"E1": 50, "E2": 80, "E3": 30, "E4": 50, "E5": 100, "E6": 500}.get(e["t"], 50)
+		var reward: int = {"E1": 5, "E2": 8, "E3": 3, "E4": 3, "E5": 10, "E6": 40,
+				"E7": 8, "E8": 15, "E9": 6, "E10": 30}.get(e["t"], 5)
+		var pts: int = {"E1": 50, "E2": 80, "E3": 30, "E4": 50, "E5": 100, "E6": 500,
+				"E7": 180, "E8": 300, "E9": 150, "E10": 800}.get(e["t"], 50)
 		score += pts
 		for s in reward:
 			var v := Vector3(randf_range(-6, 6), randf_range(3, 8), randf_range(-4, 4))
