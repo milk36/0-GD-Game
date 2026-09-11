@@ -27,6 +27,10 @@
 | `scripts/voxel_eagle/rescue_ring.gd` | 机上营救进度计时圈（屏幕对齐的 ImmediateMesh 圆环，半径=触发距离） |
 | `scripts/voxel_eagle/survivor_test.gd` + `scenes/survivor_test.tscn` | 幸存者外观测试场景（开局 10 个，可切换机位/缩放/阴影） |
 | `tools/vox/pngsheet.py` | 把多张 PNG 拼成接触表（纯标准库 PNG 解码，替代 PIL） |
+| `tools/tile_eagle/shot.gd` | 瓦片雄鹰出图验收：三机位 + 关云 + 关阴影 + 关水波 + 战斗图 + 精英取景图，用 `debug_seek` 固定构图（同种子逐像素可复现） |
+| `tools/tile_eagle/_mesh_probe.gd` | 瓦片回归探针（headless）：AABB / off / 三角面数 / 贴瓦边的竖直面顶点数 / 水面层顶面世界高度 |
+| `tools/tile_eagle/_play_smoke.gd` | M1 玩法冒烟（headless）：固定步长跑满波次表（240s，含精英段），查敌机生成 / 分层落位 / 落岛高度 / 弹幕峰值 / 击杀 / 死亡重开 |
+| `tools/tile_eagle/_probe_wave.gd` | 水面 shader 诊断（headless 出图）：把浪光 sheen 放大 5.3 倍，肉眼判据「亮度栅格是否跨瓦连续」——若相位锚在局部坐标会按瓦格重置、露出 100px 见方的错位格 |
 | `scenes/unit_review.tscn` + `scripts/voxel_eagle/unit_review.gd` | 单位审查场景：全单位 4×3 阵列，快捷键切机位（1=正交 34 游戏机位认物 / 2 等距 / 3 特写） |
 | `scripts/voxel_eagle/vox_reader.gd` | GDScript 运行时 .vox 解析器 → ArrayMesh |
 | `assets/vox/island_scene.vox` | 产物：小岛场景（48×49×21，19295 体素，11 色；v2 起无水体，贴地生长） |
@@ -245,27 +249,81 @@ spec 管线的视觉验收优先用本场景，等距 PNG 只做初筛。
 
 ---
 
-## 3.8 gen_tiles.py —— 瓦片雄鹰瓦片集（M0）
+## 3.8 gen_tiles.py —— 瓦片雄鹰瓦片集（M0 交付 / M1 两次修订）
 
     python gen_tiles.py
-    # → assets/vox/tiles/sea_a|sea_b|sea_c|sea_crest|shoal|reef_s|isle_sand|isle_grass.vox
-    #   + seam_test.vox（2×2 接缝测试）+ tools/vox/_preview_*.png / _preview_layout.png
+    # → assets/vox/tiles/  sea_a~f / sea_crest / shoal / reef_s
+    #                      island_4x4（64×64 = 4×4 格）/ island_2x2（32×32 = 2×2 格）/ sandbar_2x2
+    #   + seam_test.vox（2×2 接缝测试）+ tools/vox/_preview_*.png / _preview_tiles_layout.png
 
 ### 瓦片三规格（llmdoc/tile-eagle-design.html §2 拍板，全工程约定）
 
 | 项 | 值 | 说明 |
 |---|---|---|
 | 瓦片边长 | **16 体素 = 4.8 世界单位** | 体素缩放 0.3 不变；走廊 13 列覆盖 62.4（正交 34 视野宽 60.44） |
-| 锚点 | **底面中心** | 公共管线 `voxel_model.gd` 的 AABB 居中**不改**；游戏端 `tiles.gd` 按 `mesh.get_aabb()` 反推 `lift` 把底面抬到 y=0（半格坑在此一并消化） |
+| 锚点 | **底面中心 / 水面层顶面统一 y=0.30** | 公共管线 `voxel_model.gd` 的 AABB 居中**不改**；游戏端 `tiles.gd` 反推 `off`。⚠️ **y 不能用 AABB 反推**（水面层只出顶面 → 单层瓦没有底面），要用**方块键的 y 均值**；x/z 仍用 AABB |
 | 北向 | **vox +Y = 游戏 -Z** | `rot ∈ {0,90,180,270}` 只旋转不镜像；镜像瓦片必须翻转三角面绕序（M3.13 教训） |
+
+### 尺寸纪律（M1 修订）：岛/沙洲只走超级瓦整张资产
+
+| 档 | 资产 | 体素 | 世界尺寸 | 用途 |
+|---|---|---|---|---|
+| 大 | `island_4x4` | 64×64×6 | 19.2 单位 | 主岛（有机轮廓 + 沙环 + 草丘台地） |
+| 中 | `island_2x2` | 32×32×5 | 9.6 单位 | 小岛 |
+| 中 | `sandbar_2x2` | 32×32×4 | 9.6 单位 | 沙洲（比岛矮一档，最高 1.2） |
+
+M0 的 1×1 `isle_grass` / `isle_sand` **已废弃删除**——1×1 的岛在 62.4 宽的走廊里摆出来就是
+「撒了一地小白点」，而且多瓦拼装做不出有机岸线（design §13.4 ⑨ / §14.1）。
+`build_island(rng, S)` 的几何常量全部按 `k = S/32` 等比缩放，S 必须是 16 的整数倍
+（48=3×16、64=4×16 都能用），换尺寸只需改 S。
 
 ### 产线约束（新瓦片必须遵守）
 
-- **边缘无缝**：噪声/正弦按 `(x mod 16, y mod 16)` 周期采样，正弦周期必须整除 16（现用 8）；
-  新瓦片产出后先看 `_preview_seam_test.png` 同类平铺，再进游戏；
+- **边缘无缝**：噪声/正弦按 `(x mod 16, y mod 16)` 周期采样，正弦周期必须整除 16（现用 8）。
+  ⚠️ 超级瓦（64/32）的**瓦外水面**也必须按 **mod 16 网格**取同一个噪声——若按 `x/S` 归一化，
+  噪声尺度会与相邻海面瓦差 2~4 倍，瓦界立刻显出一个「方形水斑」；
+- **边缘余量**：滩面的最大半径 = `RAD + warp_max`，瓦最远的几何面在 `d = S/2 + 1`（体素索引相对 `c=(S-1)/2`），
+  必须留 ≥1 体素余量，否则沙会顶到瓦边、在瓦界立起一道「沙崖」；
+- **分层烘焙要同基准**：`tiles.gd::_build_tile_mesh` 把水面层与上层分两次 `build_blocks`，
+  两次的键均值不同 → 合并前必须按 `(自身均值 − 全局均值)` 平移，否则水面与陆地的相对高度会错
+  （4×4 岛会错到沙滩沉入水下、瓦界露出 0.3 高台阶）；
+- **底色水面必须与海面瓦同源**：任何「水上漂着东西」的瓦（礁 / 浪尖 / 浅滩）的 z=0 层都要走
+  `_sea_color`，**不许**整块铺一个扁平色（M0 的礁瓦铺 SEA_D，走廊里会显成一个「把浪带切断的暗方块」）；
+- **贴边余量（抬升类体素）**：凡是会立起侧立面的体素（浪尖瓦的泡沫块 `CREST_MARGIN=3`、
+  礁瓦的岩体 `REEF_MARGIN=3`）都必须离瓦边 ≥3 体素——贴边的块会对着邻居的 z=0 水面立墙，
+  在瓦界留下一排 1 体素高的小缝。⚠️ 余量取 3 不是 2：探针阈值是 `|顶点| > 半宽−1.5`，而网格
+  原点按「键均值」居中（均值 ≈ 7.49 ≠ 7.50），margin=2 时最外面的竖直面落在 6.511 上，**刚好越界**；
+- **带浪带的瓦一律 rot=0**：`_band` 的相位是全局特征，旋转 90° 会把相位也转过去 → 瓦界浪纹断开。
+  海面系瓦、浪尖瓦、礁瓦（M1 起底色带浪带）都受这条约束；礁瓦的四向变化改由「峰位随机」提供；
 - **单层水面**：海面 1 体素高，颜色分带表现浪纹（`gen_pirate.py` 踩坑结论），浪尖瓦最多 2 层；
 - **高瓦从水长出**：礁/沙洲/岛的底层先铺 1 层水色（SHAL/SEA_D），内容从 z=0 往上长，不留悬空洞；
-- 排布（哪行哪列放哪块）不在 .vox 里——那是游戏端 `layout.gd` 的职责，.vox 只管单块本体。
+- 排布（哪行哪列放哪块）不在 .vox 里——那是游戏端 `layout.gd` 的**节奏表**职责，.vox 只管单块本体。
+
+### 改完必须跑的两道回归
+
+```bash
+# ① 锚点 / 边缘探针：水面层顶面世界高度必须全部 = 0.3000，贴瓦边的竖直面顶点数必须全部 = 0
+#   （M1 第三步起无例外：浪尖瓦 60→0、礁瓦 114→0）
+"...Godot...console.exe" --headless --path <项目> -s res://tools/tile_eagle/_mesh_probe.gd
+# ② 出图验收：三机位 + 关云 + 关阴影 + 战斗图（同种子构图，可逐像素复现）
+"...Godot...console.exe" --path <项目> -s res://tools/tile_eagle/shot.gd
+# ③ M1 玩法冒烟：固定步长跑满整张波次表，检查生成/落岛/弹幕/击杀/死亡重开
+"...Godot...console.exe" --headless --path <项目> -s res://tools/tile_eagle/_play_smoke.gd
+```
+
+### 逐列高度表（M1 起，地面单位落位用）
+
+`tiles.gd::get_tile()` 返回的字典除 `mesh/off/span` 外，还有两个 M1 新增字段：
+
+| 字段 | 内容 |
+|---|---|
+| `heights` | `PackedFloat32Array`，下标 `(z−mn.z)·sx + (x−mn.x)`，值 = 该列顶面的**世界 y** |
+| `shore` | 沙面列（世界 y ≤ 0.75）的**网格局部坐标**列表——地面单位落岛时的岸线候选点 |
+
+**关键恒等式**：世界 y = `(列顶体素数 + 1) × 0.3`，与瓦片的均值基准无关
+（因为 `off.y ≡ mean_key.y`），所以水面恒 0.30、沙滩恒 0.60、草丘恒 0.90~1.50。
+落点的世界坐标 = **瓦片实例变换 × `shore[i]`**（game.gd `_cell_xf`），
+与画瓦片用的是同一份变换，因此"反算的落点"和"看到的瓦片"不可能对不上。
 
 ---
 

@@ -67,6 +67,15 @@ func spawn(p: Vector3, v: Vector3, col: Color, p_size := 1.0, p_life := 5.0, p_g
 	return i
 
 
+## 清空池（重开用）。不能只写 count=0：kill() 只会置零被搬走/回收的尾部实例，
+## 仍活跃实例的 transform 会残留在 MultiMesh 里 → 重开后满屏"冻结的残弹"。
+func clear() -> void:
+	count = 0
+	var zero := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+	for i in _max:
+		multimesh.set_instance_transform(i, zero)
+
+
 ## 杀死实例 i（swap-remove；死亡位 transform 置零防止残影）
 func kill(i: int) -> void:
 	if i < 0 or i >= count:

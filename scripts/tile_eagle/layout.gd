@@ -1,9 +1,15 @@
 extends RefCounted
-## 排布层：段落生成器 + 岛/礁图章 + 字面量手工段；同种子恒定产出同布局。
+## 排布层：地貌节奏表 + 岛/沙洲超级瓦图章 + 字面量手工段；同种子恒定产出同布局。
 ##
 ## 走廊 = ROWS 行 × COLS 列的循环（循环长度 48 × 4.8 = 230.4，与方块雄鹰回绕跨度同量级）。
 ## rows[row] 是该行的瓦片记录列表（被高瓦占用的列不再铺海面，由高瓦自身满铺无缝）。
-## 高瓦占用掩码 high_mask[row][col] 供 M1 地面单位落位反查，M0 先记上。
+## 高瓦占用掩码 high_mask[row][col] 供 M1 地面单位落位反查。
+##
+## 【密度纪律 · M1 修订】地貌特征一律在 FEATURES 节奏表里**显式排布**，不做概率撒点。
+## M0 是「每格 2.4% 概率撒 1×1 小岛/沙洲」——624 格上产出约 15 处零碎小点，
+## 就是「小岛/沙洲密度偏高」的根因（观感上读作海面撒了一地碎屑）。
+## 现在改成：每 48 行（230.4 世界单位）只有 4 处特征，且按尺寸分三档
+## （大岛 19.2 / 小岛 9.6 / 沙洲 9.6 世界单位）——稀疏但每处都有分量。
 
 const COLS := 13
 const ROWS := 48                      # 13 × 4.8 = 62.4 宽（覆盖正交 34 视野 60.44）
@@ -12,8 +18,27 @@ const Tiles = preload("res://scripts/tile_eagle/tiles.gd")
 
 const DEFAULT_SEED := 20260911
 
-# 手工段落（行 34~41）：字面量示范「可设计」——对角礁石引导线 + 浪尖带。
-# 字符映射：. = 按权重随机海面  a/b/c = 对应海瓦  C = 浪尖  s = 浅滩  r = 礁石(rot 随机)
+## 地貌节奏表：一处特征 = 一张超级瓦占 span×span 格（span 由 tiles.gd 的 SPAN 决定）。
+## row 是特征的**宿主行**（跨度里最靠近相机的那一行）；列位由种子决定
+## （rng 取 [0, COLS-span]），保证「同种子逐位复现、R 键换布局」。
+## 行距刻意留大（特征之间至少空 4 行 = 19.2 世界单位）：大岛与沙洲挤在一个视野里
+## 会立刻把"走廊"读成"群岛"，这正是本轮要消掉的东西。
+const FEATURES: Array = [
+	{"row": 12, "tile": "island_4x4"},     # 主岛：64 体素 = 4×4 格 = 19.2 世界单位
+	{"row": 21, "tile": "sandbar_2x2"},
+	{"row": 29, "tile": "island_2x2"},
+	{"row": 36, "tile": "sandbar_2x2"},
+]
+
+## 开阔海段的浪尖密度（按行区间给 crest 概率）—— 0~25 平静、26~47 湍浪带，制造段落对比。
+## 海面浪带 `_band` 是全局相位特征，故 crest/sea 一律 rot=0（旋转会错相位、瓦界浪纹断开）。
+const CREST_BANDS: Array = [
+	{"row": 0, "n": 26, "crest": 0.03},
+	{"row": 26, "n": 22, "crest": 0.07},
+]
+
+## 手工段落（行 40~47）：字面量示范「可设计」——对角礁石引导线 + 浪尖带。
+## 字符映射：. = 交给海面填充  a/b/c = 对应海瓦  C = 浪尖  r = 礁石（rot 按行列号确定性取）
 const HAND_SECTION: Array[String] = [
 	".............",
 	"....r........",
@@ -29,6 +54,7 @@ var seed_val: int = DEFAULT_SEED
 var rows: Array = []                  # rows[row] = [{tile:String, col:int, rot:int}]
 var used_mask: Array = []             # used_mask[row][col]：任意瓦片已占位（后放者不得覆盖）
 var high_mask: Array = []             # high_mask[row][col] = true：高瓦占用（M1 地面单位落位反查）
+var features: Array = []              # 已摆下的超级瓦 [{tile, row0, col0, span}]（M1 战斗层挑着陆点用）
 
 
 func build() -> void:
@@ -37,6 +63,7 @@ func build() -> void:
 	rows.clear()
 	used_mask.clear()
 	high_mask.clear()
+	features.clear()
 	for r in ROWS:
 		rows.append([])
 		var um := []
@@ -45,31 +72,41 @@ func build() -> void:
 		var hm := []
 		hm.resize(COLS)
 		high_mask.append(hm)
-	# 段落节奏：开阔海 → 岛链 → 开阔海 → 手工段 → 湍浪带
-	_sec_open(rng, 0, 14, 0.03, 0.0)
-	_sec_islands(rng, 14, 12)
-	_sec_open(rng, 26, 8, 0.03, 0.0)
-	_sec_hand()                            # 手工段：显式格子（优先级最高）
-	_sec_open(rng, 34, 14, 0.08, 0.0)      # 34~39 补空档 + 填满手工段空白格 + 湍浪带
+	# 顺序即优先级：节奏表特征 > 手工段字面量 > 海面填充（填充按 used_mask 跳过已占格）
+	for f in FEATURES:
+		_stamp_feature(rng, f)
+	_sec_hand()                            # 手工段：显式格子（覆盖节奏表没占到的格）
+	for band in CREST_BANDS:
+		_fill_sea(rng, int(band.row), int(band.n), float(band.crest))
 
 
-# ---------------------------------------------------------------- 段落
+# ---------------------------------------------------------------- 特征与填充
 
-func _sec_open(rng: RandomNumberGenerator, r0: int, n: int, crest_p: float, shoal_p: float) -> void:
-	for r in range(r0, r0 + n):
-		_fill_sea_row(rng, r, crest_p, shoal_p)
-
-
-func _sec_islands(rng: RandomNumberGenerator, r0: int, n: int) -> void:
-	# 一站岛 = 一张 2×2 超级瓦（9.6×9.6 世界单位，有机轮廓）+ 外圈浅滩环
-	var centers := [
-		Vector2i(rng.randi_range(1, COLS - 3), r0 + 2 + rng.randi_range(0, 2)),
-		Vector2i(rng.randi_range(1, COLS - 3), r0 + 7 + rng.randi_range(0, 2)),
-	]
-	for rc in centers:
-		_stamp_island(rng, rc)
-	for r in range(r0, r0 + n):
-		_fill_sea_row(rng, r, 0.03, 0.0)
+## 超级瓦图章：一张资产占 [row, row+span-1] × [col, col+span-1]。
+## 两个落位要点（都由 game.gd `_spawn_row` 按 span 反推，这里只管写表）：
+## 1) 记录挂在跨度里**最远**的那一行（row + span-1）——块中心 = 该行 + (span-1)/2，
+##    挂远行才能保证整块在屏幕之外被释放（4×4 的跨度 19.2，挂错行会在屏幕内凭空消失）；
+## 2) 跨界的摆放直接放弃（宁可少一处特征，也不能让超级瓦被循环边界撕成两半）。
+func _stamp_feature(rng: RandomNumberGenerator, f: Dictionary) -> void:
+	var id: String = f.tile
+	var span: int = Tiles.span_of(id)
+	var r0: int = int(f.row)
+	var c0: int = rng.randi_range(0, COLS - span)
+	if r0 + span > ROWS - HAND_SECTION.size():
+		return                                 # 不许压到手工段
+	if c0 + span > COLS:
+		return
+	for dy in span:
+		for dx in span:
+			if used_mask[r0 + dy][c0 + dx]:
+				return                         # 有占位冲突则整块不摆
+	rows[r0 + span - 1].append({"tile": id, "col": c0, "rot": 0})
+	for dy in span:
+		for dx in span:
+			used_mask[r0 + dy][c0 + dx] = true
+			high_mask[r0 + dy][c0 + dx] = true
+	# 登记特征（row0 = 跨度里最靠近相机的那一行，与上面的记录行差 span−1）
+	features.append({"tile": id, "row0": r0, "col0": c0, "span": span})
 
 
 func _sec_hand() -> void:
@@ -85,55 +122,28 @@ func _sec_hand() -> void:
 				"b": id = "sea_b"
 				"c": id = "sea_c"
 				"C": id = "sea_crest"
-				"s": id = "shoal"
 				"r":
+					# 礁石也一律 rot=0：它的底色水面已改成与海面瓦同分布（带浪带），
+					# 旋转 90° 会把浪带相位也转过去 → 瓦界浪纹断开（waves/sea 同一条纪律）。
 					id = "reef_s"
-					rot = (r0 + i + c) % 4   # 用行列号做确定性 rot，避免手工段依赖随机
+					rot = 0
 			if id != "":
 				_set_cell(r0 + i, c, id, rot)
 
 
-# ---------------------------------------------------------------- 图章与填充
-
-## 岛图章：一张 2×2 超级瓦占据 (rc.y, rc.x)..(rc.y+1, rc.x+1)，记录挂在**较远**的那一行
-## （super span 的落位由 game.gd 按「宿主行 - 半格」推出中心；挂远行可保证释放发生在屏幕外）。
-func _stamp_island(rng: RandomNumberGenerator, rc: Vector2i) -> void:
-	var r := rc.y
-	var c := rc.x
-	if r + 1 >= ROWS or c + 1 >= COLS:
-		return                                    # 跨界会撕裂超级瓦，放弃这次摆放
-	for dy in 2:
-		for dx in 2:
-			if used_mask[r + dy][c + dx]:
-				return                            # 有占位冲突则整块不摆
-	rows[r + 1].append({"tile": "island_2x2", "col": c, "rot": 0})
-	for dy in 2:
-		for dx in 2:
-			used_mask[r + dy][c + dx] = true
-			high_mask[r + dy][c + dx] = true
-	# 不再另铺浅滩环：岛屿资产自带近岸浅水（build_island 的 SHAL 带），
-	# 外圈再铺一圈浅滩瓦会拼出一个显眼的"沙矩形"
-
-
-func _fill_sea_row(rng: RandomNumberGenerator, r: int, crest_p: float, shoal_p: float) -> void:
-	for c in COLS:
-		if used_mask[r][c]:
-			continue
-		var roll := rng.randf()
-		# 海面浪带是全局相位特征：一律 rot=0（任何旋转都会错相位，瓦界浪纹断开）
-		var id := "sea_a"
-		if roll < crest_p:
-			id = "sea_crest"
-		elif roll < crest_p + shoal_p:
-			id = "shoal"
-		elif roll < crest_p + shoal_p + 0.012:
-			id = "isle_grass"          # 零星小岛（1×1 瓦，自带沙滩与草丘）
-		elif roll < crest_p + shoal_p + 0.024:
-			id = "isle_sand"           # 零星沙洲
-		else:
-			# 六变体近均分 + 微权重差，打破单瓦图案重复感
-			id = SEA_VARIANTS[rng.randi_range(0, SEA_VARIANTS.size() - 1)]
-		_set_cell(r, c, id, 0)
+func _fill_sea(rng: RandomNumberGenerator, r0: int, n: int, crest_p: float) -> void:
+	for r in range(r0, mini(r0 + n, ROWS)):
+		for c in COLS:
+			if used_mask[r][c]:
+				continue
+			# 海面浪带是全局相位特征：一律 rot=0（任何旋转都会错相位，瓦界浪纹断开）
+			var id := "sea_a"
+			if rng.randf() < crest_p:
+				id = "sea_crest"
+			else:
+				# 六变体近均分，打破单瓦图案重复感
+				id = SEA_VARIANTS[rng.randi_range(0, SEA_VARIANTS.size() - 1)]
+			_set_cell(r, c, id, 0)
 
 
 const SEA_VARIANTS: Array[String] = ["sea_a", "sea_b", "sea_c", "sea_d", "sea_e", "sea_f"]

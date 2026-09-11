@@ -12,14 +12,20 @@
 - 高瓦（礁/沙洲/岛）底层一律先铺 1 层水色——「从 z=0 往上长」，不产生悬空洞
 
 产出（assets/vox/tiles/）：
-    sea_a/b/c.vox   深蓝海面三相位变体（对角浪纹带，可循环平铺）
-    sea_crest.vox   白浪尖特征瓦（局部抬 1 层）
-    shoal.vox       浅滩沙斑
-    reef_s.vox      灰岩礁（高 ≤5，不对称，游戏端 rot 四向增加变化）
-    isle_sand.vox   近岸水 + 破碎沙滩缘（岛图章外圈）
-    isle_grass.vox  草岛芯（高 ≤6，岛图章中心）
-    seam_test.vox   2×2 sea_a 平铺接缝测试（32×32，肉眼查跨瓦片连续性）
-    _preview_*.png  单件等距预览；_preview_layout.png 混拼排布预览
+    sea_a/b/c/d/e/f.vox  深蓝海面六变体（对角浪纹带，可循环平铺）
+    sea_crest.vox        白浪尖特征瓦（底色同海面瓦 + 1 体素宽碎浪线；M1 §16.3 重做）
+    shoal.vox            浅滩沙斑
+    reef_s.vox           灰岩礁（高 ≤5，不对称，游戏端 rot 四向增加变化）
+    island_4x4.vox       草岛超级瓦 64×64 = 4×4 格 = 19.2 世界单位（主岛）
+    island_2x2.vox       草岛超级瓦 32×32 = 2×2 格 = 9.6 世界单位（小岛）
+    sandbar_2x2.vox      沙洲超级瓦 32×32 = 2×2 格 = 9.6 世界单位（低平沙洲）
+    seam_test.vox        2×2 sea_a 平铺接缝测试（32×32，肉眼查跨瓦片连续性）
+    _preview_*.png       单件等距预览；_preview_layout.png 混拼排布预览
+
+尺寸纪律（M1 修订）：**岛/沙洲一律走超级瓦整张资产，尺寸只有 4×4 / 2×2 两档**。
+M0 的 1×1 `isle_grass`（草岛芯）/`isle_sand`（沙洲）已废弃删除——1×1 的岛在 62.4 宽的走廊里
+摆出来就是「撒了一地小白点」，且多瓦拼装做不出有机岸线（design §13.4 ⑨）。
+64 = 4×16 顺带把 M2 计划里的 pirate 64×64 切片通路提前验证了。
 
 运行：
     python gen_tiles.py
@@ -117,19 +123,48 @@ def build_sea(seed_tag, rng):
     return v
 
 
+## 抬升体素距瓦边的最小体素数。贴边的抬升块会对着邻居瓦的 z=0 水面立起侧立面，
+## 在瓦界留下一排 1 体素高的小墙（_mesh_probe 实测"贴瓦边的竖直面顶点"→ 目标 0）。
+## 取 3 而不是 2：探针阈值是 |顶点| > 半宽 − 1.5 = 6.5，而网格原点按"键均值"居中、
+## 均值 ≈ 7.49（不是 7.5），于是 margin=2 时最外那个块的竖直面落在 6.511 上——刚好越界
+## （实测 24 个顶点，来自 x=13 与 y=13 那两个块）。margin=3 把最外面压到 ≈5.5，留足余量。
+CREST_MARGIN = 3
+
+
+## 礁石岩体距瓦边的最小体素数（同 CREST_MARGIN 的道理：不在瓦界立侧立面）
+REEF_MARGIN = 3
+
+
 def build_crest(rng):
-    """白浪尖：泡沫收在亮浪带内（细碎划线），只少量抬 1 层——避免满屏白色雪点。"""
+    """白浪尖（M1 §16.3 重做）：底色与海面瓦同源 + **一条收窄的碎浪线**。
+
+    相对 M0 的三处修正（M0 版会把整块瓦读成一个亮方块，design §14.3 记录）：
+    1. 底色不再用 `w>0.55 ? SEA_C : SEA_D`——那让亮浪带内的**整块瓦**都变成 SEA_C，
+       13×48 的走廊里那块瓦就是个亮方块。现在底色走 `_sea_color`，与 sea_* 逐像素同源；
+    2. 浪花线收到 `(x+y) mod 8 == 2` 这一条 1 体素宽的对角线（sin 峰值处），
+       两侧 `±1`（s==1/3）才是 SEA_C 过渡带 —— 白线只占瓦面 1/8，读作"浪尖"而非"亮斑"；
+    3. 沿线的 FOAM 再按 n4 噪声断续（`n4>0.30`，4 体素一段）+ 抬升块每 7 体素断一次，
+       避免变成一条贯穿走廊的长白带；
+    4. **抬升只在内圈**（距瓦边 ≥ CREST_MARGIN）：保住 3D 浪花的立体感，
+       又不在瓦界立侧立面。颜色线不受边距限制 → 浪花在视觉上仍跨瓦连续。
+    """
     v = {}
+    n4 = pnoise(4, rng)
+    n8 = pnoise(8, rng)
+    period = int(BAND_PERIOD)
     for y in range(TILE):
         for x in range(TILE):
-            w = _band(x, y)
-            v[(x, y, 0)] = SEA_C if w > 0.55 else SEA_D
-            if w > 0.55:
-                k = (x * 5 + y * 3) % 11
-                if k < 1:
-                    v[(x, y, 0)] = FOAM
-                if k == 3:
-                    v[(x, y, 1)] = FOAM
+            u, vv = x / TILE, y / TILE
+            v[(x, y, 0)] = _sea_color(x, y, n4(u, vv) * 0.7 + n8(u, vv) * 0.3)
+            s = (x + y) % period          # 浪带相位（0..7）；BAND_PHASE=0 时峰值在 s==2
+            if s == 1 or s == 2 or s == 3:
+                v[(x, y, 0)] = SEA_C      # 浪线过渡带
+                if s == 2 and n4(u, vv) > 0.30:
+                    v[(x, y, 0)] = FOAM   # 浪线芯（断续）
+                    inner = (CREST_MARGIN <= x < TILE - CREST_MARGIN
+                             and CREST_MARGIN <= y < TILE - CREST_MARGIN)
+                    if inner and (x - y) % 7 != 0:
+                        v[(x, y, 1)] = FOAM
     return v
 
 
@@ -154,58 +189,120 @@ def build_shoal(rng):
 
 # ---------------------------------------------------------------- 高瓦系
 
-def build_sand(rng):
-    """沙洲（1×1 瓦）：小尺度圆形沙斑，轮廓带噪声——方形沙块读起来像贴图错误。
+def build_sandbank(rng, S=32):
+    """沙洲超级瓦（S×S 体素，2×2 → 32 = 9.6 世界单位）：低平沙bank + 中央矮沙丘。
 
-    只用于开阔水面的零星沙洲；成规模的岛请用 2×2 超级瓦 island_2x2。
+    轮廓 = 径向距离 + 双频噪声扰动，与岛同一套手法；沙面最高只到 z=2（约 1.2 世界单位），
+    比岛的草丘矮一档 —— 沙洲在观感上要明确低于「岛」这一个层级。
+    瓦外水面沿用与海面瓦同分布的取色公式（否则 2×2 的方框会露出来）。
     """
     v = {}
+    k = S / 32.0
     n4 = pnoise(4, rng)
     n8 = pnoise(8, rng)
-    c = (TILE - 1) / 2.0
-    for y in range(TILE):
-        for x in range(TILE):
-            u, vv = x / TILE, y / TILE
-            r = math.hypot(x - c, y - c) + (n4(u, vv) - 0.5) * 4.2 + (n8(u, vv) - 0.5) * 1.6
-            v[(x, y, 0)] = _sea_color(x, y, n8(u, vv))
-            if r < 5.0:
+    nw4 = pnoise(4, rng)               # 瓦外水面：mod 16 网格，与海面瓦同尺度（同 build_island）
+    nw8 = pnoise(8, rng)
+    c = (S - 1) / 2.0
+    RAD = S * 0.32
+    for y in range(S):
+        for x in range(S):
+            u, vv = x / S, y / S
+            wu, wv = (x % 16) / float(TILE), (y % 16) / float(TILE)
+            # 扰动幅度刻意小于岛的 warp：沙洲半径大，再大就会顶到瓦边被切出直线
+            r = math.hypot(x - c, y - c) + (n4(u, vv) - 0.5) * 5.2 * k + (n8(u, vv) - 0.5) * 2.0 * k
+            v[(x, y, 0)] = _sea_color(x, y, nw4(wu, wv) * 0.7 + nw8(wu, wv) * 0.3)
+            if r < RAD:
                 v[(x, y, 1)] = SAND if n8(u, vv) < 0.8 else SAND2
+            if r < RAD * 0.52:
+                h = 1 if n4(u, vv) < 0.62 else 2
+                for z in range(2, 2 + h):
+                    v[(x, y, z)] = SAND if rng.random() < 0.85 else SAND2
+            if RAD * 0.86 < r < RAD * 1.02 and n4(u, vv) > 0.72:
+                v[(x, y, 1)] = ROCK          # 滩缘零星礁石
     return v
 
 
-def build_grass(rng):
-    """岛图章中心：沙基 + 草丘（中心高边缘低，最高 6 层）。"""
+def build_island(rng, S=32):
+    """草岛超级瓦（S×S 体素）：有机轮廓的岛。4×4 → 64（19.2 世界单位，主岛）/ 2×2 → 32（9.6，小岛）。
+
+    轮廓 = 径向距离 + 双频噪声扰动 → 自然是曲线岛缘。
+    单张资产一次摆放，不存在多瓦拼接的方块感/接缝（多瓦拼岛做不出这个效果）。
+    全部几何常量按 k = S/32 等比缩放，两种尺寸出的是同一族造型（主岛多一层台地）。
+    S 必须是 16 的整数倍（mod 16 的噪声网格与海面瓦对齐才成立）。
+
+    三条必须守住的边距纪律（改 RAD / warp 前先算一遍，按「体素索引相对 c=(S-1)/2」算）：
+    - 滩面（z=1 的沙）最大半径 = RAD + warp_max；瓦最远的几何面在 d=16.5（S=32），
+      留 ≥1 体素余量即可，否则沙顶到瓦边会在瓦界立起一道「沙崖」（邻居的 z=0 水面接不住 z=1 的沙）；
+    - 岛外水面（r > RAD+2.2k）必须与相邻海面瓦逐像素同源 → 噪声按 **mod 16 网格**采样
+      （64=4×16、32=2×16 整除），否则噪声尺度差 4 倍，瓦界会显出一个「方形水斑」；
+    - 浪带 `_band` 对 16 体素格移不变，跨瓦天然对齐，不用管。
+    """
     v = {}
-    n4 = pnoise(4, rng)
-    n8 = pnoise(8, rng)
-    c = (TILE - 1) / 2.0
-    for y in range(TILE):
-        for x in range(TILE):
-            u, vv = x / TILE, y / TILE
-            d = max(abs(x - c), abs(y - c))
-            v[(x, y, 0)] = SAND if d < 7.0 else SHAL
-            edge = 6.6 + n4(u, vv) * 1.6
-            if d < edge:
-                # 丘体压低加宽（最高 3 层）：台阶过陡会读成"金字形祭坛"而不是植被岛
-                h = int(round((edge - d) * 0.55 + n8(u, vv) * 0.9)) + 1
-                h = max(1, min(h, 3))
-                for z in range(1, h + 1):
-                    top = z == h
-                    col = GRASS if rng.random() < (0.9 if top else 0.78) else GRASS2
-                    v[(x, y, z)] = col
-            elif d < edge + 1.1 and rng.random() < 0.6:
-                v[(x, y, 1)] = SAND  # 过渡沙沿
+    k = S / 32.0
+    n4 = pnoise(4, rng)                # 轮廓扰动（瓦内归一化坐标）
+    n8 = pnoise(8, rng)                # 丘体/颜色
+    nw4 = pnoise(4, rng)               # 岛外水面：mod 16 网格，与海面瓦同尺度
+    nw8 = pnoise(8, rng)
+    c = (S - 1) / 2.0
+    RAD = S * 0.30
+    INNER = RAD - S * 0.075            # 草丘外沿 → 沙环宽度
+    HMAX = 3 if S <= 32 else 4         # 丘高上限：主岛多一层台地，不然 19.2 宽的岛顶是块平地
+    hk = HMAX / 3.0
+    for y in range(S):
+        for x in range(S):
+            u, vv = x / S, y / S
+            wu, wv = (x % 16) / float(TILE), (y % 16) / float(TILE)
+            warp = (n4(u, vv) - 0.5) * 4.0 * k + (n8(u, vv) - 0.5) * 1.4 * k
+            r = math.hypot(x - c, y - c) + warp
+            # 岛外水面必须沿用全局浪带公式，否则四周会出现一块"没有浪纹的方形水"
+            # （浪带相位对 16 体素格移不变，故直接按局部坐标取值即与相邻海面瓦对齐）
+            if r < RAD + 0.9 * k:
+                v[(x, y, 0)] = SHAL          # 贴岸浅水
+            elif r < RAD + 2.2 * k:
+                v[(x, y, 0)] = SEA_B         # 近岸过渡（对比轻，不会框出方形）
+            else:
+                # 噪声权重与海面瓦同分布（n4*0.7+n8*0.3）且采样网格同尺度：否则岛外
+                # 水面的色带统计与相邻海面瓦不一致，会显出一块"方形深水"
+                v[(x, y, 0)] = _sea_color(x, y, nw4(wu, wv) * 0.7 + nw8(wu, wv) * 0.3)
+            if r < RAD:
+                v[(x, y, 1)] = SAND if n8(u, vv) < 0.8 else SAND2
+            if r < INNER:
+                h = int(round(((INNER - r) * 0.30 + n8(u, vv) * 1.1) * hk)) + 1
+                h = max(1, min(h, HMAX))
+                for z in range(2, 2 + h):
+                    v[(x, y, z)] = GRASS if rng.random() < 0.85 else GRASS2
+            if RAD - 1.2 * k < r < RAD + 2.4 * k and n4(u, vv) > 0.74:
+                v[(x, y, 1)] = ROCK          # 岸边零星礁石
+                v[(x, y, 2)] = ROCK_TOP
     return v
 
 
 def build_reef(rng):
-    """灰岩礁：3 座随机峰位的高斯衰减石堆（不对称，rot 四向增加变化）。"""
+    """灰岩礁：3 座随机峰位的高斯衰减石堆（不对称，rot 四向增加变化）。
+
+    M1 §16.3 顺带修两处与「跨瓦一致」纪律冲突的地方（都是探针先发现的）：
+    1. 底色水面原为**整块扁平 SEA_D** —— 相邻海面瓦有浪带、礁瓦没有，于是在
+       230 单位长的走廊里，礁瓦会显成一个"把浪带切断的暗方块"。现在走 `_sea_color`，
+       与 sea_* 同分布（噪声网格同尺度、都按 mod 16 采）。
+    2. 岩体原本能长到瓦边（峰位 `uniform(3,13)` + 衰减半径最大 5.9 → 溢出瓦外被切平），
+       在瓦界立起一圈灰色小墙（探针实测 114 个贴边竖直面顶点）。现在岩体只长在
+       **内圈 margin 3** 以内：外缘本来就是 h=1 的薄边，裁掉后读作"岩堆四周是水"，很自然。
+    因为底色带了浪带，**礁石瓦从此必须 rot=0**（旋转会错浪带相位 → 瓦界浪纹断开）。
+    """
     v = {}
-    peaks = [(rng.uniform(3, 13), rng.uniform(3, 13), rng.uniform(2.6, 4.4))
+    n4 = pnoise(4, rng)
+    n8 = pnoise(8, rng)
+    # 峰位收进内圈，且衰减半径上限（ph/0.75 ≈ 5.9）不再溢出瓦边
+    lo, hi = 4.5, 11.5
+    peaks = [(rng.uniform(lo, hi), rng.uniform(lo, hi), rng.uniform(2.6, 4.4))
              for _ in range(3)]
     for y in range(TILE):
         for x in range(TILE):
-            v[(x, y, 0)] = SEA_D
+            u, vv = x / TILE, y / TILE
+            v[(x, y, 0)] = _sea_color(x, y, n4(u, vv) * 0.7 + n8(u, vv) * 0.3)
+            if not (REEF_MARGIN <= x < TILE - REEF_MARGIN
+                    and REEF_MARGIN <= y < TILE - REEF_MARGIN):
+                continue                       # 内圈之外只留水：不在瓦界立侧立面
             h = 0
             for px, py, ph in peaks:
                 d = math.hypot(x - px, y - py)
@@ -216,47 +313,6 @@ def build_reef(rng):
                 if z == h:
                     col = _lerp(col, ROCK_TOP, 0.5)
                 v[(x, y, z)] = col
-    return v
-
-
-def build_island(rng, S=32):
-    """2×2 超级瓦（32×32 体素 = 9.6 世界单位）：有机轮廓的小岛。
-
-    轮廓 = 径向距离 + 双频噪声扰动 → 自然是曲线岛缘。
-    单张资产一次摆放，不存在多瓦拼接的方块感/接缝（多瓦拼岛做不出这个效果）。
-    """
-    v = {}
-    n4 = pnoise(4, rng)
-    n8 = pnoise(8, rng)
-    n8b = pnoise(8, rng)
-    c = (S - 1) / 2.0
-    RAD = S * 0.38
-    for y in range(S):
-        for x in range(S):
-            u, vv = x / S, y / S
-            warp = (n4(u, vv) - 0.5) * 6.5 + (n8(u, vv) - 0.5) * 2.5
-            r = math.hypot(x - c, y - c) + warp
-            # 岛外水面必须沿用全局浪带公式，否则四周会出现一块"没有浪纹的方形水"
-            # （浪带相位对 16 体素格移不变，故直接按局部坐标取值即与相邻海面瓦对齐）
-            # 岛外水面：弱化噪声权重（与相邻海面瓦的斑块差异越小，方形轮廓越不明显）
-            if r < RAD + 1.6:
-                v[(x, y, 0)] = SHAL          # 贴岸浅水
-            elif r < RAD + 4.0:
-                v[(x, y, 0)] = SEA_B         # 近岸过渡（对比轻，不会框出方形）
-            else:
-                # 噪声权重与海面瓦同分布（n4*0.7+n8*0.3）：否则岛外水面的色带统计与
-                # 相邻海面瓦不一致，会显出一块"方形深水"
-                v[(x, y, 0)] = _sea_color(x, y, n4(u, vv) * 0.7 + n8b(u, vv) * 0.3)
-            if r < RAD:
-                v[(x, y, 1)] = SAND if n8(u, vv) < 0.8 else SAND2
-            if r < RAD - 3.8:
-                h = int(round((RAD - 3.8 - r) * 0.30 + n8(u, vv) * 1.1)) + 1
-                h = max(1, min(h, 3))
-                for z in range(2, 2 + h):
-                    v[(x, y, z)] = GRASS if rng.random() < 0.85 else GRASS2
-            if RAD - 1.2 < r < RAD + 2.4 and n4(u, vv) > 0.74:
-                v[(x, y, 1)] = ROCK          # 岸边零星礁石
-                v[(x, y, 2)] = ROCK_TOP
     return v
 
 
@@ -273,22 +329,26 @@ def build_seam(sea_a):
     return v
 
 
-def build_layout(tiles):
-    """排布预览：4×4 海面变体混拼 + 中央 3×3 岛图章 + 一块礁石。"""
+def build_layout(seas, reef, island, sandbar):
+    """排布预览：6×6 海面变体混拼 + 一张 4×4 主岛 + 一张 2×2 沙洲 + 一块礁石。
+
+    用来一次看清「三类地貌的相对尺寸与层级」——岛 19.2 > 沙洲 9.6 > 礁 4.8 世界单位
+    （design §14 的尺寸纪律）。
+    """
     v = {}
     kinds = ["sea_a", "sea_b", "sea_c", "sea_d", "sea_e", "sea_f",
              "sea_c", "sea_a", "sea_e", "sea_b", "sea_f", "sea_d"]
-    tiles = dict(tiles)
-    tiles["island_2x2"] = build_island(random.Random(SEED + 7))
-    for ty in range(4):
-        for tx in range(4):
-            t = tiles[kinds[(tx + ty * 2) % len(kinds)]]
+    for ty in range(6):
+        for tx in range(6):
+            t = seas[kinds[(tx + ty * 2) % len(kinds)]]
             for (x, y, z), col in t.items():
                 v[(x + tx * TILE, y + ty * TILE, z)] = col
-    for (x, y, z), col in tiles["island_2x2"].items():
-        v[(x + 3 * TILE, y + 3 * TILE, z)] = col
-    for (x, y, z), col in tiles["reef_s"].items():
-        v[(x + 1 * TILE + 4, y + 1 * TILE + 2, z)] = col
+    for (x, y, z), col in island.items():
+        v[(x, y, z)] = col                          # 4×4 主岛落在左上角（0..63）
+    for (x, y, z), col in sandbar.items():
+        v[(x + 4 * TILE, y + 2 * TILE, z)] = col    # 2×2 沙洲落在右侧（64..95, 32..63）
+    for (x, y, z), col in reef.items():
+        v[(x + 1 * TILE + 4, y + 4 * TILE + 9, z)] = col
     return v
 
 
@@ -315,16 +375,21 @@ def main():
         "sea_crest": build_crest(rng),
         "shoal": build_shoal(rng),
         "reef_s": build_reef(rng),
-        "isle_sand": build_sand(rng),
-        "isle_grass": build_grass(rng),
     }
     for name, vox in tiles.items():
         _write(name + ".vox", vox, 7)
-    _write("island_2x2.vox", build_island(rng), 5)
+    # 超级瓦（岛/沙洲）各用独立种子：增删其中一种不会改变另一种的造型（与共享 rng 解耦）
+    island4 = build_island(random.Random(SEED + 11), 64)
+    island2 = build_island(random.Random(SEED + 13), 32)
+    sandbar = build_sandbank(random.Random(SEED + 17), 32)
+    _write("island_4x4.vox", island4, 4)
+    _write("island_2x2.vox", island2, 5)
+    _write("sandbar_2x2.vox", sandbar, 5)
     _write("seam_test.vox", build_seam(tiles["sea_a"]), 5)
 
     png = os.path.join(os.path.dirname(__file__), "_preview_tiles_layout.png")
-    print("layout :", voxlib.render_iso(build_layout(tiles), png, cell=2, up_axis="z"))
+    lay = build_layout(tiles, tiles["reef_s"], island4, sandbar)
+    print("layout :", voxlib.render_iso(lay, png, cell=2, up_axis="z"))
 
 
 if __name__ == "__main__":

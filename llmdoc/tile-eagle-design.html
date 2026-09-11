@@ -58,7 +58,7 @@
 「瓦片本体 + 排布表 + 实例化渲染」的显式瓦片系统</b>（三层架构，承接
 <a href="voxel-to-tile.html" style="color:#7ee7ff">voxel-to-tile.html</a> 的方案评估结论）。
 原《方块雄鹰》<b>一行不改</b>，大厅并列两个入口，随时并排对比两种表现形式的效果。
-本轮先做 M0：一条可飞行的瓦片滚动走廊小场景。
+M0（可飞行的瓦片滚动走廊）已交付；<b>M1 进入玩法最小集，第一步先调场景尺度</b>（岛/沙洲做大做稀 + 空域与云层拉高，见 §14）。
 </div>
 
 <h2 style="margin-top:20px">目录</h2>
@@ -75,6 +75,10 @@
 <li><a href="#s10">里程碑与验收标准</a></li>
 <li><a href="#s11">对评估文档的三处调整（独立判断）</a></li>
 <li><a href="#s12">风险与待确认决策</a></li>
+<li><a href="#m0-log">M0 实施记录</a></li>
+<li><a href="#m1-log">M1 第一步实施记录（岛/沙洲做大做稀 + 高度分层）</a></li>
+<li><a href="#m1-play">M1 第二步实施记录（玩法最小集：能打能死能重开）</a></li>
+<li><a href="#m1-fin">M1 第三步实施记录（水面动感 / 精英机 / 浪尖瓦重做）</a></li>
 </ol>
 
 <!-- ============================================================ -->
@@ -369,12 +373,21 @@ M0 验收里的 2×2 接缝测试就是它的专项检查。</p>
 <pre>res://
 ├── scenes/tile_eagle.tscn            # 根 Node3D + game.gd（其余节点代码动态构建，沿用旧版场景习惯）
 ├── scripts/tile_eagle/
-│   ├── game.gd                       # 场景骨架：环境/相机/滚动/玩家/HUD/调试键
-│   ├── tiles.gd                      # 瓦片注册表：加载、锚点修正、材质共享、缓存
-│   ├── layout.gd                     # 排布层：段落生成器 + 图章 + 种子；行请求接口
-│   └── player.gd                     # 玩家机移动（M1 再拆 bullets/enemies）
-├── assets/vox/tiles/                 # gen_tiles.py 产出（sea_a.vox … isle_grass.vox）
-└── tools/vox/gen_tiles.py            # 瓦片本体生成器（16×16 体素，§4.3 产线约束）
+│   ├── game.gd                       # 场景骨架：环境/相机/滚动/HUD/调试键/陆地落点换算(行→世界坐标)
+│   ├── tiles.gd                      # 瓦片注册表：加载、锚点修正、材质共享、逐列高度表+岸线列
+│   ├── layout.gd                     # 排布层：FEATURES 节奏表 + 图章 + 种子；登记 features 供战斗层挑落点
+│   ├── altitude.gd                   # 高度分层纪律（M1 新增）：七个层高常量 + 投影推导
+│   ├── waves.gd                      # 敌机型号表 + 波次脚本（数据驱动，M1 新增）
+│   ├── combat.gd                     # 玩法最小集：弹池/敌机行为/XZ 判定/掉落/计分/装甲与重开（M1 新增）
+│   └── player.gd                     # 玩家机移动（手感参数照抄方块雄鹰；飞行高度取 altitude.AIR）
+├── assets/vox/tiles/                 # gen_tiles.py 产出（sea_a~f / sea_crest / shoal / reef_s /
+│                                     #   island_4x4 / island_2x2 / sandbar_2x2）
+└── tools/vox/gen_tiles.py            # 瓦片本体生成器（16 体素标准瓦；48/64 体素超级瓦）
+
+# tools/tile_eagle/ —— 瓦片版专用验收工具（不属于运行时）
+#   shot.gd          三机位 + 关云 + 关阴影 + 战斗图，debug_seek 固定构图（同种子逐像素可复现）
+#   _mesh_probe.gd   瓦片回归探针：瓦边缘竖直面 / 水面层顶面世界高度（期望 0.3000）
+#   _play_smoke.gd   M1 玩法 headless 冒烟：固定步长跑完整张波次表 + 受伤死亡重开
 
 # scripts/main_menu.gd —— GAME_SCENES 增加一行：
 "瓦片雄鹰": "res://scenes/tile_eagle.tscn"</pre>
@@ -591,18 +604,23 @@ M0 实测 FPS 后决定是否默认启用。</div>
 </ol>
 
 <h3 id="m0-shots">13.5 验收与对照截图</h3>
+<div class="note"><b>注</b>：本节图片已被 M1 第一步（§14）覆盖重出——同一套 <code>tools/tile_eagle/shot.gd</code>
+出的图，构图与机位不变，因此可以直接与 M0 的文字记录对照着看「岛/沙洲尺度」与「高度分层」的变化。</div>
 <p>瓦片雄鹰三机位（<code>tools/tile_eagle/</code>）：</p>
 <figure><img src="../tools/tile_eagle/tile_cam68.png" alt="瓦片雄鹰 68 度" style="width:100%;border:1px solid #2a3554;border-radius:8px">
-<figcaption>68° 斜俯视（默认机位）：跨瓦连续的浪带 + 2×2 超级瓦岛 + 沙洲 + 体素云。HUD 读数：瓦片实例 150 · 绘制 58 · 60 FPS</figcaption></figure>
+<figcaption>68° 斜俯视（默认机位）：4×4 主岛（19.2 世界单位）+ 跨越瓦界的浪带 + 高空淡云。
+HUD 读数：瓦片实例 165 · 绘制 54 · 60 FPS</figcaption></figure>
 <figure><img src="../tools/tile_eagle/tile_cam90.png" alt="瓦片雄鹰 90 度" style="width:100%;border:1px solid #2a3554;border-radius:8px">
-<figcaption>90° 纯俯视：浪带走向与瓦格对齐，无接缝</figcaption></figure>
+<figcaption>90° 纯俯视：高度不产生屏幕位移，飞机正好压在自己的 XZ 上，**靠影子错位读出高度**（这是高空域的直接证据）</figcaption></figure>
 <figure><img src="../tools/tile_eagle/tile_camiso.png" alt="瓦片雄鹰 等距" style="width:100%;border:1px solid #2a3554;border-radius:8px">
 <figcaption>等距机位（F5）：走廊是有限宽的带状地形，此机位会看到带缘（与方块雄鹰同性质）</figcaption></figure>
+<figure><img src="../tools/tile_eagle/tile_cam68_nocloud.png" alt="瓦片雄鹰 68 度 无云" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>同机位 C 键关云：用来单独评判 <code>sea_crest</code>／瓦界的干净程度（M1 判暗线的专用对照图）</figcaption></figure>
 
 <p>与《方块雄鹰》并排对照——<b>同相机 / 同色板 / 同单位资产，唯一变量是地貌表现形式</b>：</p>
 <figure><img src="../tools/tile_eagle/compare_cam68.png" alt="68 度对照" style="width:100%;border:1px solid #2a3554;border-radius:8px">
 <figcaption>68° 对照。左：体素·程序化地貌 + 随机撒点（纯色海面 + 灰色波浪块摆件 + 细节丰富的体素岛）；
-右：瓦片走廊·排布表（跨瓦连续浪带 + 有机超级瓦岛 + 沙洲 + 逐实例亮度抖动）</figcaption></figure>
+右：瓦片走廊·排布表（跨瓦连续浪带 + 有机 4×4 超级瓦岛 + 高空淡云）</figcaption></figure>
 <figure><img src="../tools/tile_eagle/compare_cam90.png" alt="90 度对照" style="width:100%;border:1px solid #2a3554;border-radius:8px">
 <figcaption>90° 对照</figcaption></figure>
 
@@ -610,26 +628,415 @@ M0 实测 FPS 后决定是否默认启用。</div>
 <table>
 <tr><th>类别</th><th>内容</th></tr>
 <tr><td><b>调参入口（不动逻辑）</b></td>
-<td><code>layout.gd</code>：段落区间与概率（开阔海 crest 0.03 / 湍浪带 0.08、零星小岛 0.012、沙洲 0.012）、海域变体权重；
-<code>gen_tiles.py</code>：色板常量、噪声频率与阈值、岛半径 <code>RAD</code>。
-要降低「群岛」密度，只需把 0.012 两档调小</td></tr>
+<td>M1 起地貌不再有概率表：<code>layout.gd</code> 的 <code>FEATURES</code>（每循环 4 处特征的行使与尺寸档）、
+<code>CREST_BANDS</code>（浪尖密度）；<code>gen_tiles.py</code> 的色板常量、噪声频率与阈值、岛 <code>RAD</code>/<code>warp</code>；
+<code>altitude.gd</code> 的七个高度值；云层的 <code>CLOUD_*</code>（见 §14）</td></tr>
 <tr><td><b>M1 玩法最小集</b></td>
 <td>水面顶点 shader 动感（按世界 XZ 相位，零额外绘制）；敌机 2~3 类 + 自机/敌弹（复用 <code>pools.gd</code>）；
 击杀掉星；地面单位贴地反查（<code>layout.high_mask</code> 已就绪，可直接查落点高度）</td></tr>
 <tr><td><b>视觉收尾</b></td>
-<td>超级瓦接缝处偶见 1px 轮廓线（正交 34 下亚像素/阴影边缘，属轻微伪影，与像素对齐一并看）；
-浪尖瓦密度、云的不透明度仍是主观项</td></tr>
+<td>浪尖瓦密度、云的不透明度仍是主观项；<code>sea_crest</code> 因「更宽的亮带阈值」会读成一块亮方瓦（§14.3 记录）</td></tr>
 <tr><td><b>M2 瓦片集扩展</b></td>
 <td>4/8 向边沿瓦（auto-tiling）做有机海岸线；结构瓦片批量扩充时另立 terrain schema（共用 <code>voxspec</code> op）；
-pirate 64×64 切片以 4×4 超级瓦接入验证（超级瓦通路已在 M0 打通）</td></tr>
+pirate 64×64 切片以 4×4 超级瓦接入验证 —— <b>64 体素超级瓦通路已在 M1 打通</b>（<code>island_4x4</code>）</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="m1-log">14. M1 第一步实施记录（2026-09-11 · 场景尺度的两处调整）</h2>
+
+<p>M1 的第一刀不碰玩法，先把<b>尺度的底子</b>打对——需求原文两条：</p>
+<ul>
+<li><b>① 小岛/沙洲密度偏高</b> → 做大，然后摆放稀疏一些；</li>
+<li><b>② 拉高飞行单位/云层 与海面/地面的高度</b> → 方便后续做层次感更强的表现内容。</li>
+</ul>
+<p>两条都是<b>表现层</b>的事：判定平面仍是 XZ，高度只是自由变量（§14.2 给了投影推导），
+所以与《方块雄鹰》的「手感对照」没有被破坏。</p>
+
+<h3>14.1 岛/沙洲：从「概率撒点」改成「节奏表」，尺寸上三档</h3>
+<p>M0 的根因写在这里以防复发：<code>_fill_sea_row()</code> 对<b>每一格</b>以 2.4% 的概率撒 1×1 的
+<code>isle_grass</code>/<code>isle_sand</code>——624 格上产出约 15 处零碎小点，观感就是
+「海面撒了一地碎屑」。概率撒点还有两个副作用：不可设计（说不出第几行该有什么）、与段落的节奏无关。</p>
+<table>
+<tr><th>项</th><th>M0</th><th>M1 第一步</th></tr>
+<tr><td>地貌特征数 / 循环（48 行 = 230.4 单位）</td><td>≈ 17（2 个大岛 + ~15 个 1×1 小岛/沙洲）</td><td class="ok"><b>4</b>（节奏表显式排布）</td></tr>
+<tr><td>可见窗口（14 行）内平均特征数</td><td>≈ 4</td><td class="ok">≈ 1</td></tr>
+<tr><td>尺寸档位（世界单位）</td><td>1×1 = 4.8 / 2×2 = 9.6</td><td class="ok">4×4 = <b>19.2</b>（主岛）/ 2×2 = 9.6（小岛、沙洲）</td></tr>
+<tr><td>岛的可见直径</td><td>≈ 7.3（2×2 岛）比 2.4（1×1 沙）</td><td class="ok">≈ 11.5 / 5.6</td></tr>
+<tr><td>列位</td><td>岛由 rng 取列，沙洲逐格 rng</td><td>仍由种子取列（保「R 键重摇、同种子复现」），行位与尺寸改为常量表</td></tr>
+</table>
+
+<table>
+<tr><th>文件</th><th>改动</th></tr>
+<tr><td><code>tools/vox/gen_tiles.py</code></td>
+<td><code>build_island(rng, S)</code> 参数化 S（几何常量全部按 k=S/32 等比缩放，3×3/4×4 都是同族造型）；
+新增 <code>island_4x4</code>（64² = 19.2 单位）与 <code>build_sandbank</code>/<code>sandbar_2x2</code>；
+<b>删除</b> 1×1 的 <code>build_sand</code>/<code>build_grass</code> 与其资产</td></tr>
+<tr><td><code>scripts/tile_eagle/layout.gd</code></td>
+<td>整段重写：段落生成器 + 概率撒点 → <code>FEATURES</code> 节奏表（4 处特征：行 12 大岛 / 行 21 沙洲 /
+行 29 小岛 / 行 36 沙洲）+ <code>CREST_BANDS</code> 浪尖区间 + <code>_stamp_feature</code> 通用跨格图章
+（记录挂跨度里最远的一行）；行距至少空 4 行，手工段保留</td></tr>
+<tr><td><code>scripts/tile_eagle/tiles.gd</code></td>
+<td><code>ALL_IDS</code>/<code>HIGH_IDS</code> 换血；<code>SPAN</code> 支持 4（<code>island_4x4</code>）；
+新增 <code>_mean_key()</code> 与分层烘焙的重基准（见 §14.3 ①）</td></tr>
+<tr><td>资产</td><td>新增 <code>island_4x4.vox</code> / <code>sandbar_2x2.vox</code>；删除 <code>isle_grass.vox</code> / <code>isle_sand.vox</code></td></tr>
+</table>
+
+<div class="note"><b>64 的额外收益</b>：<code>island_4x4</code> 是 64×64 体素 = 4×4 超级瓦，
+而 M2 计划里的 pirate 切片正好也是 64×64 —— <b>「64 体素超级瓦」这条通路提前验证过了</b>
+（摆放、锚点、行回绕、屏幕外释放全部跑通），M2 接 pirate 时只剩美术适配。</div>
+
+<h3>14.2 高度分层：新增 <code>altitude.gd</code>，行窗口随之重标定</h3>
+<p>M0 只有三层（海面 0 / 玩家 4.5 / 云 16~20），中间全空。M1 立一份<b>高度纪律</b>
+（<code>scripts/tile_eagle/altitude.gd</code>）——任何单位/特效必须落在登记过的某一层：</p>
+<table>
+<tr><th>层</th><th>M0</th><th>M1</th><th>放什么</th></tr>
+<tr><td><code>SEA</code> / <code>GROUND</code></td><td>0（未定义）</td><td>0.30</td><td>水面层顶面；贴海/贴地的地面单位（炮台、幸存者）贴合面</td></tr>
+<tr><td><code>LOW</code></td><td>—</td><td>3.4</td><td>掠海单位、水面浪花/溅射</td></tr>
+<tr><td><code>AIR</code></td><td>4.5</td><td class="ok"><b>7.5</b>（+67%）</td><td>玩家机与敌机主群</td></tr>
+<tr><td><code>HIGH</code></td><td>—</td><td>11.5</td><td>精英/大型单位、Boss 出场高度</td></tr>
+<tr><td><code>CLOUD_LO / HI</code></td><td>16 / 20</td><td class="ok"><b>22 / 30</b></td><td>云层</td></tr>
+</table>
+
+<div class="note"><b>为什么改 y 不影响手感对照</b>（这份推导就是 <code>altitude.gd</code> 头注的内容）：<br>
+① <b>68° 斜俯视</b>：高度 h 把物体在屏幕上抬高 <code>0.447·h</code>（正交投影下与距离无关），XZ 落点不动；
+方向光 −52°/−28° 把影子推到 <code>0.367·h</code> 右 / <code>0.690·h</code> 远 →
+屏幕上物体与影子拉开 <code>0.40·h</code>。层次感 = <b>视差 + 影子错位</b>。<br>
+② <b>90° 纯俯视</b>：高度几乎不产生屏幕位移（<code>0.026·h</code>），物体正好压在自己的 XZ 上 →
+层次<b>只</b>靠影子错位读出（俯视图里读高度就是读影子）。<br>
+③ 结论：想让「飞得更高」被看出来靠的是<b>影子</b>而不是机位；调 y 是纯表现层自由变量。</div>
+
+<p>拉高空域带来一个必须同时处理的几何后果：<b>超级瓦在远端生成的那一刻，整块必须还在屏幕之外</b>。
+跨度 span 的瓦，块中心挂在「记录行 + (span−1)/2」，于是</p>
+<pre>释放（近端）：NEAR_ROWS·TILE − TILE/2 > 16（屏幕下缘）        → NEAR_ROWS ≥ 4
+生成（远端）：(NEAR_ROWS − VIS_ROWS + span)·TILE ≤ −22（屏幕上缘）→ VIS_ROWS ≥ NEAR_ROWS + span + 4.59</pre>
+<table>
+<tr><th>常量</th><th>M0</th><th>M1</th><th>原因</th></tr>
+<tr><td><code>VIS_ROWS</code></td><td>12</td><td>14</td>
+<td>span=4 的主岛需要 5+4+4.59 ≈ 14 行，否则岛会带着小半个身子在屏幕中央凭空出现</td></tr>
+<tr><td><code>NEAR_ROWS</code></td><td>6.0</td><td>5.0</td>
+<td>M0 把 2.6 行浪费在屏幕下方（那部分只是"已经看过的海"），挪到远端更划算；
+同时按上式反查发现 <b>M0 的 12 行对 span=2 差 0.6 行</b>——2×2 岛在最上缘会露出一条边，本轮一并修掉</td></tr>
+<tr><td>在场瓦片实例</td><td>150</td><td>165（14×13 − 占位格）</td><td>+10%，实测仍稳 60 FPS</td></tr>
+</table>
+
+<div class="risk"><b>云层：M0 的云几乎不可见是一个 bug，不是设计意图。</b><br>
+正交 68° 下高度 h 的可见 z 区间是 <code>[0.5h−22, 0.5h+16]</code>；云在 16~20 高时是
+<code>[−14, +26]</code>。而 M0 把云从 <code>z=+30</code> 直接扔回 <code>−240</code> 再慢慢漂回来——
+一趟 270 单位里只有 40 单位可能被看见，<b>云有九成时间在屏幕外空飞</b>（M0 的三张"验收图"里几乎看不到云，就是这个原因）。<br>
+本轮的修法：回收带收缩到 42 单位，贴着可见带往返；同时发现云网格走的是 <code>build_blocks</code> 的
+「<b>1 体素 = 1 世界单位</b>」烘焙（不是瓦片的 0.3），所以 M0 的 <code>scale 1.3~1.9</code> 实际是
+<b>21~30 世界单位的巨物</b>（半个屏幕）——已改成 0.45~0.65（7~10 单位），alpha 降到 <b>0.10</b>、
+斑块填充率降到 0.34（连成一片会读成"灰板"，稀疏碎块才像云）。<br>
+另有一条硬约束要记住：<b>天空层在 68°/90° 正交下必然横穿整个画面</b>（高度 h 等价于把地面物体平移 +0.5h），
+做不到"只出现在天边"。云只能当空气层，一放大或一提亮就变成挡视线的灰板。<br>
+最后，三团云原来各自随机撒 x，会叠到同一列 → 灰板面积翻倍，已改成固定展开 + 小抖动。</div>
+
+<h3>14.3 顺带修掉的三类「暗线与错位」（M0 遗留，被放大岛屿暴露）</h3>
+<table>
+<tr><th>#</th><th>症状</th><th>根因</th><th>修法</th></tr>
+<tr>
+<td>①</td>
+<td class="no">沙滩沉在水下 0.64、水面被抬高 0.30；瓦界露出一道 0.3 高的暗台阶<br>
+（4×4 岛放大后整块瓦的轮廓都看得见）</td>
+<td><code>_build_tile_mesh</code> 把「水面层」与「上层实体」<b>分两次</b> <code>build_blocks</code>，
+而 <code>build_blocks</code> 各按<b>自己的方块键均值</b>定原点 → 两个网格不在同一坐标系，
+合并后水面层与陆地的相对高度差 (mean_upper − mean_all) 个体素（岛越大错得越离谱）</td>
+<td class="ok">合并前按 <code>(自身键均值 − 全局键均值)</code> 平移（<code>tiles.gd::_build_tile_mesh</code>），
+等价于「一次烘焙全量、只按层过滤了面」。实测六种瓦的水面层顶面全部回到 <b>0.3000</b>（见 §14.4）</td>
+</tr>
+<tr>
+<td>②</td>
+<td class="no">瓦界 2~3px 暗线（岛/浪尖瓦的轮廓渗出）</td>
+<td>海面瓦与岛瓦的<b>水面板彼此共面</b>（都停在 y=0.3），阴影贴图里深度相同 → 边界处互相自阴影</td>
+<td class="ok">瓦片层 <code>cast_shadow = 0</code>：瓦片是纯接收方，单位的影子照样落在水面上</td>
+</tr>
+<tr>
+<td>③</td>
+<td class="no">瓦片锚点对「单层纯顶面瓦」失效</td>
+<td>为消掉瓦界细缝，水面层只出顶面；于是「只有 z=0 一层」的瓦网格里没有底面，
+AABB 的 min.y 就是那个顶面 → 按 AABB 反推 lift 会把水面钉到 y=0，而带上层几何的瓦落在 0.3</td>
+<td class="ok">y 方向改按<b>方块键的 y 均值</b>反推（x/z 仍按 AABB，那是正确的）</td>
+</tr>
+</table>
+<div class="note">诊断手法值得记一笔：先用「逐行/逐列扫亮度局部极小」把暗线定位到像素级（发现它正好
+0.30 高 → 一定是竖直面），再用 <code>tools/tile_eagle/_mesh_probe.gd</code> 把「瓦边缘的竖直面顶点数」
+与「水面层顶面世界高度」打出来对账，两步就锁定了分层烘焙这个真根因。</div>
+<p><b>仍存在的小伪影</b>：<code>sea_crest</code> 的亮带阈值（<code>w&gt;0.55</code>）比普通海面瓦
+（<code>w&gt;0.72 且 n&gt;0.40</code>）宽得多，整块瓦会读成一个亮方块；它的泡沫体素也会在瓦边留下
+十几片小侧立面（探针实测 60 个顶点）。属美术项，留到浪尖瓦重做时一起处理。</p>
+
+<h3>14.4 验收数据（同种子 20260911）</h3>
+<table>
+<tr><th>项</th><th>实测</th></tr>
+<tr><td>布局校验和 / 排布格数</td><td>2077893769 / 600 格（12 种瓦；<b>同种子两次运行逐位一致</b>）</td></tr>
+<tr><td>地貌特征数</td><td>island_4x4 × 1、island_2x2 × 1、sandbar_2x2 × 2（每 48 行 4 处）</td></tr>
+<tr><td>在场瓦片实例 / 绘制提交</td><td>165 / <b>54</b>（比 M0 的 58 略降：瓦片层不再投影，省掉阴影 pass）</td></tr>
+<tr><td>水面层顶面世界高度</td><td>六种瓦全部 = <b>0.3000</b>（sea_a / sea_crest / island_4x4 / island_2x2 / sandbar_2x2 / reef_s）</td></tr>
+<tr><td>暗线检测（逐行扫 lum&lt;40 的连续暗带）</td><td class="ok">有/无阴影、有/无云四种组合下均 <b>0 条</b></td></tr>
+<tr><td>玩家机 y / 云层 y</td><td>7.5 / 22~30</td></tr>
+</table>
+<p>截图见 §13.5（<code>tile_cam68 / cam90 / camiso / cam68_nocloud / cam68_noshadow</code>
++ 两张并排对照图）。其中 <code>cam68_nocloud</code> 与 <code>cam68_noshadow</code> 是判暗线的专用对照。</p>
+
+<h3>14.5 新增工具与调试键</h3>
+<table>
+<tr><th>工具</th><th>作用</th></tr>
+<tr><td><code>tools/tile_eagle/shot.gd</code></td>
+<td>一条命令出四~五张 1280×720 验收图（三机位 + 关云 + 关阴影）。用 <code>debug_seek(21)</code>
+把渲染窗口<b>直接跳</b>到指定绝对行并冻结滚动 → <b>同机位同布局的截图逐像素可复现</b>（M0 验收项⑤需要）</td></tr>
+<tr><td><code>tools/tile_eagle/_mesh_probe.gd</code></td>
+<td>headless 瓦片回归探针：每种瓦打印 AABB / off / 三角面数 / <b>贴瓦边的竖直面顶点数</b> /
+<b>水面层顶面世界高度（期望 0.3000）</b>。改 <code>gen_tiles.py</code> 或锚点逻辑后跑一遍即可发现回归</td></tr>
+<tr><td><code>game.gd::debug_seek()</code></td><td>把窗口跳到指定绝对行 + 复位玩家与云带（给截图/复现用）</td></tr>
+</table>
+<table>
+<tr><th>键</th><th>新增/变更</th></tr>
+<tr><td><code>C</code></td><td class="ok">新增：云层显隐（评判"云是否挡戏"的开关）</td></tr>
+<tr><td>其余</td><td>F1/F2/F5 相机、F3 阴影、P 暂停、R 重摇、G 网格、Q/Esc 返回 —— 不变</td></tr>
+</table>
+
+<h3>14.6 M1 剩余待办</h3>
+<div class="note"><b>本节已被 §15（M1 第二步）覆盖</b>：水面 shader 之外的项都已实现——
+敌机/弹幕/地面落位见 §15，M1 的最新剩余清单以 <b>§15.6</b> 为准。</div>
+<table>
+<tr><th>项</th><th>说明</th></tr>
+<tr><td>水面顶点 shader 动感</td><td>§6.4 的方案：<code>sea_*</code> 共享材质按世界 XZ 相位做 ±0.05 正弦起伏，零额外绘制</td></tr>
+<tr><td>敌机 2~3 类 + 自机/敌弹</td><td class="ok">✓ 已完成（4 型，§15）</td></tr>
+<tr><td>地面单位落位</td><td class="ok">✓ 已完成：<code>tiles.gd</code> 逐列高度表 + <code>layout.features</code> + <code>_cell_xf</code>（§15.3）</td></tr>
+<tr><td>击杀掉星 / 爆炸碎片</td><td class="ok">✓ 已完成（§15）</td></tr>
+<tr><td>浪尖瓦重做</td><td>收窄 <code>sea_crest</code> 的亮带阈值、去掉瓦边泡沫侧立面（§14.3 末）</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="m1-play">15. M1 第二步实施记录（2026-09-11 · 玩法最小集：能打能死能重开）</h2>
+
+<p>尺度调好之后进入玩法本体。M1 的验收标准是「<b>能打能死能重开；弹幕密度参照旧关 1</b>」，
+本步把这一条跑通，并把"地面单位落在岛上"这条链打通（它同时是 M2 要塞/炮台的前置）。</p>
+
+<h3>15.1 交付内容与文件分工</h3>
+<table>
+<tr><th>文件</th><th>职责</th><th>备注</th></tr>
+<tr><td><code>scripts/tile_eagle/waves.gd</code>（新）</td>
+<td>敌机型号表 + 波次脚本：<b>数据驱动，调难度只改这里</b></td>
+<td>与方块雄鹰 <code>stages.gd</code> 不共享（§9）；密度按关 1 取同量级</td></tr>
+<tr><td><code>scripts/tile_eagle/combat.gd</code>（新）</td>
+<td>弹池 / 敌机行为 / XZ 判定 / 击杀掉星 / 爆炸碎片 / 计分 / 装甲与重开</td>
+<td>§8 说的「M1 再拆 bullets/enemies」——两者耦合紧（每发弹都要问敌机表），拆成一个"战斗层"更省接口</td></tr>
+<tr><td><code>scripts/tile_eagle/altitude.gd</code></td><td>新增 <code>AIR</code> 层的实际使用方：所有单位的 y 都从这里取</td><td>第一步建的纪律在这里第一次被真正执行</td></tr>
+<tr><td><code>tiles.gd</code></td><td>新增 <b>逐列高度表</b> <code>heights</code> + <b>岸线列</b> <code>shore</code></td><td>地面单位贴地的唯一依据（见 §15.3）</td></tr>
+<tr><td><code>layout.gd</code></td><td>新增 <code>features</code>：登记每张超级瓦的 <code>{tile,row0,col0,span}</code></td><td>战斗层靠它回答"哪有岛"</td></tr>
+<tr><td><code>game.gd</code></td><td>抽出 <code>_cell_xf()</code>（格位→世界变换的唯一入口）、<code>_land_spot()</code>（岛上落点）、HUD 两行、受击抖动、回车重开</td><td>瓦片绘制与落点换算共用同一份变换，不会对不上</td></tr>
+</table>
+
+<table>
+<tr><th>玩法元素</th><th>实现</th></tr>
+<tr><td>自机主炮</td><td>自动连发，单列 / 间隔 0.115s / 弹速 46 —— 与方块雄鹰 <b>1 级主炮逐参数同值</b>（M1 不带升级线）</td></tr>
+<tr><td>敌方 4 型</td><td><code>E1</code> 地面炮台（炮头 look_at 玩家 + 3 发扇形自机狙）· <code>E2</code> 环形炮台（14 发环形弹幕）·
+<code>E3</code> 无人机（高速掠过 + <b>撞击伤害</b>，旋翼层单独旋转）· <code>E4</code> 战斗机（蛇形推进 + 单发自机狙）</td></tr>
+<tr><td>判定</td><td>沿用方块雄鹰的 <b>XZ 半宽判定</b>（<code>|dx|&lt;r.x 且 |dz|&lt;r.y</code>），半径表同值，保证两作手感一致</td></tr>
+<tr><td>掉落 / 特效</td><td>击杀掉星（磁吸半径 3.0）+ 爆炸碎片（复用 <code>pools.gd</code> 的 MultiMesh 池）</td></tr>
+<tr><td>生死</td><td>装甲 3 / 受击无敌 1.5s（机身闪烁）/ 镜头抖动；装甲归零 → 走廊冻结 + 中央告示 → <b>回车重开</b></td></tr>
+</table>
+
+<h3>15.2 高度纪律在战斗层的落实（§14.2 的第一次实战）</h3>
+<div class="note">
+<b>所有会打到玩家的弹都放在 <code>AIR</code> 层</b>（与玩家同平面）。若按"从炮口出膛"的真实高度发弹，
+68° 俯视下会出现"弹从脚下掠过却把你打下来"的错读——因为正交俯视里高度差<b>不遮挡</b>，只做屏幕位移。<br>
+代价是地面炮台的弹会"瞬间升到 AIR"：处理办法是开火时在炮口补一发 <b>枪焰</b>（<code>_muzzle()</code>），
+把这段高度差在视觉上接起来。M2 真要做分层弹道，只需改 <code>_enemy_bullet()</code> 的 y 与判定行的 y 容差。<br>
+地面单位则相反：它们的 y 是<b>真实地面高度</b>（沙滩 0.60 / 草丘 0.90~1.50），因为它们不参与对玩家的判定，
+只需要"站在岛上"看起来对。
+</div>
+
+<h3 id="m1-land">15.3 「地面单位落位」：一条跨三层的查询链</h3>
+<p>这是本步唯一有设计含量的部分，也是 M2 要塞/炮台的公共前置。问题：地面炮台要落在岛的<b>岸线上</b>
+（x/z 在岛的轮廓内、y 贴着沙面），而这两件事只有瓦片自己的网格知道。链条：</p>
+<pre>assets/vox/tiles/island_4x4.vox
+   └─ gen_tiles.build_island() 生成 → tiles.gd 加载时烘「逐列高度表」
+        heights[]：每列顶面的**世界 y**（水面 0.30 / 沙 0.60 / 草丘 …）
+        shore[]  ：沙面列的**网格局部坐标**（岸线候选点）
+   └─ layout.gd 登记 features[tile,row0,col0,span] → "哪些行有岛"
+   └─ game.gd  _screen_row() 行↔屏幕行  +  _cell_xf() 格位→瓦片实例变换
+        world = _cell_xf(col0, j, span, off, 0) × shore[i]      ← 与画瓦片用的是同一份变换
+   └─ combat.gd 落位队列：问得到岛就落岛，等不到才兜底落海面</pre>
+<p>关键恒等式（写在 <code>tiles.gd::_fill_columns</code> 头注）：世界 y = <code>(列顶体素数 + 1) × 0.3</code>，
+与瓦片的均值基准无关——所以逐列高度表可以一次烘好、永久有效。</p>
+<div class="note"><b>为什么要"排队等岛"</b>：每张超级瓦在每个 48 行周期里只有 11 行窗口是"还在屏幕外、马上会进"
+的（4 张瓦 → 约七成时间有岛）。第一版直接落海，实测 17 个地面单位里有 10 个落海——岛就退化成纯背景板了。
+改成"每 0.25 秒问一次、最多等 6 秒"，兜底率从 <b>59% 降到 18%</b>（观测指标 <code>combat.land_miss</code>）。
+兜底落海本身不是 bug：方块雄鹰的 E1 原本就是"贴海面摆放"。</div>
+
+<h3>15.4 本步踩坑（瓦片滚动模型与"外来节点"的冲突）</h3>
+<div class="risk">
+<b>world 的子节点会被行回绕的锯齿拽回去 4.8 单位</b><br>
+瓦片走廊的滚动实现是「行回绕 + <code>world.position.z</code> 锯齿补偿」（M0 踩坑 ⑥）：<code>world_z</code> 在
+<code>[0, TILE)</code> 之间锯齿变化，每次回绕时把<b>在场瓦片实例</b>的 local z 前挪一格来补偿，
+于是世界看起来是连续前进的。<b>但这份补偿只发给登记在 <code>row_slots</code> 里的瓦片实例</b>——
+任何"外来"的 <code>world</code> 子节点每 0.686 秒就被拽回 4.8 单位，看起来像在原地抽搐。<br>
+修法：<b>单位一律挂根节点、自己走 z</b>（<code>vz = 滚动速度 + 自身航速</code>；地面单位的
+<code>vz</code> 就等于滚动速度，于是它们与脚下的岛严格同步）。这条约束写进了 <code>combat.gd</code> 文件头，
+M2 加建筑/摆件时同样适用。
+</div>
+
+<h3>15.5 验收数据（<code>tools/tile_eagle/_play_smoke.gd</code>，固定步长跑满整张波次表）</h3>
+<table>
+<tr><th>项</th><th>实测</th></tr>
+<tr><td>波次</td><td>8 组 / 98 秒一轮，跑完自动从头循环（走廊无尽 → 波次无尽）</td></tr>
+<tr><td>同屏敌机峰值 / 敌弹峰值</td><td>8 / 166（关 1 的弹幕量级）</td></tr>
+<tr><td>120 秒战果（自机原地不动）</td><td>击落 8~9、得分 360~430、拾星 0~2</td></tr>
+<tr><td>地面单位脚底高度</td><td>0.55（= 沙面 0.60 减 0.05 微沉）与 0.25（兜底落海）</td></tr>
+<tr><td>地面单位落岛率</td><td class="ok">82%（兜底 3 / 17，见 §15.3）</td></tr>
+<tr><td>能死能重开</td><td class="ok">连中三弹 → 装甲 0 / dead=true；<code>reset()</code> → 装甲 3 / dead=false / 分数归零</td></tr>
+</table>
+<figure><img src="../tools/tile_eagle/tile_combat.png" alt="M1 战斗实况" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>68° 战斗实况（出图前用固定步长确定性空跑 11.5 秒）：E1 炮台落在岛的岸线上，
+粉色为敌弹、青色为自机弹，HUD 两行为「分数/装甲/星/击落/敌机」与「FPS/实例/绘制/种子」</figcaption></figure>
+
+<h3>15.6 M1 剩余待办</h3>
+<div class="note"><b>本节已被 §16 覆盖</b>：水面 shader、精英机、浪尖瓦重做三项都已在
+§16 交付；唯一保留到后续里程碑的是 <b>Boss</b>（需要一套多阶段状态机，属 M3）。</div>
+<table>
+<tr><th>项</th><th>状态</th></tr>
+<tr><td>水面顶点 shader 动感</td><td class="ok">✓ §16.1（<code>water.gdshader</code>，全场共用一份材质）</td></tr>
+<tr><td>地面单位的高度查询可复用</td><td class="ok">✓ §15.3 已交付；M2 的要塞/炮台直接用 <code>tiles.shore/heights</code> + <code>_cell_xf</code></td></tr>
+<tr><td>精英机 / Boss</td><td class="ok">✓ 精英机六型入表（§16.2）；Boss 留 M3</td></tr>
+<tr><td>浪尖瓦重做</td><td class="ok">✓ §16.3（底色同源 + 收窄浪线 + 抬升留边距）</td></tr>
+</table>
+
+<h2 id="m1-fin">16. M1 第三步实施记录（2026-09-11 · 水面动感 / 精英机 / 浪尖瓦重做）</h2>
+<p>本步收掉 §15.6 列出的全部剩余项。<b>M1 至此交付完毕</b>：能打（10 型敌机、基础 + 精英两段波次）、
+能死能重开、地面单位落岛、海面会动、瓦界零伪影。</p>
+
+<h3>16.1 水面顶点动感（<code>scripts/tile_eagle/water.gdshader</code>）</h3>
+<p>零额外绘制：不新增任何节点 / 实例 / 绘制调用，只把瓦片材质换成一份全场合用的
+<code>ShaderMaterial</code>。三个设计决定，每个都被一次失败验证逼出来：</p>
+<table>
+<tr><th>决定</th><th>内容</th><th>为什么</th></tr>
+<tr><td><b>① 相位只写 f(world.xz)</b></td>
+<td>几何位移与亮度行波的相位都是「世界 XZ + TIME」的函数，<b>绝不</b>用局部坐标或裸 <code>sin(TIME)</code></td>
+<td>瓦片是逐块独立 mesh + MultiMesh 实例：相邻两块在瓦界处的顶点世界位置连续，只要相位是
+f(world.xz) 两侧位移就必然相等。若退化成 f(local)，p2 分量（周期 2.976 不整除瓦宽 4.8）会在
+每 4.8 单位的瓦格线上露错位缝</td></tr>
+<tr><td><b>② 水面/陆地在<b>水位线</b>层面切分</b></td>
+<td><code>wmask = 朝上的面 × (世界 y &lt; sea_y + 0.08)</code>，海瓦/浪尖瓦/岛瓦/礁瓦/沙洲<b>全部共用这一份材质</b></td>
+<td>第一版只把 <code>sea_*</code> 换成水材质、岛瓦保留普通材质——结果岛瓦那 19.2×19.2 的水面板
+不参与起伏，岛周围留下一块「海在动、这块不动」的方斑（诊断图里一眼可见）。拆两张 mesh 又要动
+实例/释放/回绕三处代码；按水位线切分一行 mask 就解决了。之所以要叠「法线朝上」：水面层（z=0 顶面）
+与陆地块的<b>底面</b>同在 y=sea_y，只看高度分不开</td></tr>
+<tr><td><b>③ 主力是亮度行波（sheen），几何振幅只是配菜</b></td>
+<td><code>sheen=0.30</code>（亮度行波，跑得比几何波快）+ <code>wave_amp=0.055</code>（几何涌浪）</td>
+<td><b>正交俯视下垂直位移几乎不可见</b>：它位移的是一片没有纹理的连续水面，而水面的颜色图案
+是钉在几何上的（跟水面一起动）→ 整体上下移不产生可读变化。把 wave_amp 放大 12 倍出图，
+画面几乎没变——这就是「看不见所以通过」的假验证。真正读得出来的是①水面相对静止的岛在动
+②亮度本身在流，所以亮度波跑得比几何波快（反光比水面跑得快）</td></tr>
+</table>
+<div class="note"><b>两个工程细节</b>：<br>
+① 位移写回模型空间用 <code>VERTEX.y += g * wave_amp / length(MODEL_MATRIX[1].xyz)</code> ——
+瓦片实例的 basis = 绕 Y 旋转 × 等比缩放 0.3，第 1 列的长度就是 Y 缩放，且绕 Y 旋转不影响 Y 分量，
+因此不必对 MODEL_MATRIX 求逆；<br>
+② <b>不做顶面筛选</b>：相位是纯 f(world.xz)，同一 XZ 上的所有顶点位移相同 → 侧立面保持竖直、
+浪尖瓦的泡沫块不会与水面脱开。改成「只抬法线朝上的面」反而会把泡沫块拉成斜的。</div>
+<p><b>验证</b>：新增 <code>tools/tile_eagle/_probe_wave.gd</code>，把 sheen 放大到 5.3 倍出图
+——亮度栅格<b>跨瓦连续、不认瓦格</b>（若相位锚在局部坐标，p2 分量会按瓦格重置，出现 100px 见方的错位格），
+同时确认岛周围的水面跟着整片海一起动。诊断结论连同判据写在脚本头注里。
+游戏内按 <b>V 键</b>、出图用 <code>tile_cam68_nowave.png</code> 做 A/B（<code>set_wave</code> 把
+wave_amp 与 sheen <b>一起</b>归零，只关一个的话 A/B 不成立）。</p>
+
+<h3>16.2 精英机：E5~E10 六型入表</h3>
+<p>资产全部复用（<code>gen_units.py</code> 的 E5/E6 + spec 批量产出的 E7/E7R/E8/E9/E10），
+只加「型号行 + 行为分支」。波次表扩成 <b>15 组 / 约 232 秒一轮</b>：前 8 组（t ≤ 98）是基础机型、
+密度对齐关 1；后 7 组是<b>精英段</b>——每约 20 秒引入一款大型单位，密度反而更低
+（大型单位自身就是压力源）。</p>
+<table>
+<tr><th>型号</th><th>资产 / 体量</th><th>层</th><th>行为</th><th>hp / 得分</th></tr>
+<tr><td>E5 巡洋机</td><td>19×24 → 5.7×7.2</td><td>AIR</td><td><code>strafe</code> 大幅横移扫场 + 5 发扇形压制（弹幕密度主力）</td><td>5 / 120</td></tr>
+<tr><td>E6 精英炮舰</td><td>29×20×12 → 8.7×6.0（全表最大）</td><td>HIGH</td><td><code>elite</code> 缓推 + 环形/自机狙交替，<b>hp&lt;40% 加速逃逸</b></td><td>20 / 400</td></tr>
+<tr><td>E7 武装直升机</td><td>11×20 + E7R 旋翼层</td><td>AIR</td><td><code>heli</code> 正弦侧移 + 主旋翼独立旋转 + 双管短点射</td><td>5 / 180</td></tr>
+<tr><td>E8 飞翼轰炸机</td><td>21×18×2 → 6.3×5.4</td><td>HIGH</td><td><code>bomber</code> 直压 + 定期向四周撒慢速炸弹</td><td>10 / 300</td></tr>
+<tr><td>E9 双体炮艇</td><td>19×16 → 5.7×4.8</td><td>LOW</td><td><code>raider</code> 掠海冲撞（ram）+ 前向点射</td><td>4 / 150</td></tr>
+<tr><td>E10 浮空盾堡</td><td>19×19×8（ring op 首投产）</td><td>HIGH</td><td><code>fortress</code> 小 boss 级：极缓推进 + 环形/自机狙交替</td><td>24 / 800</td></tr>
+</table>
+<p>配套三件事：<br>
+① <code>altitude.gd::of(name)</code> ——「层名 → 高度」的唯一映射，战斗层从此不许自己写 y
+（<code>_spawn_air</code> 只认 <code>def.layer</code>），LOW/HIGH 两个此前闲置的层第一次被用上；<br>
+② <code>_bridge()</code> 枪焰桥接 —— 弹幕统一在 AIR 层，而开火单位可能在下方的 GROUND/LOW
+或最上方的 HIGH，两层高度差在 68° 正交下就是一段屏幕位移（不遮挡），不补枪焰的观感就是
+「弹从脚下/头顶凭空冒出来」。HIGH 单位的枪焰打在自己身上、GROUND/LOW 的打在弹层；<br>
+③ <code>_fire_aimed/_fire_ring</code> 加可选覆盖参数 —— E6/E10 的「混合弹幕」需要环形与自机狙
+用<b>不同</b>的弹数/弹速，而原来两者都读 <code>def.n</code>。</p>
+<div class="risk"><b>Boss 明确不在 M1</b>：需要多阶段状态机（阶段切换 / 弱点 / 演出），按 §10 的
+里程碑划分归 M3。精英段里的 E10（浮空盾堡，hp 24 / 800 分）承担了「阶段 boss」的体验位。</div>
+
+<h3>16.3 浪尖瓦重做（<code>gen_tiles.build_crest</code>）</h3>
+<table>
+<tr><th>M0 的问题</th><th>修法</th></tr>
+<tr><td>底色 <code>w&gt;0.55 ? SEA_C : SEA_D</code> —— 亮浪带内<b>整块瓦</b>都变成 SEA_C，
+在走廊里读成「一个亮方块」（§14.3 记录）</td>
+<td>底色改走 <code>_sea_color</code>，与 <code>sea_*</code> <b>逐像素同源</b></td></tr>
+<tr><td>亮带阈值太宽（0.55，海面瓦是 0.72）</td>
+<td>浪线收到 <code>(x+y) mod 8 == 2</code> 这条 <b>1 体素宽</b>的对角线（sin 峰值处），
+±1 才是 SEA_C 过渡带 —— 白线只占瓦面 1/8</td></tr>
+<tr><td>泡沫体素顶到瓦边，在瓦界立起一排 1 体素高的小墙（探针实测 60 个贴边竖直面顶点）</td>
+<td>抬升只落在内圈（<code>CREST_MARGIN=3</code>）；<b>颜色线不受边距限制</b> → 浪花在视觉上仍跨瓦连续</td></tr>
+</table>
+<div class="risk"><b>margin 为什么是 3 不是 2</b>：探针阈值是 <code>|顶点| &gt; 半宽 − 1.5 = 6.5</code>，
+而网格原点按「键均值」居中、均值 ≈ 7.49（不是 7.50），margin=2 时最外那个块的竖直面落在
+<b>6.511</b> 上——刚好越界（实测 24 个顶点，来自 x=13 与 y=13 那两个块）。margin=3 把最外面压到
+≈5.5，留足余量。这类「贴着阈值过」的判定必须按实际均值算一遍，不能想当然。</div>
+<p><b>顺带修掉礁石瓦的两处同类问题</b>（同一条「跨瓦一致」纪律，探针先发现）：<br>
+① 底色水面原为整块扁平 <code>SEA_D</code> —— 相邻海瓦有浪带、礁瓦没有，走廊里会显成一个
+「把浪带切断的暗方块」→ 改走 <code>_sea_color</code>；<br>
+② 岩体能长到瓦边被切平（峰位 uniform(3,13) + 衰减半径最大 5.9 → 溢出瓦外），瓦界立起一圈灰色
+小墙（114 个贴边竖直面顶点）→ 岩体只长在 <code>REEF_MARGIN=3</code> 内圈，外缘本来就是 h=1 的
+薄边，裁掉后读作「岩堆四周是水」，很自然。<br>
+<b>连带约束</b>：礁瓦底色带了浪带，从此必须 <code>rot=0</code>（旋转 90° 会把浪带相位也转过去 →
+瓦界浪纹断开），<code>layout.gd</code> 的手工段已同步改掉。</p>
+
+<h3>16.4 连带修正：拉高空域把影子推成了「黑洞」</h3>
+<div class="risk">方向光下影子与物体的屏幕错位是 <b>0.40·h</b>（§14.1 的结论）。M0 空域只有 4.5
+（错位 1.8 单位）看不出问题；拉高到 AIR 7.5 / HIGH 11.5 之后，精英单位的影子被推到 4.6 单位外，
+而阴影区只剩环境光（0x223050 × 深海色 ≈ RGB(1,7,20)）→ 在水面上读成一个<b>纯黑的洞</b>。
+修法：<code>sun.shadow_opacity = 0.62</code>，让影子变成柔和的暗块。<b>层次感靠的是影子的错位量，
+不是它的深浅</b>——这条要和 §14.1 一起记住：改高度层时必须同时复查影子。</div>
+
+<h3>16.5 验收数据</h3>
+<table>
+<tr><th>项</th><th>实测</th></tr>
+<tr><td>瓦片探针（<code>_mesh_probe.gd</code>）</td><td class="ok">6 种瓦水面层顶面全部 = 0.3000；
+<b>贴瓦边竖直面顶点全部 = 0</b>（浪尖瓦 60→0，礁石瓦 114→0）</td></tr>
+<tr><td>玩法冒烟（<code>_play_smoke.gd</code>，240 秒跑满精英段）</td>
+<td class="ok">10 个型号全部出现；敌机峰值 8 / 敌弹峰值 162；击落 15 / 得分 2520；<br>
+分层采样 AIR / GROUND / <b>HIGH / LOW</b> 全部非 0（精英段的分层落位生效）；能死能重开 ✓</td></tr>
+<tr><td>水面 A/B（<code>tile_cam68.png</code> vs <code>_nowave.png</code>）</td>
+<td class="ok">海面平均亮度与 M0 基线一致（RGB 40/55/86 vs 40/55/85）——换了材质但没换观感；
+差异像素 79%（行波在跑）</td></tr>
+<tr><td>精英取景图（<code>tile_elite.png</code>）</td>
+<td class="ok">E6/E10/E5/E7 四型同框、影子柔和、弹幕在飞；摆位两条经验写在 <code>shot.gd</code>
+（① x 避开主炮火线，否则预热期会被打爆；② 落点 z 按「出生 z + 预热秒数 × 实际航速」倒推）</td></tr>
+</table>
+<figure><img src="../tools/tile_eagle/tile_elite.png" alt="精英机取景" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>精英取景（<code>debug_spawn</code> 定点摆拍 + 固定步长推 2.8 秒，生成路径与波次完全相同）：
+E6 精英炮舰 / E10 浮空盾堡 / E5 巡洋机 / E7 武装直升机四型同框，粉色为敌弹。
+影子的错位量读出「四架高度不同」，柔和度由 <code>shadow_opacity=0.62</code> 给出</figcaption></figure>
+
+<h3>16.6 里程碑状态与下一步</h3>
+<table>
+<tr><th>里程碑</th><th>状态</th></tr>
+<tr><td>M0 瓦片走廊</td><td class="ok">✓ §13</td></tr>
+<tr><td>M1 玩法 + 表现（三步全部交付）</td><td class="ok">✓ §14 尺度与高度分层 · §15 玩法最小集 · §16 水面/精英/浪尖瓦</td></tr>
+<tr><td>M2 内容扩充</td><td>pirate 64×64 切片以 4×4 超级瓦接入（通路已在 §14 验证）；要塞/炮台用
+<code>tiles.shore/heights</code> + <code>_cell_xf</code> 落位；auto-tiling 边沿瓦</td></tr>
+<tr><td>M3 Boss 与演出</td><td>多阶段 Boss 状态机、穿云/高空内容（<code>altitude.gd</code> 的
+CLOUD 夹层与 HIGH 层已就绪）</td></tr>
 </table>
 
 <p style="margin-top:40px;color:#5a6486">— 设计定稿于 2026-09-11 · demo-game · Godot 4.7.2 ·
 依据 <code>llmdoc/voxel-to-tile.html</code>（方案评估，本方案的上级文档）、
 <code>game.gd</code>（相机/滚动/环境参数走查）、<code>vox_reader.gd</code> / <code>voxel_model.gd</code>（加载管线）、
 <code>gen_pirate.py</code>（无缝平铺与色带浪纹经验）、<code>llmdoc/voxel-eagle-design.html</code>（M3.9 防穿模 / M3.13 绕序教训）。
-<b>状态：M0 已交付（2026-09-11）</b>——瓦片走廊可飞行、三机位与并排对照图齐备、帧率与绘制数达标；
-M0 实施记录、验收数据与 9 条踩坑见 §13；下一交付物为 M1 玩法最小集。</p>
+<b>状态：M0 与 M1 已全部交付（2026-09-11，M1 分三步：§14 尺度/高度分层、§15 玩法最小集、§16 水面动感/精英机/浪尖瓦）</b>——
+能打（10 型敌机、基础 + 精英两段波次、地面炮台落岛 82%）、能死能重开、海面会动且瓦界零伪影
+（探针 6 瓦贴边竖直面 = 0）、水波/云/阴影三组 A/B 对照齐备；下一交付物为 M2 内容扩充（§16.6）。</p>
 
 </body>
 </html>

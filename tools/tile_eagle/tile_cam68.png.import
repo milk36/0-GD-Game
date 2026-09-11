@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cctqbcafutb6s"
-path="res://.godot/imported/tile_camiso_hd.png-b87f6ea5f80632f03eb721167e4dd105.ctex"
+uid="uid://dhi5s1h6ttwce"
+path="res://.godot/imported/tile_cam68.png-fbcb1c234c02138862f12e5cd800c37d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://tools/tile_eagle/tile_camiso_hd.png"
-dest_files=["res://.godot/imported/tile_camiso_hd.png-b87f6ea5f80632f03eb721167e4dd105.ctex"]
+source_file="res://tools/tile_eagle/tile_cam68.png"
+dest_files=["res://.godot/imported/tile_cam68.png-fbcb1c234c02138862f12e5cd800c37d.ctex"]
 
 [params]
 
