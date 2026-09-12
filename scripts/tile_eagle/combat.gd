@@ -113,7 +113,7 @@ func setup() -> void:
 	fx = _mk_pool(320, un)
 	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4",
 			"E5", "E6", "E7", "E7R", "E8", "E9", "E10", "E11", "E11T",
-			"E12", "E12R", "boss"]:
+			"E12", "E12R", "E13", "boss"]:
 		_meshes[k] = VoxReader.read_mesh("res://assets/vox/units/%s.vox" % k)
 	# 营救件：绳索（细长盒，按目标距离缩放 z）+ 机腹营救进度圈（挂在玩家机上）
 	var rm := StandardMaterial3D.new()
@@ -667,6 +667,19 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 				e["mt"] = MISSILE_CD
 				e["mode"] = 1 - int(e["mode"])          # 左右短翼交替
 				_launch_missile(n.global_position, -1.0 if int(e["mode"]) == 0 else 1.0)
+		"carpet":
+			# YB-49 喷气飞翼：直压 + 周期性投「横向弹墙」——9 发均布覆盖走廊，
+			# **跳过玩家所在 ±3.2 的缺口**（公平：墙永远留活路，但缺口每轮换位）
+			n.position.z += float(e["vz"]) * delta
+			if _in_range(gp, def) and _cd_tick(e, def, delta):
+				_bridge(def, n.global_position)
+				var skip := roundi(host.player.position.x / 3.0)
+				for k in 9:
+					var bx := -12.0 + 3.0 * float(k)
+					if roundi(bx / 3.0) == skip:
+						continue                       # 缺口：玩家那一列不放
+					var q := Vector3(bx, Altitude.AIR, gp.z)
+					_enemy_bullet(q, Vector3(0, 0, 6.2), COL_PINK)
 		"boss":
 			_update_boss(e, n, delta)
 
@@ -726,7 +739,7 @@ func _cd_tick(e: Dictionary, def: Dictionary, delta: float) -> bool:
 	e["ft"] = float(e["ft"]) - delta
 	if float(e["ft"]) > 0.0:
 		return false
-	e["ft"] = float(def["cd"])
+	e["ft"] = float(def.get("cd", 2.0))   # 缺省 2.0：无 cd 字段的自定义节拍行为兜底
 	return true
 
 

@@ -695,6 +695,58 @@ def build_e12_rotor():
             v[(px, py, 0)] = col
     return v
 
+def build_e13():
+    """E13 喷气式飞翼（YB-49 风，27×19×5 → 8.1×5.7×1.5）：整架就是一片翼——
+    前缘后掠、后缘 W 形三段缺口（中央 / 翼段 / 翼尖拖尾），超扁平两体素。
+    后缘埋 4 组喷气排气凹口（暗钢 + 亮缘），双垂尾，中央座舱鼓包。
+    机头朝 **+Y**（迎向玩家）。俯视轮廓是本机的全部识别特征。"""
+    c = 13
+    # 前缘半宽表（y=0 后缘中央 → y=18 机头尖）
+    prof = [8, 10, 11, 12, 13, 13, 13, 13, 13, 13, 12, 11, 10, 9, 8, 7, 5, 3, 1]
+    # 后缘 W 形：三段的起始 y（中央段最靠后，翼尖拖得最远）
+    def y_start(dx):
+        a = abs(dx)
+        if a <= 8:
+            return 0
+        if a <= 11:
+            return 3
+        return 6
+    v = {}
+    for y in range(19):
+        h = prof[y]
+        for dx in range(-h, h + 1):
+            ys = max(y_start(dx), 0)
+            if y < ys:
+                continue
+            top = EH if (abs(dx) == h or y == 18) else EG     # 前缘/鼻尖提亮
+            v[(c + dx, y, 1)] = ET                            # 下层暗钢
+            v[(c + dx, y, 0)] = ET
+            v[(c + dx, y, 2)] = top
+    # 背脊进气暗线（z=2，中央两侧 y 6..12）
+    for y in range(6, 13):
+        for dx in (-2, 2):
+            v[(c + dx, y, 2)] = ET
+    # 中央座舱鼓包（y 13..16，z=3）
+    for y in range(13, 17):
+        for dx in (-1, 0, 1):
+            v[(c + dx, y, 3)] = EG
+    for dx in (-1, 0, 1):
+        v[(c + dx, 15, 3)] = EC                               # 座舱玻璃
+    v[(c, 16, 3)] = EW                                        # 鼻尖白
+    # 后缘喷气排气口 ×4（埋入式：凹口 ET + 上缘亮线 EL）
+    for ex in (-10, -7, 7, 10):
+        ys = y_start(ex)
+        v[(c + ex, ys, 1)] = ET
+        v[(c + ex, ys + 1, 2)] = EL
+        v[(c + ex, ys + 2, 2)] = EL
+    # 双垂尾（后缘 W 谷两侧，z 3..4）
+    for vx in (-10, 10):
+        for dy in range(1, 4):
+            for dz in (3, 4):
+                v[(c + vx, dy + 1, dz)] = ET
+        v[(c + vx, 2, 5)] = EH
+    return v
+
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -712,6 +764,7 @@ def main():
         # E11/E11T 由 tools/vox/gen_e11.py 专管（返工版舰型 17×46，勿在本文件重建）
         ("E12.vox", build_e12(), "_preview_E12.png", 5),
         ("E12R.vox", build_e12_rotor(), "_preview_E12R.png", 5),
+        ("E13.vox", build_e13(), "_preview_E13.png", 4),
     ]
     for name, vox, png, cell in jobs:
         out = os.path.join(OUT_DIR, name)
