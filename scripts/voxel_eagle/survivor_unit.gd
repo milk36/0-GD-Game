@@ -53,8 +53,8 @@ static func mesh() -> ArrayMesh:
 	if _body_mesh == null:
 		_body_mesh = VoxelModel.build_multi([
 			{"art": ART_LEG, "pal": {"D": PAL["D"]}, "y": 0, "layers": 1},
-			{"art": ART_TORSO, "pal": {"O": PAL["O"]}, "y": 1, "layers": 2},
-			{"art": ART_HEAD, "pal": {"S": PAL["S"]}, "y": 3, "layers": 1},
+			{"art": D_ART_TORSO, "pal": {"O": PAL["O"]}, "y": 1, "layers": 2},
+			{"art": D_ART_HEAD, "pal": {"S": PAL["S"]}, "y": 3, "layers": 1},
 		])
 	return _body_mesh
 
@@ -128,16 +128,22 @@ static func mark_bob(ex: MeshInstance3D, t: float) -> void:
 
 ## 被起吊中的位移/缩放：prog 0→1 表示从立足面升到顶。返回 true = 已完成
 ## base_y 为幸存者立足面高度（岛上/礁石顶与海面不同，由游戏侧传入）
-static func apply_rescue_progress(n: Node3D, prog: float, base_y := BASE_Y) -> bool:
+## base_scale 为该幸存者的本体缩放（build() 与 build_detailed() 不同；缺省取旧版 SCALE）
+static func apply_rescue_progress(n: Node3D, prog: float, base_y := BASE_Y,
+		base_scale := -1.0) -> bool:
+	if base_scale < 0.0:
+		base_scale = SCALE
 	n.position.y = base_y + prog * RESCUE_LIFT
-	n.scale = Vector3.ONE * (SCALE * (1.0 - prog * RESCUE_SHRINK))
+	n.scale = Vector3.ONE * (base_scale * (1.0 - prog * RESCUE_SHRINK))
 	return prog >= 1.0
 
 
 ## 松开绳索：回到立足面原状
-static func reset_rescue(n: Node3D, base_y := BASE_Y) -> void:
+static func reset_rescue(n: Node3D, base_y := BASE_Y, base_scale := -1.0) -> void:
+	if base_scale < 0.0:
+		base_scale = SCALE
 	n.position.y = base_y
-	n.scale = Vector3.ONE * SCALE
+	n.scale = Vector3.ONE * base_scale
 
 
 ## 绳索位姿：从幸存者举手高度连到玩家。近乎垂直，不能用 look_at（方向与 UP 平行会报错），
@@ -155,3 +161,86 @@ static func rope_pose(sur_gp: Vector3, player_pos: Vector3) -> Dictionary:
 		"xf": Transform3D(Basis(xx, yy, zz), (top + player_pos) * 0.5),
 		"len": dz.length(),
 	}
+
+
+# ================================================================ 细致版（瓦片雄鹰用）
+# 旧版 build() 是 1×1×4 的立柱（0.6 单位宽），在瓦片走廊的 19.2 宽岛上只是一根牙签。
+# 这里给一版多体素小人：3×2×8（双腿 / 橙色救生衣 / 白色反光条 / 头 / 头盔），
+# 并把本体放大到 ~2.7 世界单位高、1.0 宽 —— 在地图上读得出「一个人」，而不是一个点。
+# 方块雄鹰继续用 build()：原作冻结（design §9），两边只共享营救参数与进度圈。
+
+const D_ART_LEGS := ".P.P.\n.P.P."       # 双腿（各 1×2，中间空一列）
+const D_ART_TORSO := ".OOO.\n.OOO."      # 橙色救生衣（3×2×3）
+const D_ART_STRIPE := ".WWW.\n.WWW."     # 白色反光条（1 层）—— 高可见度救援服
+const D_ART_HEAD := ".SSS.\n.SSS."       # 头（肤色）
+const D_ART_HELMET := ".KKK.\n.KKK."     # 头盔（深色）
+const PAL_DETAILED := {
+	"P": Color("2f3542"),   # 裤腿（深藏青）
+	"O": Color("ffa03c"),   # 救生衣（高饱和橙）
+	"W": Color("f5f9ff"),   # 反光条（白）
+	"S": Color("e8b88a"),   # 头（肤色）
+	"K": Color("3a3a4a"),   # 头盔（深）
+}
+
+## 本体缩放：8 体素高 × 0.34 ≈ 2.7 世界单位（旧版 1×1×4 × 0.6 = 2.4 高、0.6 宽）
+const DETAILED_SCALE := 0.34
+## 肩部支点 / 手臂尺寸（本体 3 体素宽 → 肩在 ±1.5；换模型必同步换这套）
+const D_ARM_PIVOT := Vector3(1.5, 4.2, 0.0)
+const D_ARM_SIZE := Vector3(0.8, 1.6, 0.8)
+const D_ARM_OFFSET := Vector3(0.0, 0.5, 0.0)
+const D_MARK_Y := 9.8           # 叹号悬浮高度（本体 8 体素 + 余量）
+const D_MARK_SCALE := 0.7
+
+static var _detailed_mesh: ArrayMesh = null
+
+
+## 细致版本体网格（缓存）
+static func detailed_mesh() -> ArrayMesh:
+	if _detailed_mesh == null:
+		_detailed_mesh = VoxelModel.build_multi([
+			{"art": D_ART_LEGS, "pal": {"P": PAL_DETAILED["P"]}, "y": 0, "layers": 2},
+			{"art": D_ART_TORSO, "pal": {"O": PAL_DETAILED["O"]}, "y": 2, "layers": 3},
+			{"art": D_ART_STRIPE, "pal": {"W": PAL_DETAILED["W"]}, "y": 5, "layers": 1},
+			{"art": D_ART_HEAD, "pal": {"S": PAL_DETAILED["S"]}, "y": 6, "layers": 1},
+			{"art": D_ART_HELMET, "pal": {"K": PAL_DETAILED["K"]}, "y": 7, "layers": 1},
+		])
+	return _detailed_mesh
+
+
+## 细致版构建：返回结构与 build() 完全一致（{n, arm_l, arm_r, ex}），可互换
+static func build_detailed(scale := DETAILED_SCALE) -> Dictionary:
+	var n := MeshInstance3D.new()
+	n.name = "Survivor"
+	n.mesh = detailed_mesh()
+	n.material_override = VoxelModel.unshaded_material()  # 无光照高亮：远视角可读
+	n.scale = Vector3.ONE * scale
+
+	var arms := {}
+	for s in [-1.0, 1.0]:
+		var piv := Node3D.new()
+		piv.name = "ArmL" if s < 0.0 else "ArmR"
+		piv.position = Vector3(s * D_ARM_PIVOT.x, D_ARM_PIVOT.y, D_ARM_PIVOT.z)
+		n.add_child(piv)
+		var arm := MeshInstance3D.new()
+		var am := BoxMesh.new()
+		am.size = D_ARM_SIZE
+		var amat := StandardMaterial3D.new()
+		amat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		amat.albedo_color = PAL_DETAILED["O"]     # 手臂同救生衣色，读作"袖子"
+		am.material = amat
+		arm.mesh = am
+		arm.position = D_ARM_OFFSET
+		piv.add_child(arm)
+		arms["L" if s < 0.0 else "R"] = piv
+
+	var ex := MeshInstance3D.new()
+	ex.name = "Mark"
+	ex.mesh = mark_mesh()
+	ex.material_override = VoxelModel.unshaded_material()
+	ex.scale = Vector3.ONE * D_MARK_SCALE
+	ex.position = Vector3(0, D_MARK_Y, 0)
+	ex.visible = false
+	ex.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	n.add_child(ex)
+
+	return {"n": n, "arm_l": arms["L"], "arm_r": arms["R"], "ex": ex}

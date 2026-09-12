@@ -9,6 +9,7 @@
 ## 1. 文件清单
 
 | 文件 | 作用 |
+| `E12.vox` / `E12R.vox` | 13×25×8 / 15×17×1 | 3.9×7.5×2.4 | 重型武装直升机：串列座舱 + 短翼挂巢 + 五叶主旋翼，机头朝 **+Y**（瓦片雄鹰接入，beh=gunship：机枪压制 + 追踪导弹） |
 |---|---|
 | `tools/vox/voxlib.py` | 核心库：.vox 读 / 写 / 等距预览渲染（纯标准库，零依赖） |
 | `tools/vox/gen_scene.py` | 示例生成器：程序化小岛（地形+海洋+树+小屋） |
@@ -27,7 +28,7 @@
 | `scripts/voxel_eagle/rescue_ring.gd` | 机上营救进度计时圈（屏幕对齐的 ImmediateMesh 圆环，半径=触发距离） |
 | `scripts/voxel_eagle/survivor_test.gd` + `scenes/survivor_test.tscn` | 幸存者外观测试场景（开局 10 个，可切换机位/缩放/阴影） |
 | `tools/vox/pngsheet.py` | 把多张 PNG 拼成接触表（纯标准库 PNG 解码，替代 PIL） |
-| `tools/tile_eagle/shot.gd` | 瓦片雄鹰出图验收：三机位 + 关云 + 关阴影 + 关水波 + 战斗图 + 精英取景图，用 `debug_seek` 固定构图（同种子逐像素可复现） |
+| `tools/tile_eagle/shot.gd` | 瓦片雄鹰出图验收：三机位 + 关云 + 关阴影 + 关水波 + 要塞段 + 战斗图 + 精英取景 + 方舟 + **救援两连拍**（待救 / 起吊中），用 `debug_seek` 固定构图（同种子逐像素可复现） |
 | `tools/tile_eagle/_mesh_probe.gd` | 瓦片回归探针（headless）：AABB / off / 三角面数 / 贴瓦边的竖直面顶点数 / 水面层顶面世界高度 |
 | `tools/tile_eagle/_play_smoke.gd` | M1/M2 玩法冒烟（headless）：固定步长跑满波次表（240s，含精英段），查敌机生成 / 分层落位 / 落岛高度 / 弹幕峰值 / 击杀 / 死亡重开 / **精摆段与种子逐位无关** |
 | `tools/tile_eagle/_probe_wave.gd` | 水面 shader 诊断（headless 出图）：把浪光 sheen 放大 5.3 倍，肉眼判据「亮度栅格是否跨瓦连续」——若相位锚在局部坐标会按瓦格重置、露出 100px 见方的错位格 |

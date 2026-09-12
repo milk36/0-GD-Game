@@ -1165,6 +1165,24 @@ op 层直接调 <code>voxspec.compile_part</code>，不复制代码；校验层�
 </ul>
 <p>交互逐参数沿用 <code>SurvivorUnit</code>：XZ 4.5 内起吊 / 6.0 外松开（不惩罚）/ 0.6s 救起 / +1000 分。
 首次出现时顶部提示「飞到幸存者上方悬停即可施救」（3.5s 自动消失）。</p>
+<p><b>造型与比例（M3 后续调整）</b>：旧版复用的是方块雄鹰的 1×1×4 立柱小人（0.6 单位宽）——
+在 19.2 宽的岛上读不出人形。瓦片版改用 <code>SurvivorUnit.build_detailed()</code>：
+<b>3×2×8 体素</b>（双腿 / 橙色救生衣 / 白色反光条 / 肤色头 / 深色头盔），本体放大到
+<b>~2.7 世界单位高、1.0 宽</b>（旧 2.4 高、0.6 宽），加待机左右轻摆。旧 <code>build()</code>
+保持原样供方块雄鹰（原作冻结，§9），两边只共享营救参数；起吊缩放的基准缩放改为
+<b>按实例传入</b>（<code>apply_rescue_progress(..., base_scale)</code>），两种体型共用同一条营救曲线。
+取景踩坑：玩家悬停在幸存者<b>正上方</b>会让缩放中的小人被机身整个盖住（实测全图只剩 8 个
+橙色像素）——摆拍时玩家必须偏移 3~4 个单位（仍在起吊半径内），预热压到 0.2s
+（RESCUE_TIME=0.6，再长就救完了，画面里反而没有幸存者）。</p>
+<figure><img src="../tools/tile_eagle/tile_rescue.png" alt="幸存者待救" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>待救：幸存者站在岛面上挥手、头顶叹号；玩家在 4.5 起吊半径之外接近
+（取景用 <code>debug_spawn_survivor_on_screen</code> 摆拍——与波次路径的唯一区别是选点窗口，
+波次要「还在屏外」、取景图要「就在屏内」）</figcaption></figure>
+<figure><img src="../tools/tile_eagle/tile_rescue_ring.png" alt="起吊中" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>起吊中（d&lt;4.5 触发）：机腹进度圈填充、绳索连到幸存者、小人被提起并缩小
+（<code>apply_rescue_progress</code> 的 lift/shrink）。取景踩坑：玩家悬停在幸存者<b>正上方</b>会让
+缩放中的小人被机身整个盖住（实测全图只剩 8 个橙色像素）——摆拍时玩家必须偏移 3~4 个单位
+（仍在起吊半径内），预热压到 0.2s（RESCUE_TIME=0.6，再长就救完了）</figcaption></figure>
 
 <h3>18.2 三阶段方舟 Boss</h3>
 <p><code>boss.vox</code>（17×24×6，scale 0.5——全表唯一例外，与方块雄鹰同值）+ 三阶段行为，
@@ -1186,6 +1204,17 @@ op 层直接调 <code>voxspec.compile_part</code>，不复制代码；校验层�
 HUD。中间还踩了一个隐蔽的：进场目标改成 -9 后<b>完成判定仍写着 -14</b>，于是 Boss 一过 -14 就停
 （实测坐标钉在 -14.0 不动，三次调参数画面毫无反应）——两处必须同一个常量
 （<code>BOSS_HOLD_Z</code>）。<b>调「走到哪」之前先查「怎么算走到」</b>。</div>
+
+<h3>18.2c 重型武装直升机 E12（M3 后续新增的敌方型号）</h3>
+<p>需求方补的资产：<code>E12.vox</code>（13×25×8 = 3.9×7.5×2.4，比 E7 大一圈）+
+<code>E12R.vox</code>（五叶主旋翼，单层）。机头朝向用「座舱/航灯颜色定位」核对过
+（浅粉座舱 y16~21、品红航灯 y=24 → 机头在 y 大端 = 迎向玩家 ✓，无需翻转）。
+行为挂 <code>beh:"gunship"</code>：机枪短点射持续压制 + <b>短翼挂巢交替发射追踪导弹</b>
+（导弹限转 1.4 rad/s、同屏 ≤6 枚——垂直走位可甩开）。波次 t=246「武直双机交叉进场」，
+卡在战列舰（242）与方舟（250）之间。</p>
+<figure><img src="../tools/tile_eagle/tile_gunship.png" alt="重型武装直升机" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>重型武装直升机取景（<code>debug_spawn</code> 预热 1.6s，落在画面中上部、与自机斜向错开）：
+机身/短翼/尾梁/尾旋翼/主旋翼（旋转中）齐全，粉色为座舱盖，正对下方玩家</figcaption></figure>
 
 <h3>18.3 结算与存档（<code>tile_save.gd</code>）</h3>
 <p>死亡即出结算面板（得分 / 最高分+新纪录标注 / 击落 / 救援 / 方舟击破数，回车重开 / Q 返回）。
@@ -1222,6 +1251,21 @@ HUD。中间还踩了一个隐蔽的：进场目标改成 -9 后<b>完成判定�
 → MultiMesh 行回绕渲染）能承载一套完整的小游戏，并且把这套产线的全部纪律
 （边缘无缝 / 底层水色 / 水位线分层 / 贴边余量 / 精摆与种子解耦）沉淀在了
 <code>tools/vox/README.md</code> 与本文档里——后续任何一款瓦片化的作品直接从这份纪律起步。</p>
+
+<h3>18.2b 战列舰 E11（M3 后续新增的敌方型号）</h3>
+<p>需求方补的资产：<code>E11.vox</code>（舰体 25×41×8 = 7.5×12.3×2.4，全表最长、仅次于方舟）+
+<code>E11T.vox</code>（三联装主炮塔）。接入走既有型号表，只加一行 def + 一个行为分支：</p>
+<ul>
+<li><b>炮塔挂装</b>（<code>_spawn_air</code>）：按舰体 AABB 分数定位前后炮座（y=0.74 / 0.16），
+炮塔 AABB 底面坐在甲板面上（≈ 舰体 1/3 高处，对应建模时甲板在体素第 3 层）；两座炮塔初始 yaw
+<b>刻意错开</b>（+0.6 / −0.7），旋转收敛过程才看得见；</li>
+<li><b>独立旋转</b>（<code>beh:"battleship"</code>）：每座炮塔手算 yaw 并以 1.6 rad/s 限速逼近
+（±0.2 rad 内才算对准）——两塔节拍不同 = 「独立旋转」可读，对准后才交替齐射三联装；</li>
+<li><b>层</b>：LOW（掠海巨舰，与 E9 同层；弹幕仍在 AIR，靠枪焰桥接 §16.2）。</li>
+</ul>
+<figure><img src="../tools/tile_eagle/tile_battleship.png" alt="战列舰" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>战列舰取景（<code>debug_spawn</code> 摆到 x=−6、预热 2.8s）：舰体 + 甲板 + 舰桥 +
+前后双炮塔，粉色为炮塔齐射的枪焰与敌弹。取景踩坑：摆在 x=0 会与玩家舰首整个叠住，必须横向错开</figcaption></figure>
 
 <p style="margin-top:40px;color:#5a6486">— 设计定稿于 2026-09-11（M3 实施于 2026-09-12） · demo-game · Godot 4.7.2 ·
 依据 <code>llmdoc/voxel-to-tile.html</code>（方案评估，本方案的上级文档）、

@@ -68,6 +68,8 @@ var hud: Label
 var combat: Node3D                     # M1 玩法最小集（弹幕/敌机/计分/死亡）
 
 var cam_mode := 0                      # 0=68° 斜俯视 1=90° 纯俯视 2=等距
+var cam_pitch := 68.0                  # 模式 0 的俯仰角（度）。[ ] 微调 ±1°（Shift ±5°），F1 复位；
+                                       # 上限夹 89°——90° 时相机偏移与 UP 平行，look_at 会报错
 var paused := false
 var wire := false
 var clouds_on := true
@@ -453,7 +455,7 @@ func _update_camera() -> void:
 	var off: Vector3
 	match cam_mode:
 		0:
-			var pitch := deg_to_rad(68.0)
+			var pitch := deg_to_rad(cam_pitch)
 			off = Vector3(0, 40.0 * sin(pitch), 40.0 * cos(pitch))
 		1:
 			off = Vector3(0, 42.0, 0.01)
@@ -475,7 +477,7 @@ func _refresh_hud(delta: float) -> void:
 	var armor_txt := ""
 	for i in Combat.ARMOR_MAX:
 		armor_txt += "◆" if i < combat.armor else "◇"
-	hud.text = "分数 %d   装甲 %s   星 %d   击落 %d   敌机 %d   救援 %d%s\n瓦片雄鹰 M3   FPS %d   实例 %d   绘制 %d   种子 %d · 空域 %.1f · 云 %.0f~%.0f · 水波 %s%s      F1/F2/F5 相机  F3 阴影  C 云  V 水波  P 暂停  R 重摇  G 网格  Q 返回" % [
+	hud.text = "分数 %d   装甲 %s   星 %d   击落 %d   敌机 %d   救援 %d%s\n瓦片雄鹰 M3   FPS %d   实例 %d   绘制 %d   种子 %d · 空域 %.1f · 云 %.0f~%.0f · 水波 %s%s      F1/F2/F5 相机（俯仰 %.0f°，[ ] 微调 / Shift ×5 / F1 复位）  F3 阴影  C 云  V 水波  P 暂停  R 重摇  G 网格  Q 返回" % [
 		combat.score, armor_txt, combat.star_cnt, combat.kills, combat.enemy_count(),
 		combat.rescued,
 		"  [暂停]" if paused else "",
@@ -483,6 +485,7 @@ func _refresh_hud(delta: float) -> void:
 		Altitude.AIR, Altitude.CLOUD_LO, Altitude.CLOUD_HI,
 		"开" if wave_on else "关",
 		"" if clouds_on else "  [无云]",
+		cam_pitch,
 	]
 	hud_center.visible = combat.dead
 	if combat.dead:
@@ -514,10 +517,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F1:
 				cam_mode = 0
+				cam_pitch = 68.0                    # 复位默认俯仰（调试完一键回标准机位）
 			KEY_F2:
 				cam_mode = 1
 			KEY_F5:
 				cam_mode = 2
+			KEY_BRACKETLEFT, KEY_BRACKETRIGHT:
+				# 俯仰角调试（仅模式 0 有意义）：[ ] ±1°，Shift ±5°；HUD 与控制台同步显示，
+				# 选定后把打印出的度数填回上面的 cam_pitch 默认值即可
+				if cam_mode == 0:
+					var dir := -1.0 if event.keycode == KEY_BRACKETLEFT else 1.0
+					var step := 5.0 if event.shift_pressed else 1.0
+					cam_pitch = clampf(cam_pitch + dir * step, 40.0, 89.0)
+					var pp := deg_to_rad(cam_pitch)
+					print("相机俯仰 %.1f°  off=Vector3(0, %.1f, %.1f)"
+							% [cam_pitch, 40.0 * sin(pp), 40.0 * cos(pp)])
 			KEY_F3:
 				sun.shadow_enabled = not sun.shadow_enabled
 			KEY_C:

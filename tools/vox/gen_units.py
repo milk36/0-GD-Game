@@ -615,6 +615,87 @@ def build_e6():
     return v
 
 
+def build_e12():
+    """E12 重型武装直升机·机身（13×25×8）：串列双座舱（前炮手 EC 玻璃 / 后驾驶员
+    EC 玻璃）+ 短翼双挂巢 + 细尾梁 + 水平尾翼 + 垂尾 + 静态尾桨 + 机鼻机枪塔。
+    机头朝 **+Y**（迎向玩家）。主旋翼另出 E12R（五叶桨盘，独立层旋转）。"""
+    c = 6
+    v = {}
+    # 机身核心（y 8..20，宽 3 / z 2..4）
+    for y in range(8, 21):
+        for dx in range(-1, 2):
+            v[(c + dx, y, 2)] = ET
+            v[(c + dx, y, 3)] = EG
+            v[(c + dx, y, 4)] = EH
+    # 发动机舱（y 6..10，两侧加宽到 dx ±3）
+    for y in range(6, 11):
+        for sdx in (-3, 3):
+            v[(c + sdx, y, 2)] = ET
+            v[(c + sdx, y, 3)] = EG
+            v[(c + sdx, y, 4)] = ET
+    # 串列座舱：后驾驶员（y 15..19，z 4）+ 前炮手（y 19..22，z 3，更低的机鼻斜面）
+    for y in range(15, 20):
+        for dx in (-1, 0, 1):
+            v[(c + dx, y, 4)] = EC if y >= 16 else EH
+    for y in range(19, 23):
+        for dx in (-1, 0, 1):
+            v[(c + dx, y, 3)] = EC if y <= 21 else EG
+    v[(c, 22, 4)] = EW                                                 # 机鼻顶
+    for z in (3, 4):                                                   # 机鼻斜面收尖
+        v[(c, 23, z)] = EW
+    # 机鼻机枪塔（y 23..24，z 1..2；机枪口 ER）
+    for y in (23, 24):
+        v[(c, y, 1)] = ET
+        v[(c, y, 2)] = EG
+    v[(c, 24, 1)] = ER
+    # 短翼（y 10..12，dx ±6）：翼面 + 翼下导弹巢（ET 深）+ 翼尖照明（EW）
+    for y in (10, 11, 12):
+        for dx in range(-6, 7):
+            v[(c + dx, y, 2)] = EH if abs(dx) >= 2 else v.get((c + dx, y, 2), EG)
+    for y in (10, 11, 12):
+        for sdx in (-6, 6):
+            v[(c + sdx, y, 3)] = ET                                    # 翼下挂巢
+    v[(c - 6, 11, 4)] = EW
+    v[(c + 6, 11, 4)] = EW
+    # 尾梁（y 2..7，宽 1，z 3）+ 水平尾翼（y 2..3，dx ±3）
+    for y in range(2, 8):
+        v[(c, y, 3)] = EG
+    for y in (2, 3):
+        for dx in range(-3, 4):
+            v[(c + dx, y, 3)] = EH
+    # 垂尾（y 0..3，z 5..7）+ 静态尾桨（z=6，y=1 小十字）
+    for y in range(0, 4):
+        for z in (5, 6):
+            v[(c, y, z)] = ET
+    v[(c, 2, 7)] = EH
+    for d in range(-2, 3):
+        if d != 0:
+            v[(c + d, 1, 6)] = EH
+    v[(c, 1, 5)] = EH
+    v[(c, 1, 7)] = EH
+    # 起落撬（y 5 / y 17 两侧短撬，z=0）
+    for py in (5, 17):
+        for sdx in (-2, 2):
+            v[(c + sdx, py, 0)] = ET
+            v[(c + sdx, py + 1, 0)] = ET
+    return v
+
+
+def build_e12_rotor():
+    """E12 主旋翼桨盘（19×19×1）：**五叶**（每 72° 一片，与 E3/E7 的四叶十字区分）。
+    极坐标整格散点画叶，中心对称性由奇数叶天然破缺——旋转读感比四叶更"直升机"。"""
+    c = 8
+    v = {(c, c, 0): ER}                                                # 桨毂（阵营色）
+    for k in range(5):
+        a = math.tau * k / 5.0
+        for t in range(2, 9):                                          # 桨叶半径 2..8
+            px = c + int(round(math.cos(a) * t))
+            py = c + int(round(math.sin(a) * t))
+            col = EC if t >= 7 else (EL if t >= 4 else EH)
+            v[(px, py, 0)] = col
+    return v
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     jobs = [
@@ -628,6 +709,9 @@ def main():
         ("E4.vox", build_e4(), "_preview_E4.png", 6),
         ("E5.vox", build_e5(), "_preview_E5.png", 6),
         ("E6.vox", build_e6(), "_preview_E6.png", 6),
+        # E11/E11T 由 tools/vox/gen_e11.py 专管（返工版舰型 17×46，勿在本文件重建）
+        ("E12.vox", build_e12(), "_preview_E12.png", 5),
+        ("E12R.vox", build_e12_rotor(), "_preview_E12R.png", 5),
     ]
     for name, vox, png, cell in jobs:
         out = os.path.join(OUT_DIR, name)

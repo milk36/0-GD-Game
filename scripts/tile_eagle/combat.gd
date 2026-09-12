@@ -22,6 +22,7 @@ const VoxelPool = preload("res://scripts/voxel_eagle/pools.gd")
 const VoxReader = preload("res://scripts/voxel_eagle/vox_reader.gd")
 const Altitude = preload("res://scripts/tile_eagle/altitude.gd")
 const Waves = preload("res://scripts/tile_eagle/waves.gd")
+const Tiles = preload("res://scripts/tile_eagle/tiles.gd")
 const SurvivorUnit = preload("res://scripts/voxel_eagle/survivor_unit.gd")
 const RescueRing = preload("res://scripts/voxel_eagle/rescue_ring.gd")
 const TileSave = preload("res://scripts/tile_eagle/tile_save.gd")
@@ -83,6 +84,13 @@ var _laser := {"st": 0, "t": 0.0, "org": Vector3.ZERO, "dir": Vector3.FORWARD, "
 var _laser_warn: MeshInstance3D
 var _laser_beam: MeshInstance3D
 var _boss_mat: StandardMaterial3D   # 阶段切换时泛红（毁伤外观）
+# ---- E12 追踪导弹（独立小数组：弹池 eb 只支持直线，导弹要限转追踪；同屏 ≤6 枚） ----
+var _missiles: Array = []           # {n: MeshInstance3D, v: Vector3, life: float}
+const MISSILE_SPD := 11.0
+const MISSILE_TURN := 40.0          # 速度向量的转向限幅（单位向量·每秒；换算 ≈1.4 rad/s，可躲）
+const MISSILE_LIFE := 6.0
+const MISSILE_CD := 4.5             # 导弹齐射间隔（左右短翼交替）
+const MISSILE_MAX_AIR := 6          # 同屏上限（挤占保护）
 # ---- M3：结算与存档 ----
 var best := 0                       # 历史最高分（setup 时读档）
 var new_best := false
@@ -104,7 +112,8 @@ func setup() -> void:
 	stars = _mk_pool(256, un)
 	fx = _mk_pool(320, un)
 	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4",
-			"E5", "E6", "E7", "E7R", "E8", "E9", "E10", "boss"]:
+			"E5", "E6", "E7", "E7R", "E8", "E9", "E10", "E11", "E11T",
+			"E12", "E12R", "boss"]:
 		_meshes[k] = VoxReader.read_mesh("res://assets/vox/units/%s.vox" % k)
 	# 营救件：绳索（细长盒，按目标距离缩放 z）+ 机腹营救进度圈（挂在玩家机上）
 	var rm := StandardMaterial3D.new()
@@ -144,6 +153,9 @@ func reset() -> void:
 	for s in survivors:
 		(s["n"] as Node).queue_free()
 	survivors.clear()
+	for mi in _missiles:
+		(mi["n"] as Node).queue_free()
+	_missiles.clear()
 	pb.clear()
 	eb.clear()
 	stars.clear()
@@ -186,6 +198,7 @@ func update(delta: float) -> void:
 		_update_bullets(delta)          # 死亡后让残弹飞完，画面不会瞬间定格
 		_update_stars(delta)
 		_update_laser(delta)            # 激光同理：否则预警线/光束最多冻结 0.8s 在结算画面下
+		_update_missiles(delta)         # 追踪导弹同理由：飞完/自毁（伤害判定有 not dead 守卫）
 		return
 	invuln = maxf(invuln - delta, 0.0)
 	shake = maxf(shake - delta * 2.0, 0.0)
@@ -198,6 +211,7 @@ func update(delta: float) -> void:
 	_update_survivors(delta)
 	_spawn_survivors_tick(delta)
 	_update_laser(delta)
+	_update_missiles(delta)
 
 
 ## 波次脚本：到点整组刷出；表跑完往回退一个周期并从头循环（走廊无尽 → 波次也无尽）
@@ -284,17 +298,48 @@ func _spawn_survivors_tick(delta: float) -> void:
 
 
 func _spawn_survivor(p: Vector3) -> void:
-	var parts := SurvivorUnit.build()
+	# 细致版小人（3×2×8 体素，~2.7 世界单位高）—— 旧版 build() 是 1×1 立柱，在岛上读不出人形
+	var parts := SurvivorUnit.build_detailed()
 	var n: Node3D = parts["n"]
 	add_child(n)
 	# 与地面单位同一条贴地规则：AABB 底面坐到落点上（mesh 以键均值居中，原点在半高）
 	var aabb: AABB = n.mesh.get_aabb()
-	n.position = Vector3(p.x, p.y - aabb.position.y * SurvivorUnit.SCALE, p.z)
+	var sc: float = n.scale.x
+	n.position = Vector3(p.x, p.y - aabb.position.y * sc, p.z)
 	survivors.append({
 		"n": n, "ex": parts["ex"], "arm_l": parts["arm_l"], "arm_r": parts["arm_r"],
-		"roping": false, "prog": 0.0, "anchor_y": n.position.y,
+		"roping": false, "prog": 0.0, "anchor_y": n.position.y, "base_scale": sc,
 	})
 	host.hint("飞到幸存者上方悬停即可施救", 3.5)
+
+
+## 出图用（tools/tile_eagle/shot.gd）：把幸存者直接摆在**当前画面里**的超级瓦可落位列上。
+## 与波次路径的唯一区别是选点窗口——波次只认「还在屏外」的瓦（炮台不能在玩家眼前凭空出现），
+## 取景图恰恰要「就在屏内」。返回 false = 画面里没有带可落位面的超级瓦。
+func debug_spawn_survivor_on_screen(x_target: float) -> bool:
+	var best := Vector3.INF
+	var best_d := 1e9
+	var vis: int = int(host.VIS_ROWS)
+	for f in host.layout.features:
+		var span: int = int(f.span)
+		var j: int = host._screen_row(int(f.row0) + span - 1)
+		if j < 1 or j > vis - 2:
+			continue                                  # 只要画面内的
+		var td: Dictionary = Tiles.get_tile(String(f.tile))
+		var landing: Array = td.get("landing", [])
+		if landing.is_empty():
+			continue
+		var xf: Transform3D = host._cell_xf(int(f.col0), j, span, td.off, 0)
+		for sp in landing:
+			var w: Vector3 = xf * sp
+			var d: float = absf(w.x - x_target)
+			if d < best_d:
+				best_d = d
+				best = w
+	if best == Vector3.INF:
+		return false
+	_spawn_survivor(best)
+	return true
 
 
 ## 幸存者：随地貌滚动；玩家悬停在 XZ 半径内开始起吊，离开范围绳索收回（不惩罚）。
@@ -317,17 +362,20 @@ func _update_survivors(delta: float) -> void:
 		ex.visible = d < 8.0 and not bool(s["roping"])
 		SurvivorUnit.mark_bob(ex, _t)
 		SurvivorUnit.pose(s["arm_l"], s["arm_r"], _t, bool(s["roping"]))
+		# 待机摆动：非起吊时轻微左右摇（读作"在等"），起吊中回正
+		n.rotation.z = 0.0 if bool(s["roping"]) else sin(_t * 2.2) * 0.06
 		if bool(s["roping"]):
 			if d > SurvivorUnit.RESCUE_LEAVE or dead:
 				s["roping"] = false
 				s["prog"] = 0.0
-				SurvivorUnit.reset_rescue(n, float(s["anchor_y"]))
+				SurvivorUnit.reset_rescue(n, float(s["anchor_y"]), float(s["base_scale"]))
 				rope.visible = false
 			else:
 				# 停止随地面滚动，原地等玩家悬停拉起（否则 0.6 秒内就被拽出半径）
 				n.position.z -= host.scroll_spd * delta
 				s["prog"] = float(s["prog"]) + delta / SurvivorUnit.RESCUE_TIME
-				if SurvivorUnit.apply_rescue_progress(n, float(s["prog"]), float(s["anchor_y"])):
+				if SurvivorUnit.apply_rescue_progress(n, float(s["prog"]),
+						float(s["anchor_y"]), float(s["base_scale"])):
 					rescued += 1
 					score += 1000
 					SFX.play("eagle_rescue")
@@ -411,7 +459,9 @@ func _spawn_ground(type: String, p: Vector3) -> void:
 		"vz": host.scroll_spd, "x0": p.x,
 	}
 	if def.has("head"):   # 炮台炮头：按两者 AABB 反推，使炮头底面正好落在底座顶面（改模型高度不必改代码）
+		# 挂件缩放归一（同旋翼——E1H 炮头同样被复合缩放吃掉了 2/3）
 		var head := _new_unit_node(def["head"])
+		head.scale = Vector3.ONE
 		head.position = Vector3(0, n.mesh.get_aabb().end.y - head.mesh.get_aabb().position.y, 0)
 		n.add_child(head)
 		e["head"] = head
@@ -437,10 +487,33 @@ func _spawn_air(type: String, x: float, vx: float) -> void:
 		"add_t": 4.0, "laser_t": 3.0, "sp_t": 0.0, "spiral_a": 0.0,
 	}
 	if def.has("rotor"):   # 旋翼层只转自己：机身朝向稳定，旋翼转得快也读得出机型
+		# 挂件缩放归一：旋翼是「已缩放主模型(0.3)」的子节点，_new_unit_node 默认再给
+		# 0.3 → 实际只渲染 1/3（E12R/E7R/E3R 全中招，"主旋翼比例不对"的根因）。
+		# 模型都按全尺寸建（README 单位表即全尺寸），归一后才是建模意图。
 		var rotor := _new_unit_node(def["rotor"])
+		rotor.scale = Vector3.ONE
 		rotor.position = Vector3(0, n.mesh.get_aabb().end.y - rotor.mesh.get_aabb().position.y, 0)
 		n.add_child(rotor)
 		e["rotor"] = rotor
+	if String(def["beh"]) == "battleship":   # 双三联装炮塔：按舰体 AABB 分数定位前后炮座
+		var ha: AABB = n.mesh.get_aabb()
+		var deck_y := ha.position.y + ha.size.y * 0.5    # ≈ 炮座基座顶面（gen_e11.py 打印的分数）；改舰体层高需复核
+		# ⚠️ 炮塔是**已缩放舰体（0.3）的子节点**，_new_unit_node 默认又给 0.3 → 实际只渲染
+		# 0.09（应有的 1/3）——"炮塔偏小"的根因是这条复合缩放，不是模型。子节点缩放归一成
+		# 舰体本地 1:1，turret_scale 供整体放大（2.0 = 需求方的"放大两倍"）。
+		var tscale: float = float(def.get("turret_scale", 1.0))
+		for pk in [["t_f", 0.75], ["t_a", 0.16]]:        # 前后炮座 fraction（与 gen_e11.py 打印一致：0.75/0.16）
+			var tt := _new_unit_node("E11T", def)
+			tt.scale = Vector3.ONE * tscale
+			var tb: AABB = tt.mesh.get_aabb()
+			tt.position = Vector3(0, deck_y - tb.position.y * tscale - 0.3,
+					ha.position.z + ha.size.z * pk[1])
+			n.add_child(tt)
+			e[pk[0]] = tt
+			e[pk[0] + "_yaw"] = PI + (0.6 if pk[0] == "t_f" else -0.7)  # 初始错开 → 收敛过程可见
+			tt.rotation.y = float(e[pk[0] + "_yaw"])
+		e["cd_f"] = 1.2
+		e["cd_a"] = 2.5
 	enemies.append(e)
 
 
@@ -556,8 +629,96 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 							int(def.get("ring_n", 12)), float(def.get("ring_spd", 6.0)))
 				else:
 					_fire_aimed(n.global_position, def)
+		"battleship":
+			# 战列舰：低速压进 + 微幅横移；前后炮塔**各自限速转向**玩家（初始角度错开，
+			# 两塔旋转节拍不同 = 独立旋转可读），转到对准（±0.2rad 内）才交替齐射三联装
+			n.position.x = clampf(float(e["x0"]) + sin(float(e["age"]) * 0.4) * 2.0, -13.0, 13.0)
+			var in_r := _in_range(gp, def)
+			for tk: String in ["t_f", "t_a"]:
+				var tt: Node3D = e.get(tk)
+				if tt == null:
+					continue
+				var tgp := tt.global_position
+				# 手算 look_at 的等价 yaw 并限速逼近（1.6 rad/s）：-Z 指向玩家 ⟺ yaw=atan2(-dx,-dz)
+				var want := atan2(-(host.player.position.x - tgp.x),
+						-(host.player.position.z - tgp.z))
+				var diff := wrapf(want - float(e[tk + "_yaw"]), -PI, PI)
+				e[tk + "_yaw"] = float(e[tk + "_yaw"]) + clampf(diff, -1.6 * delta, 1.6 * delta)
+				tt.rotation.y = float(e[tk + "_yaw"])
+				var cdk := "cd_" + tk.substr(2)
+				e[cdk] = float(e[cdk]) - delta
+				if in_r and float(e[cdk]) <= 0.0 and absf(diff) < 0.2:
+					e[cdk] = float(def["cd"])
+					_bridge(def, tgp)
+					_fire_aimed(tgp, def)
+		"gunship":
+			# 重型武装直升机：机枪短点射持续压制 + 短翼挂巢交替发射追踪导弹。
+			# 导弹限转（MISSILE_TURN）→ 垂直走位可甩开；同屏 ≤6 枚挤占保护。
+			n.position.x = clampf(float(e["x0"]) + sin(float(e["age"]) * 0.9) * 4.0, -13.0, 13.0)
+			var hr: Node3D = e.get("rotor")
+			if hr != null:
+				hr.rotate_y(delta * 13.0)
+			if _in_range(gp, def) and _cd_tick(e, def, delta):
+				_bridge(def, n.global_position + Vector3(0, -0.6, 1.5))
+				_fire_aimed(n.global_position + Vector3(0, -0.6, 1.5), def)
+			e["mt"] = float(e.get("mt", 2.5)) - delta
+			if _in_range(gp, def) and float(e["mt"]) <= 0.0 \
+					and _missiles.size() < MISSILE_MAX_AIR:
+				e["mt"] = MISSILE_CD
+				e["mode"] = 1 - int(e["mode"])          # 左右短翼交替
+				_launch_missile(n.global_position, -1.0 if int(e["mode"]) == 0 else 1.0)
 		"boss":
 			_update_boss(e, n, delta)
+
+
+## E12 追踪导弹：速度向量以 MISSILE_TURN 限幅向「指向玩家的理想方向」偏转
+## （等价于限转速率 rad/s × 弹速），实现"能追但躲得开"。拖尾由 fx 池粒子承担。
+func _launch_missile(from: Vector3, side: float) -> void:
+	var n := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.34, 0.34, 1.1)
+	bm.material = VoxelModel.unshaded_material()
+	n.mesh = bm
+	n.cast_shadow = 0
+	n.position = from + Vector3(side * 1.8, -0.2, 0.0)
+	add_child(n)
+	_missiles.append({
+		"n": n,
+		"v": Vector3(side * 2.5, 0.0, MISSILE_SPD * 0.55).normalized() * MISSILE_SPD,
+		"life": MISSILE_LIFE,
+	})
+
+
+func _update_missiles(delta: float) -> void:
+	var i := 0
+	while i < _missiles.size():
+		var mi: Dictionary = _missiles[i]
+		var n: Node3D = mi["n"]
+		mi["life"] = float(mi["life"]) - delta
+		var gone: bool = float(mi["life"]) <= 0.0 or n.position.z > RECYCLE_Z
+		if not gone:
+			var to_p: Vector3 = host.player.position - n.position
+			to_p.y = 0.0
+			if not dead and to_p.length() < 1.0:        # 命中：不靠池判定，直接结算
+				hit_player()
+				gone = true
+			if not gone:
+				var want := to_p.normalized() * MISSILE_SPD
+				var v: Vector3 = mi["v"]
+				var nv := v + (want - v).limit_length(MISSILE_TURN * delta)
+				nv = nv.normalized() * MISSILE_SPD
+				mi["v"] = nv
+				n.position += nv * delta
+				n.look_at(n.position + nv)
+				fx.spawn(n.position - nv.normalized() * 0.7,
+						-nv * 0.22 + Vector3(_rng.randf_range(-1, 1), _rng.randf_range(0, 2),
+								_rng.randf_range(-1, 1)),
+						COL_WHITE, 0.30, 0.26, 0.0, Vector3.ZERO, true)
+		if gone:
+			n.queue_free()
+			_missiles.remove_at(i)
+			continue
+		i += 1
 
 
 ## 开火节拍：按 def.cd 倒计时，到点返回 true 并重置

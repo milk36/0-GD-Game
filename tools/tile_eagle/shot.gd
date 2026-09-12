@@ -47,11 +47,31 @@ const SHOTS := [
 	{"mode": 0, "name": "tile_elite.png", "clouds": false, "elite": true, "spawn": [
 		["E6", -3.0, -32.0], ["E10", 5.0, -28.0], ["E5", -10.0, -24.0], ["E7", 10.0, -20.0],
 	]},
-	# 方舟战舰（M3）：debug_spawn 摆在中距，预热 2.8s 让它进完场（z→-14）并开一轮扇形。
+	# 方舟战舰（M3）：debug_spawn 摆在中距，预热 2.8s 让它进完场（z→-9）并开一轮扇形。
 	# 血条在 HUD 右上角（boss_info 非空即显示）。
 	{"mode": 0, "name": "tile_boss.png", "clouds": false, "elite": true, "spawn": [
 		["BOSS", 0.0, -30.0],
 	]},
+	# 战列舰（E11）：摆到 x=-6 避开玩家。两张对照 ——
+	# turret_scale=1.0（修好复合缩放后的正确比例）与 2.0（需求方"放大两倍"）
+	{"mode": 0, "name": "tile_battleship.png", "clouds": false, "elite": true, "spawn": [
+		["E11", -6.0, -22.0]], "turret_scale": 1.0},
+	{"mode": 0, "name": "tile_battleship_2x.png", "clouds": false, "elite": true, "spawn": [
+		["E11", -6.0, -22.0]], "turret_scale": 2.0},
+	# 重型武装直升机（E12）：预热 1.6s 后落在 z≈-3.3（画面中上部），x=-8 与玩家斜向错开
+	{"mode": 0, "name": "tile_gunship.png", "clouds": false, "elite": true,
+			"preroll": 1.6, "spawn": [
+		["E12", -8.0, -18.0],
+	]},
+	# 幸存者救援（M3）两张：幸存者都摆在画面内的岛面上，玩家偏移悬停——
+	# 正上方会把缩放中的小人整个盖在机身后面（实测只剩 8 个橙色像素）。
+	# ① 待救：玩家在 4.5 起吊半径之外 → 小人满比例挥手、头顶叹号可见；
+	# ② 起吊中：d < 4.5 触发 → 绳索拉紧 + 进度圈 + 小人被提起。预热压到 0.2~0.25s
+	#    （RESCUE_TIME 只有 0.6s，再长就救完了，画面里反而没有幸存者）。
+	{"mode": 0, "name": "tile_rescue.png", "clouds": false, "elite": true, "rescue": true,
+			"rescue_off": Vector2(5.5, 0.0), "preroll": 0.25},
+	{"mode": 0, "name": "tile_rescue_ring.png", "clouds": false, "elite": true, "rescue": true,
+			"rescue_off": Vector2(4.0, 1.5), "preroll": 0.25},
 ]
 
 ## 精英取景图的固定步长预热（秒）：只够它们开火 1~2 轮、且 < 第一波 t=6 → 画面里只有摆拍单位
@@ -98,20 +118,56 @@ func _initialize() -> void:
 			(combat as Node).set("gun_on", false)   # 关主炮：否则持续弹束会在预热期把摆拍单位打爆
 			inst.set("paused", false)
 			inst.set_process(false)
-			for sp in shot["spawn"]:
+			for sp in shot.get("spawn", []):
 				(combat as Node).call("debug_spawn", String(sp[0]), float(sp[1]), float(sp[2]))
-			for i in int(ELITE_SEC / PREROLL_DT):
+			if shot.has("turret_scale"):
+				# 炮塔缩放对照：spawn 之后按比例重设炮塔节点，并重算"坐到甲板面"的高度
+				var k: float = float(shot["turret_scale"])
+				for e in (combat as Node).get("enemies"):
+					if String(e["t"]) != "E11":
+						continue
+					var ship: Node3D = e["n"]
+					var ha: AABB = ship.mesh.get_aabb()
+					var deck_y: float = ha.position.y + ha.size.y * 0.5
+					for tk in ["t_f", "t_a"]:
+						var ttn: Node3D = e[tk]
+						var tb: AABB = ttn.mesh.get_aabb()
+						ttn.scale = Vector3.ONE * k
+						ttn.position.y = deck_y - tb.position.y * k - 0.3
+			var sec: float = float(shot.get("preroll", ELITE_SEC))
+			if bool(shot.get("rescue", false)):
+				# 取景用：幸存者摆在画面内的岛面，玩家悬停到它头顶（XZ 对齐，高度走空域）
+				var ok: bool = (combat as Node).call("debug_spawn_survivor_on_screen", 0.0)
+				print("幸存者取景投放：%s" % ("成功" if ok else "失败（画面内无可落位面）"))
+				if ok:
+					var s0: Dictionary = (combat as Node).get("survivors")[0]
+					var sn: Node3D = s0["n"]
+					var pn: Node3D = inst.get("player")
+					var ro: Vector2 = shot.get("rescue_off", Vector2.ZERO)
+					pn.position.x = sn.position.x + ro.x
+					pn.position.z = sn.position.z + ro.y
+					pn.position.y = 7.5    # altitude.gd 的 AIR
+			for i in int(sec / PREROLL_DT):
 				inst.call("_process", PREROLL_DT)
 			inst.set_process(true)
+			var surv_txt := "  幸存者 %d（救援中 %d）" % [
+				(combat as Node).get("survivors").size(), int(combat.get("rescued"))]
+			if bool(shot.get("rescue", false)) and not (combat as Node).get("survivors").is_empty():
+				var sr: Dictionary = (combat as Node).get("survivors")[0]
+				var sn2: Node3D = sr["n"]
+				var pn2: Node3D = inst.get("player")
+				print("救援取景：幸存者@%s prog=%.2f roping=%s  玩家@%s"
+						% [str(sn2.position), float(sr["prog"]), str(sr["roping"]),
+							str(pn2.position)])
 			var al: Array = []
 			for e in (combat as Node).get("enemies"):
 				al.append("%s@(%.1f, %.1f, %.1f)" % [String(e["t"]),
 						(e["n"] as Node3D).position.x, (e["n"] as Node3D).position.y,
 						(e["n"] as Node3D).position.z])
-			print("精英取景：敌机 %d（%s）  敌弹 %d  击落 %d"
+			print("精英取景：敌机 %d（%s）  敌弹 %d  击落 %d%s"
 					% [(combat as Node).call("enemy_count"), ", ".join(al),
 						int(((combat as Node).get("eb") as MultiMeshInstance3D).get("count")),
-						(combat as Node).get("kills")])
+						(combat as Node).get("kills"), surv_txt])
 		elif bool(shot.get("combat", false)):
 			# 先跳行把世界复位到确定状态（此时还没有敌机，不存在错位），再固定步长空跑。
 			# 少了这一步，预热起点会随"引擎实时跑了多少帧"变化，出图就不逐像素可复现了。
