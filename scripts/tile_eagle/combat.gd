@@ -600,11 +600,11 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 				_bridge(def, n.global_position)
 				_fire_ring(n.global_position, def, float(e["age"]))
 		"raider":
-			# 双体炮艇：LOW 层掠海冲撞，前向点射
+			# 双体炮艇：LOW 层掠海冲撞，前向点射（导弹弹素材：细长 + 拖尾）
 			n.position.x += float(e["vx"]) * delta
 			if _in_range(gp, def) and _cd_tick(e, def, delta):
 				_bridge(def, n.global_position)
-				_fire_aimed(n.global_position, def)
+				_fire_aimed(n.global_position, def, -1, -1, -1, B_MISSILE)
 		"elite":
 			# 精英炮舰：缓推 + 微幅横移；hp 掉到 40% 以下加速逃逸（与原作同手法）
 			var boost := float(def.get("flee", 6.0)) if int(e["hp"]) * 5 < int(def["hp"]) * 2 else 0.0
@@ -660,7 +660,7 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 				hr.rotate_y(delta * 13.0)
 			if _in_range(gp, def) and _cd_tick(e, def, delta):
 				_bridge(def, n.global_position + Vector3(0, -0.6, 1.5))
-				_fire_aimed(n.global_position + Vector3(0, -0.6, 1.5), def)
+				_fire_aimed(n.global_position + Vector3(0, -0.6, 1.5), def, -1, -1, -1, B_NEEDLE)
 			e["mt"] = float(e.get("mt", 2.5)) - delta
 			if _in_range(gp, def) and float(e["mt"]) <= 0.0 \
 					and _missiles.size() < MISSILE_MAX_AIR:
@@ -679,7 +679,7 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 					if roundi(bx / 3.0) == skip:
 						continue                       # 缺口：玩家那一列不放
 					var q := Vector3(bx, Altitude.AIR, gp.z)
-					_enemy_bullet(q, Vector3(0, 0, 6.2), COL_PINK)
+					_enemy_bullet(q, Vector3(0, 0, 6.2), COL_PINK, B_SHELL)
 		"boss":
 			_update_boss(e, n, delta)
 
@@ -753,17 +753,34 @@ func _in_range(gp: Vector3, def: Dictionary) -> bool:
 
 # ================= 弹幕 =================
 
-## 敌弹：统一放在 AIR 层（见文件头注）。白芯 + 粉壳提升正交俯视下的可读性。
-func _enemy_bullet(p: Vector3, v: Vector3, col: Color) -> void:
+## ---- 弹幕素材种类（视觉差异化；行为仍由各 beh 分支决定） ----
+## orb=圆玉（粉壳白芯，基准）needle=细长速弹（朝速度方向）shell=重炮弹（大慢方）
+## missile=导弹弹（细长 + fx 拖尾，trail 标志由 _update_bullets 每帧补烟）
+const B_ORB := 0
+const B_NEEDLE := 1
+const B_SHELL := 2
+const B_MISSILE := 3
+
+## 敌弹：统一放在 AIR 层（见文件头注）。orb 为粉壳 + 白芯提升正交俯视下的可读性；
+## needle/missile 为细长条（pools 按速度方向定向）；shell 为大慢方弹。
+func _enemy_bullet(p: Vector3, v: Vector3, col: Color, kind := B_ORB) -> void:
 	var q := Vector3(p.x, Altitude.AIR, p.z)
-	eb.spawn(q, v, col, 0.62, 8.0)
-	eb.spawn(q, v, COL_WHITE, 0.3, 8.0)
+	match kind:
+		B_NEEDLE:
+			eb.spawn(q, v, col, 1.0, 8.0, 0.0, Vector3.ZERO, false, 1)
+		B_SHELL:
+			eb.spawn(q, v, col, 0.9, 8.0, 0.0, Vector3.ZERO, false, 0)
+		B_MISSILE:
+			eb.spawn(q, v, col, 1.1, 8.0, 0.0, Vector3.ZERO, false, 1, 1)
+		_:
+			eb.spawn(q, v, col, 0.62, 8.0)
+			eb.spawn(q, v, COL_WHITE, 0.3, 8.0)
 
 
 ## 自机狙：以玩家方位角为基准，n 发在 spread 度内均匀散布（n=1 即单发直射）
 ## n/spread/spd 传 -1 = 按 def 表取值（精英单位的"混合弹幕"才需要显式覆盖）
 func _fire_aimed(from: Vector3, def: Dictionary,
-		n: int = -1, spread: float = -1.0, spd: float = -1.0) -> void:
+		n: int = -1, spread: float = -1.0, spd: float = -1.0, kind := B_ORB) -> void:
 	var to_p: Vector3 = host.player.position - from
 	to_p.y = 0.0
 	var base := atan2(to_p.x, -to_p.z)
@@ -776,7 +793,7 @@ func _fire_aimed(from: Vector3, def: Dictionary,
 	for k in n:
 		var off := 0.0 if n == 1 else deg_to_rad(spread) * (float(k) / float(n - 1) - 0.5)
 		var a := base + off
-		_enemy_bullet(from, Vector3(sin(a) * spd, 0.0, -cos(a) * spd), COL_PINK)
+		_enemy_bullet(from, Vector3(sin(a) * spd, 0.0, -cos(a) * spd), COL_PINK, kind)
 
 
 ## 环形弹幕：n 发均分一圈，相位随存活时间缓慢旋转
@@ -840,9 +857,9 @@ func _update_boss(e: Dictionary, n: Node3D, delta: float) -> void:
 					e["burst_left"] = int(e["burst_left"]) - 1
 					e["mode"] = 1 - int(e["mode"])
 					if int(e["mode"]) == 0:
-						_fire_aimed(bp, e["def"], 5, 46.0, 7.5)
+						_fire_aimed(bp, e["def"], 5, 46.0, 7.5, B_NEEDLE)
 					else:
-						_fire_aimed(bp, e["def"], 3, 14.0, 8.0)
+						_fire_aimed(bp, e["def"], 3, 14.0, 8.0, B_NEEDLE)
 		2:
 			e["add_t"] = float(e["add_t"]) - delta
 			if float(e["add_t"]) <= 0.0:
@@ -1023,6 +1040,12 @@ func _burst(at: Vector3, col: Color, n: int) -> void:
 func _update_bullets(delta: float) -> void:
 	pb.update(delta)
 	eb.update(delta)
+	for j in eb.count:   # 导弹弹拖尾（trail=1 的细长弹，每帧一缕白烟）
+		if int(eb.trail[j]) == 1:
+			fx.spawn(eb.pos[j] - Vector3(eb.vel[j]).normalized() * 0.8,
+					Vector3(eb.vel[j]) * -0.12 + Vector3(_rng.randf_range(-1, 1),
+							_rng.randf_range(0, 1.5), _rng.randf_range(-1, 1)),
+					COL_WHITE, 0.26, 0.22, 0.0, Vector3.ZERO, true)
 	# 自机弹 × 敌机（XZ 判定，高度不参与）
 	var i := 0
 	while i < pb.count:

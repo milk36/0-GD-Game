@@ -17,6 +17,8 @@ var max_life: PackedFloat32Array
 var size: PackedFloat32Array
 var grav: PackedFloat32Array
 var shrink: PackedByteArray
+var shape: PackedByteArray     # 0=等比方块 1=细长条（朝速度方向，基准 0.35×0.35×2.6）
+var trail: PackedByteArray     # 1=宿主每帧补拖尾粒子（导弹类）；宿主读 self.trail 自理
 var count := 0          # 活跃实例数（紧凑区 [0, count)）
 var _max := 0
 var _rot := 0.0         # 全局自转相位（敌弹缓慢自转的廉价实现）
@@ -32,6 +34,8 @@ func setup(p_max: int, mat: Material) -> void:
 	size.resize(p_max)
 	grav.resize(p_max)
 	shrink.resize(p_max)
+	shape.resize(p_max)
+	trail.resize(p_max)
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
@@ -50,7 +54,8 @@ func setup(p_max: int, mat: Material) -> void:
 
 
 ## 生成一个实例；池满时静默丢弃（调用方保证 max 足够大）
-func spawn(p: Vector3, v: Vector3, col: Color, p_size := 1.0, p_life := 5.0, p_grav := 0.0, p_spin := Vector3.ZERO, p_shrink := false) -> int:
+## p_shape：0 等比方块 / 1 细长条朝速度方向；p_trail：1 = 宿主每帧补拖尾粒子
+func spawn(p: Vector3, v: Vector3, col: Color, p_size := 1.0, p_life := 5.0, p_grav := 0.0, p_spin := Vector3.ZERO, p_shrink := false, p_shape := 0, p_trail := 0) -> int:
 	if count >= _max:
 		return -1
 	var i := count
@@ -63,7 +68,10 @@ func spawn(p: Vector3, v: Vector3, col: Color, p_size := 1.0, p_life := 5.0, p_g
 	size[i] = p_size
 	grav[i] = p_grav
 	shrink[i] = 1 if p_shrink else 0  # PackedByteArray 只存 int
+	shape[i] = p_shape
+	trail[i] = p_trail
 	multimesh.set_instance_color(i, col)
+	multimesh.set_instance_transform(i, _xf(i))
 	return i
 
 
@@ -90,6 +98,8 @@ func kill(i: int) -> void:
 		size[i] = size[count]
 		grav[i] = grav[count]
 		shrink[i] = shrink[count]
+		shape[i] = shape[count]
+		trail[i] = trail[count]
 		multimesh.set_instance_transform(i, _xf(i))
 		multimesh.set_instance_color(i, multimesh.get_instance_color(count))
 	multimesh.set_instance_transform(count, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
@@ -114,7 +124,20 @@ func _xf(i: int) -> Transform3D:
 	var s := size[i]
 	if shrink[i]:
 		s *= clampf(life[i] / max_life[i], 0.0, 1.0)
-	var b := Basis.IDENTITY.rotated(Vector3.UP, _rot + float(i) * 0.7)
+	if shape[i] == 1:
+		# 细长条：-Z 对准速度方向（激光/导弹弹），无自转
+		var v: Vector3 = vel[i]
+		if v.length_squared() < 0.0001:
+			return Transform3D(Basis().scaled(Vector3(s, s, s)), pos[i])
+		var zz := v.normalized()
+		var xx := Vector3.UP.cross(zz)
+		if xx.length_squared() < 0.001:
+			xx = Vector3.RIGHT
+		xx = xx.normalized()
+		var yy := zz.cross(xx)
+		var b := Basis(xx, yy, zz).scaled(Vector3(s * 0.35, s * 0.35, s * 2.6))
+		return Transform3D(b, pos[i])
+	var b2 := Basis.IDENTITY.rotated(Vector3.UP, _rot + float(i) * 0.7)
 	if spin[i] != Vector3.ZERO:
-		b = b.rotated(Vector3.RIGHT, _rot * spin[i].x).rotated(Vector3.FORWARD, _rot * spin[i].y)
-	return Transform3D(b.scaled(Vector3(s, s, s)), pos[i])
+		b2 = b2.rotated(Vector3.RIGHT, _rot * spin[i].x).rotated(Vector3.FORWARD, _rot * spin[i].y)
+	return Transform3D(b2.scaled(Vector3(s, s, s)), pos[i])
