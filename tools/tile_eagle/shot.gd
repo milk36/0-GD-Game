@@ -63,6 +63,25 @@ const SHOTS := [
 			"preroll": 1.6, "spawn": [
 		["E12", -8.0, -18.0],
 	]},
+	# ---- 图鉴（全部敌人 + 全部弹幕类型）----
+	# 网格坐标按 68° 投影预计算（screen_x = 640 + 21.2x；AIR: y = 360 - 21.2*(2.796-0.9275(z+3))，
+	# HIGH/LOW 按 0.3728*高度 修正）。preroll 压到 0.05s（相机稳定即可，漂移 ~10px，裁切框留了余量）。
+	{"mode": 0, "name": "tile_gallery_small.png", "clouds": false, "elite": true, "hide_player": true,
+			"preroll": 0.05, "spawn": [
+		["E3", -7, -12], ["E4", 0, -12], ["E7", 7, -12],
+		["E9", -7, 4], ["E12", 0, 4], ["E5", 7, 4]]},
+	{"mode": 0, "name": "tile_gallery_large.png", "clouds": false, "elite": true, "hide_player": true,
+			"preroll": 0.05, "spawn": [
+		["E6", -9, -8], ["E8", 0, -8], ["E10", 9, -8], ["E11", -7, 7], ["BOSS", 7, 7]]},
+	# 地面单位（E1/E2）走落位队列：只认「屏外正要进屏」的岛 → 预热 4.5s 让它们骑着岛进画面
+	{"mode": 0, "name": "tile_gallery_ground.png", "clouds": false, "elite": true, "hide_player": true,
+			"preroll": 4.5, "spawn": [["E1", 0, 0], ["E2", -8, 0]]},
+	# 弹幕图鉴：seek=25 处视野内全是水面；cam_size 12 = 3 倍变焦（弹体才读得清）
+	{"mode": 0, "name": "tile_gallery_projectiles.png", "clouds": false, "elite": true,
+			"hide_player": true, "preroll": 0.05, "cam_size": 12.0, "seek": 25,
+			"projectiles": true},
+	{"mode": 0, "name": "tile_gallery_laser.png", "clouds": false, "elite": true, "hide_player": true,
+			"preroll": 0.05, "seek": 25, "laser": true},
 	# 幸存者救援（M3）两张：幸存者都摆在画面内的岛面上，玩家偏移悬停——
 	# 正上方会把缩放中的小人整个盖在机身后面（实测只剩 8 个橙色像素）。
 	# ① 待救：玩家在 4.5 起吊半径之外 → 小人满比例挥手、头顶叹号可见；
@@ -147,8 +166,43 @@ func _initialize() -> void:
 					pn.position.x = sn.position.x + ro.x
 					pn.position.z = sn.position.z + ro.y
 					pn.position.y = 7.5    # altitude.gd 的 AIR
+			if shot.has("cam_size"):
+				(inst.get("cam") as Camera3D).size = float(shot["cam_size"])
+			if bool(shot.get("hide_player", false)):
+				# 图鉴用：直接隐藏自机（position 会被 player._process 的 z clamp 拉回画面）
+				(inst.get("player") as Node3D).visible = false
 			for i in int(sec / PREROLL_DT):
 				inst.call("_process", PREROLL_DT)
+			# ---- 弹幕图鉴：在 preroll 之后投放 → paused 生效后全部定格在预定位置 ----
+			if bool(shot.get("projectiles", false)):
+				var C: Node = combat
+				var py := 7.5
+				# 爆炸碎片先撒（给 0.1s 散开）；其余弹在散开后再投放，全部原位定格
+				C.call("_burst", Vector3(5, py, 0), Color("f5f9ff"), 14)
+				C.call("_burst", Vector3(5, py, 0), Color("ffe600"), 8)
+				for i in 6:
+					inst.call("_process", PREROLL_DT)
+				(C.get("pb") as Object).call("spawn", Vector3(-5, py, 0),
+						Vector3(0, 0, -46), Color("00f0ff"), 0.42, 5.0)
+				C.call("_enemy_bullet", Vector3(-3, py, 0), Vector3(0, 0, 8), Color("ff2a6d"))
+				C.call("_launch_missile", Vector3(-1, py, 0), 0.0)
+				# paused 定格后 _update_missiles 不跑 → 没有动态拖尾。手动补几缕定格白烟
+				# 在导弹 -Z 侧（尾向），读作"导弹在喷"。
+				for k in 5:
+					(C.get("fx") as Object).call("spawn",
+							Vector3(-1.0, py, -0.7 - 0.55 * k), Vector3.ZERO,
+							Color("f5f9ff"), 0.26 - 0.02 * k, 30.0, 0.0, Vector3.ZERO, true)
+				(C.get("stars") as Object).call("spawn", Vector3(1, py, 0),
+						Vector3(0, 2, 0), Color("ffe600"), 0.85, 30.0, 0.0)
+				(C.get("fx") as Object).call("spawn", Vector3(3, py, 0), Vector3.ZERO,
+						Color("ffe600"), 0.34, 30.0, 0.0, Vector3.ZERO, true)
+			if bool(shot.get("laser", false)):
+				var lc: Node = combat
+				lc.call("_fire_laser", Vector3(5, 7.5, -9))
+				# 光束永远指向开火时的玩家位置 → 先挪走玩家，推进到光束态就不会命中
+				(inst.get("player") as Node3D).position = Vector3(0, 7.5, 18)
+				lc.call("_update_laser", 0.71)   # 预警(0.7s)结束 → 进入光束态
+				lc.call("_update_laser", 0.01)
 			inst.set_process(true)
 			var surv_txt := "  幸存者 %d（救援中 %d）" % [
 				(combat as Node).get("survivors").size(), int(combat.get("rescued"))]
