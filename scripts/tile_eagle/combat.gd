@@ -458,13 +458,8 @@ func _spawn_ground(type: String, p: Vector3) -> void:
 		"ft": _rng.randf_range(0.9, 1.8), "age": 0.0,
 		"vz": host.scroll_spd, "x0": p.x,
 	}
-	if def.has("head"):   # 炮台炮头：按两者 AABB 反推，使炮头底面正好落在底座顶面（改模型高度不必改代码）
-		# 挂件缩放归一（同旋翼——E1H 炮头同样被复合缩放吃掉了 2/3）
-		var head := _new_unit_node(def["head"])
-		head.scale = Vector3.ONE
-		head.position = Vector3(0, n.mesh.get_aabb().end.y - head.mesh.get_aabb().position.y, 0)
-		n.add_child(head)
-		e["head"] = head
+	if def.has("head"):   # 炮台炮头：落在底座顶面（挂载细节见 _attach_top）
+		_attach_top(n, def["head"], e, "head")
 	enemies.append(e)
 
 
@@ -487,14 +482,7 @@ func _spawn_air(type: String, x: float, vx: float) -> void:
 		"add_t": 4.0, "laser_t": 3.0, "sp_t": 0.0, "spiral_a": 0.0,
 	}
 	if def.has("rotor"):   # 旋翼层只转自己：机身朝向稳定，旋翼转得快也读得出机型
-		# 挂件缩放归一：旋翼是「已缩放主模型(0.3)」的子节点，_new_unit_node 默认再给
-		# 0.3 → 实际只渲染 1/3（E12R/E7R/E3R 全中招，"主旋翼比例不对"的根因）。
-		# 模型都按全尺寸建（README 单位表即全尺寸），归一后才是建模意图。
-		var rotor := _new_unit_node(def["rotor"])
-		rotor.scale = Vector3.ONE
-		rotor.position = Vector3(0, n.mesh.get_aabb().end.y - rotor.mesh.get_aabb().position.y, 0)
-		n.add_child(rotor)
-		e["rotor"] = rotor
+		_attach_top(n, def["rotor"], e, "rotor")
 	if String(def["beh"]) == "battleship":   # 双三联装炮塔：按舰体 AABB 分数定位前后炮座
 		var ha: AABB = n.mesh.get_aabb()
 		var deck_y := ha.position.y + ha.size.y * 0.5    # ≈ 炮座基座顶面（gen_e11.py 打印的分数）；改舰体层高需复核
@@ -515,6 +503,19 @@ func _spawn_air(type: String, x: float, vx: float) -> void:
 		e["cd_f"] = 1.2
 		e["cd_a"] = 2.5
 	enemies.append(e)
+
+
+## 挂件（炮头/旋翼层）装配：缩放归一 + AABB 顶面落位。
+## - 缩放归一：挂件是「已缩放主模型(0.3)」的子节点，_new_unit_node 默认再给 0.3 →
+##   实际只渲染 1/3（E12R/E7R/E3R/E1H 全中招，"挂件比例不对"的根因）。
+##   模型都按全尺寸建（README 单位表即全尺寸），归一后才是建模意图。
+## - 按 AABB 反推使挂件底面正好落在宿主顶面——改模型高度不必改代码。
+func _attach_top(n: MeshInstance3D, part_key: String, e: Dictionary, ekey: String) -> void:
+	var part := _new_unit_node(part_key)
+	part.scale = Vector3.ONE
+	part.position = Vector3(0, n.mesh.get_aabb().end.y - part.mesh.get_aabb().position.y, 0)
+	n.add_child(part)
+	e[ekey] = part
 
 
 ## 出图用（tools/tile_eagle/shot.gd）：在指定 (x, z) 直接摆一个单位，走**与波次完全相同的
@@ -561,14 +562,9 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 			# 炮台：炮头锁玩家，进入射程后定点点射
 			var head: Node3D = e["head"]
 			head.look_at(Vector3(host.player.position.x, head.global_position.y, host.player.position.z))
-			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				var from: Vector3 = head.global_position + Vector3(0, 1.0, 0)
-				_bridge(def, from)
-				_fire_aimed(from, def)
+			_fire_gate(e, def, gp, delta, head.global_position + Vector3(0, 1.0, 0))
 		"ring":
-			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				_bridge(def, gp + Vector3(0, 1.0, 0))
-				_fire_ring(gp, def, float(e["age"]))
+			_fire_ring_gate(e, def, gp, delta, gp + Vector3(0, 1.0, 0))
 		"drift":
 			n.position.x += float(e["vx"]) * delta
 			var rotor: Node3D = e.get("rotor")
@@ -576,59 +572,39 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 				rotor.rotate_y(delta * 14.0)
 		"weave":
 			n.position.x = float(e["x0"]) + sin(float(e["age"]) * 2.0) * 1.5
-			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				_fire_aimed(gp, def)
+			_fire_gate(e, def, gp, delta, gp)
 		# ---- 精英段（M1 §16.2）。横向位移一律 clamp 到走廊 ±13：飞出走廊就再也打不到，
 		#      玩家只能干看着（原作 E7/E5 的同类分支也是这么夹的）。
 		"strafe":
 			# 巡洋机：大幅横移扫场，5 发扇形压制
 			n.position.x = clampf(float(e["x0"]) + sin(float(e["age"]) * 1.35) * 7.0, -13.0, 13.0)
-			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				_fire_aimed(n.global_position, def)
+			_fire_gate(e, def, gp, delta, n.global_position)
 		"heli":
 			# 武装直升机：正弦侧移 + 主旋翼独立旋转，双管短点射
 			n.position.x = clampf(float(e["x0"]) + sin(float(e["age"]) * 1.1) * 5.0, -13.0, 13.0)
 			var hr: Node3D = e.get("rotor")
 			if hr != null:
 				hr.rotate_y(delta * 12.0)
-			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				_bridge(def, n.global_position)
-				_fire_aimed(n.global_position, def)
+			_fire_gate(e, def, gp, delta, n.global_position)
 		"bomber":
 			# 飞翼轰炸机：直压 + 定期向四周撒慢速炸弹（环形，弹速刻意慢）
-			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				_bridge(def, n.global_position)
-				_fire_ring(n.global_position, def, float(e["age"]))
+			_fire_ring_gate(e, def, gp, delta, n.global_position)
 		"raider":
 			# 双体炮艇：LOW 层掠海冲撞，前向点射（导弹弹素材：细长 + 拖尾）
 			n.position.x += float(e["vx"]) * delta
-			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				_bridge(def, n.global_position)
-				_fire_aimed(n.global_position, def, -1, -1, -1, B_MISSILE)
+			_fire_gate(e, def, gp, delta, n.global_position, B_MISSILE)
 		"elite":
 			# 精英炮舰：缓推 + 微幅横移；hp 掉到 40% 以下加速逃逸（与原作同手法）
 			var boost := float(def.get("flee", 6.0)) if int(e["hp"]) * 5 < int(def["hp"]) * 2 else 0.0
 			n.position.z += boost * delta
 			n.position.x = clampf(float(e["x0"]) + sin(float(e["age"]) * 0.7) * 3.0, -13.0, 13.0)
 			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				e["mode"] = 1 - int(e["mode"])
-				_bridge(def, n.global_position)
-				if int(e["mode"]) == 1:
-					_fire_ring(n.global_position, def, float(e["age"]),
-							int(def.get("ring_n", 12)), float(def.get("ring_spd", 6.0)))
-				else:
-					_fire_aimed(n.global_position, def)
+				_fire_mix(e, def, n.global_position)
 		"fortress":
 			# 浮空盾堡：小 boss 级 —— 极缓推进 + 微幅横移，环形 / 自机狙交替
 			n.position.x = clampf(float(e["x0"]) + sin(float(e["age"]) * 0.5) * 2.0, -13.0, 13.0)
 			if _in_range(gp, def) and _cd_tick(e, def, delta):
-				e["mode"] = 1 - int(e["mode"])
-				_bridge(def, n.global_position)
-				if int(e["mode"]) == 1:
-					_fire_ring(n.global_position, def, float(e["age"]),
-							int(def.get("ring_n", 12)), float(def.get("ring_spd", 6.0)))
-				else:
-					_fire_aimed(n.global_position, def)
+				_fire_mix(e, def, n.global_position)
 		"battleship":
 			# 战列舰：低速压进 + 微幅横移；前后炮塔**各自限速转向**玩家（初始角度错开，
 			# 两塔旋转节拍不同 = 独立旋转可读），转到对准（±0.2rad 内）才交替齐射三联装
@@ -741,6 +717,35 @@ func _cd_tick(e: Dictionary, def: Dictionary, delta: float) -> bool:
 		return false
 	e["ft"] = float(def.get("cd", 2.0))   # 缺省 2.0：无 cd 字段的自定义节拍行为兜底
 	return true
+
+
+## aimed 系开火闸门：射程内 + 冷却到点 → 桥接枪焰并自机狙（kind=弹种素材）
+func _fire_gate(e: Dictionary, def: Dictionary, gp: Vector3, delta: float,
+		from: Vector3, kind := B_ORB) -> void:
+	if not _in_range(gp, def) or not _cd_tick(e, def, delta):
+		return
+	_bridge(def, from)
+	_fire_aimed(from, def, -1, -1, -1, kind)
+
+
+## ring 系开火闸门：射程内 + 冷却到点 → 桥接 + 环形弹幕（相位随存活时间）
+func _fire_ring_gate(e: Dictionary, def: Dictionary, gp: Vector3, delta: float,
+		from: Vector3) -> void:
+	if not _in_range(gp, def) or not _cd_tick(e, def, delta):
+		return
+	_bridge(def, from)
+	_fire_ring(from, def, float(e["age"]))
+
+
+## mix 弹幕：环形 / 自机狙交替（e.mode 翻转）
+func _fire_mix(e: Dictionary, def: Dictionary, from: Vector3) -> void:
+	e["mode"] = 1 - int(e["mode"])
+	_bridge(def, from)
+	if int(e["mode"]) == 1:
+		_fire_ring(from, def, float(e["age"]),
+				int(def.get("ring_n", 12)), float(def.get("ring_spd", 6.0)))
+	else:
+		_fire_aimed(from, def)
 
 
 ## 是否进入开火的前后区间（range_z 缺省 = 全程；口径与方块雄鹰一致）

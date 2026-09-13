@@ -239,6 +239,11 @@ func _draw_item_cells(off: Vector2) -> void:
 
 
 ## ---- 道具特效预闪(专属演出,全部由 fx_progress 驱动 → 暂停天然冻结) ----
+func _fx_blink() -> float:
+	## 预闪通用脉动系数（各演出共用同一节拍）
+	return 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+
+
 func _draw_item_fx(off: Vector2) -> void:
 	var col: Color = DEFS.ITEM_COLORS.get(fx_kind, Color.WHITE)
 	# 进化版复用基础版演出(只是目标更多)
@@ -264,7 +269,7 @@ func _draw_item_fx(off: Vector2) -> void:
 
 func _draw_flip_fx(off: Vector2, col: Color) -> void:
 	## 翻转:中央对称轴亮起,左右两条竖直扫描线向中轴收拢,扫过半区微光。
-	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	var blink := _fx_blink()
 	var mid_x := off.x + BOARD_W / 2.0
 	draw_line(Vector2(mid_x, off.y), Vector2(mid_x, off.y + BOARD_H),
 		Color(col, 0.45 + 0.45 * blink), 2.0)
@@ -284,7 +289,7 @@ func _draw_flip_fx(off: Vector2, col: Color) -> void:
 
 func _draw_prune_fx(off: Vector2, col: Color) -> void:
 	## 削峰:每列最顶端格同时亮起,格顶一对向上的刀光指示。
-	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	var blink := _fx_blink()
 	for cell in fx_cells:
 		if cell.y < Board.HIDDEN:
 			continue
@@ -300,7 +305,7 @@ func _draw_prune_fx(off: Vector2, col: Color) -> void:
 
 func _draw_wind_fx(off: Vector2, col: Color) -> void:
 	## 风:行青色高亮(0~0.15s) → 左右两条速度线横向扫过。
-	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	var blink := _fx_blink()
 	for r in fx_rows:
 		if r < Board.HIDDEN:
 			continue
@@ -340,7 +345,7 @@ func _draw_wind_streak(head: Vector2, dir: float, col: Color) -> void:
 
 func _draw_rain_fx(off: Vector2, col: Color) -> void:
 	## 雨:散点格按 30ms 间隔逐个蓝白闪现,已闪现格上方雨滴循环坠落。
-	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	var blink := _fx_blink()
 	var elapsed := fx_progress * DEFS.ITEM_FX_TIME
 	var lit := clampi(int(elapsed / DEFS.ITEM_RAIN_STEP), 0, fx_cells.size())
 	for i in fx_cells.size():
@@ -364,7 +369,7 @@ func _draw_rain_fx(off: Vector2, col: Color) -> void:
 
 func _draw_bolt_fx(off: Vector2, col: Color) -> void:
 	## 雷:列高亮 + 锯齿电光自顶部向底部扫描(0.2s) → 整列闪白。
-	var blink := 0.35 + 0.45 * absf(sin(fx_progress * TAU * 2.0))
+	var blink := _fx_blink()
 	for c in fx_cols:
 		var x := c * CELL
 		draw_rect(Rect2(off + Vector2(x + 2, 0), Vector2(CELL - 4, BOARD_H)),

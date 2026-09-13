@@ -295,21 +295,7 @@ func _finish_clear() -> void:
 	_spawn()
 	_update_hud()
 	# 碎片格判定:所在行被消 → 熄灭并入道具队列;否则坐标随下移修正
-	var acquired := false
-	for i in range(item_cells.size() - 1, -1, -1):
-		var cell: Vector2i = item_cells[i].cell
-		if rows.has(cell.y):
-			item_cells.remove_at(i)
-			_enqueue_item(randi() % DEFS.BASIC_ITEM_COUNT)
-			acquired = true
-		else:
-			var shift := 0
-			for r in rows:
-				if r < cell.y:
-					shift += 1
-			if shift > 0:
-				item_cells[i].cell = Vector2i(cell.x, cell.y - shift)
-	_sync_item_cells()
+	var acquired := _consume_item_cells_by_rows(rows)
 	_update_tick_sfx()
 	if acquired:
 		SFX.play("item_get")
@@ -371,6 +357,28 @@ func _update_tick_sfx() -> void:
 	if s != _tick_step:
 		_tick_step = s
 		SFX.play("shard_tick%d" % clampi(3 - s, 0, 2))
+
+
+## 消行带走碎片格：命中行的碎片格熄灭并入道具队列（道具滚道具），
+## 其余碎片格坐标随上方消除下移修正。返回本回合是否获取到道具。
+## （普通消行与风/飓风整行消除共用同一条路径——两处语义完全一致）
+func _consume_item_cells_by_rows(rows: Array[int]) -> bool:
+	var acquired := false
+	for i in range(item_cells.size() - 1, -1, -1):
+		var cell: Vector2i = item_cells[i].cell
+		if rows.has(cell.y):
+			item_cells.remove_at(i)
+			_enqueue_item(randi() % DEFS.BASIC_ITEM_COUNT)
+			acquired = true
+		else:
+			var shift := 0
+			for r in rows:
+				if r < cell.y:
+					shift += 1
+			if shift > 0:
+				item_cells[i].cell = Vector2i(cell.x, cell.y - shift)
+	_sync_item_cells()
+	return acquired
 
 
 func _has_item_cell(c: Vector2i) -> bool:
@@ -489,25 +497,12 @@ func _execute_item() -> void:
 			SFX.play("bolt_cast")
 	match fx_kind:
 		DEFS.Item.WIND, DEFS.Item.STORM_WIND:
-			# 消行前判定:风带走其他碎片格 → 道具滚道具,入队连发
-			for i in range(item_cells.size() - 1, -1, -1):
-				if fx_rows.has(item_cells[i].cell.y):
-					item_cells.remove_at(i)
-					_enqueue_item(randi() % DEFS.BASIC_ITEM_COUNT)
 			for r in fx_rows:
 				cleared.append_array(board.collect_row_cells(r))
 				particles.wind_streaks_row(r, 10)
 			board.remove_rows(fx_rows)
-			# 剩余碎片格坐标随下移修正
-			for i in item_cells.size():
-				var cell: Vector2i = item_cells[i].cell
-				var shift := 0
-				for r in fx_rows:
-					if r < cell.y:
-						shift += 1
-				if shift > 0:
-					item_cells[i].cell = Vector2i(cell.x, cell.y - shift)
-			_sync_item_cells()
+			# 消行带走其他碎片格 → 道具滚道具,入队连发;剩余坐标随下移修正
+			_consume_item_cells_by_rows(fx_rows)
 		DEFS.Item.RAIN, DEFS.Item.TORRENT:
 			cleared = fx_rain_cells
 			board.clear_cells(fx_rain_cells)

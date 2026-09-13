@@ -112,17 +112,8 @@ func _stamp_feature(rng: RandomNumberGenerator, f: Dictionary) -> void:
 		return                                 # 不许压到手工段
 	if c0 + span > COLS:
 		return
-	for dy in span:
-		for dx in span:
-			if used_mask[r0 + dy][c0 + dx]:
-				return                         # 有占位冲突则整块不摆
-	rows[r0 + span - 1].append({"tile": id, "col": c0, "rot": 0})
-	for dy in span:
-		for dx in span:
-			used_mask[r0 + dy][c0 + dx] = true
-			high_mask[r0 + dy][c0 + dx] = true
-	# 登记特征（row0 = 跨度里最靠近相机的那一行，与上面的记录行差 span−1）
-	features.append({"tile": id, "row0": r0, "col0": c0, "span": span})
+	# 记录行 = 跨度里最远的一行（r0 + span − 1）；row0 登记为最靠近相机的那行
+	_register_feature(id, r0, c0, span, r0 + span - 1)
 
 
 ## 手工段的字符 → 瓦片。超级瓦（D/F）的字符标在**锚点**上：跨度里最远的一行 + 最左一列，
@@ -164,21 +155,28 @@ func _sec_hand() -> void:
 
 ## 手工段的超级瓦图章：与 `_stamp_feature` 同一套落位/掩码/登记逻辑，只是列位来自字面量
 ## （不掷随机）→ 精摆段与种子完全无关。
-func _stamp_at(r_far: int, c0: int, id: String) -> void:
-	var span: int = Tiles.span_of(id)
-	var r0: int = r_far - span + 1                # 字符标在最远行 → 反推最靠近相机的一行
-	if r0 < 0 or c0 + span > COLS:
-		return
+## 图章公共尾：占位冲突检查 → 写记录行 + 占位掩码 + 特征登记。
+## 返回 false = 有占位冲突（宁可缺，不叠瓦），调用方直接放弃即可。
+func _register_feature(id: String, r0: int, c0: int, span: int, r_far: int) -> bool:
 	for dy in span:
 		for dx in span:
 			if used_mask[r0 + dy][c0 + dx]:
-				return                            # 与其它特征冲突则整块不摆（宁可缺，不叠瓦）
+				return false
 	rows[r_far].append({"tile": id, "col": c0, "rot": 0})
 	for dy in span:
 		for dx in span:
 			used_mask[r0 + dy][c0 + dx] = true
 			high_mask[r0 + dy][c0 + dx] = true
 	features.append({"tile": id, "row0": r0, "col0": c0, "span": span})
+	return true
+
+
+func _stamp_at(r_far: int, c0: int, id: String) -> void:
+	var span: int = Tiles.span_of(id)
+	var r0: int = r_far - span + 1                # 字符标在最远行 → 反推最靠近相机的一行
+	if r0 < 0 or c0 + span > COLS:
+		return
+	_register_feature(id, r0, c0, span, r_far)
 
 
 func _fill_sea(rng: RandomNumberGenerator, r0: int, n: int, crest_p: float) -> void:

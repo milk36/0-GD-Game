@@ -64,6 +64,24 @@ const ENEMY_VOX := {
 }
 # 敌机 .vox 统一按 0.3 世界单位/体素 缩放（与玩家机同一精度；Boss 单独用 0.5）
 const ENEMY_SCALE := 0.3
+## 敌机数值表（唯一事实源）：hp / vz 相对航速 / reward 击落星数 / pts 得分。
+## 此前散落 4 张内联字典（E7~E10 曾漏配奖励），新增单位只改这里。
+const UNIT_STATS := {
+	"E3": {"hp": 3, "vz": 10.0, "reward": 3, "pts": 30},
+	"E4": {"hp": 4, "vz": 5.0, "reward": 3, "pts": 50},
+	"E5": {"hp": 5, "vz": 3.0, "reward": 10, "pts": 100},
+	"E6": {"hp": 40, "vz": 1.5, "reward": 40, "pts": 500},
+	"E7": {"hp": 5, "vz": 2.5, "reward": 8, "pts": 180},
+	"E8": {"hp": 10, "vz": 2.0, "reward": 15, "pts": 300},
+	"E9": {"hp": 4, "vz": 8.0, "reward": 6, "pts": 150},
+	"E10": {"hp": 24, "vz": 1.5, "reward": 30, "pts": 800},
+}
+
+
+## 读敌机数值；未登记型号回退缺省
+func unit_stat(t: String, key: String, dflt: Variant) -> Variant:
+	var row: Dictionary = UNIT_STATS.get(t, {})
+	return row.get(key, dflt)
 # 幸存者造型在 scripts/voxel_eagle/survivor_unit.gd（游戏与测试场景共用）
 # 地貌（草岛 / 暗礁 / 沉船）仍是程序化方块，不属"单位造型"范畴
 
@@ -250,6 +268,14 @@ func _load_vox_mesh(path: String) -> Mesh:
 	var bm := BoxMesh.new()
 	bm.size = Vector3(3.0, 2.0, 3.0)
 	return bm
+
+
+## 挂件（炮头/旋翼层）装配：按双方 AABB 反推，使挂件底面正好落在宿主顶面
+## （挂件是宿主的子节点，继承 0.3 缩放，故局部位置不用乘缩放）——
+## 改模型高度/换造型都不必改调用处。
+func _attach_top(n: MeshInstance3D, part: MeshInstance3D) -> void:
+	part.position = Vector3(0, n.mesh.get_aabb().end.y - part.mesh.get_aabb().position.y, 0)
+	n.add_child(part)
 
 
 # ================= 场景构建 =================
@@ -1069,8 +1095,7 @@ func _spawn_group(list: Array) -> void:
 		if t == "E1" or t == "E2":
 			_spawn_ground(t, x)
 		else:
-			var hp: int = {"E3": 3, "E4": 4, "E5": 5, "E6": 40, "E7": 5,
-					"E8": 10, "E9": 4, "E10": 24}.get(t, 3)
+			var hp: int = int(unit_stat(t, "hp", 3))
 			_spawn_air(t, x, int(hp), float(ent.get("vx", 0.0)))
 
 
@@ -1088,10 +1113,7 @@ func _spawn_ground(type: String, x: float) -> void:
 		var head := MeshInstance3D.new()
 		head.mesh = _meshes["E1H"]
 		head.material_override = VoxelModel.shaded_material()
-		# 炮头底面正好落在底座顶面：按两者 AABB 反推，改模型高度不必再改这里
-		# （head 是 n 的子节点，会继承 n 的 0.3 缩放，故这里的局部值不用乘缩放）
-		head.position = Vector3(0, n.mesh.get_aabb().end.y - head.mesh.get_aabb().position.y, 0)
-		n.add_child(head)
+		_attach_top(n, head)
 		e["head"] = head
 	enemies.append(e)
 
@@ -1102,17 +1124,14 @@ func _spawn_air(type: String, x: float, hp: int, vx := 0.0) -> Dictionary:
 	n.scale = Vector3.ONE * ENEMY_SCALE
 	n.material_override = VoxelModel.shaded_material()
 	add_child(n)
-	var vz: float = scroll_spd + ({"E3": 10.0, "E4": 5.0, "E6": 1.5, "E7": 2.5, "E8": 2.0,
-			"E9": 8.0, "E10": 1.5}.get(type, 3.0))
+	var vz: float = scroll_spd + float(unit_stat(type, "vz", 3.0))
 	n.position = Vector3(x, 4.3, -46.0)  # 空中单位与玩家同一飞行高度层
 	var e := {"n": n, "t": type, "hp": hp, "ft": randf_range(0.6, 1.4), "age": 0.0, "vx": vx, "vz": vz, "x0": x, "mode": 0}
 	if type in ["E3", "E7"]:  # 旋翼机：旋翼独立成层（E3R/E7R）挂机身顶部，运行时只旋转这一层
 		var rotor := MeshInstance3D.new()
 		rotor.mesh = _meshes[type + "R"]
 		rotor.material_override = VoxelModel.shaded_material()
-		# 旋翼层底面落在机身顶面：按两者 AABB 反推（子节点继承 0.3 缩放，局部值不乘）
-		rotor.position = Vector3(0, n.mesh.get_aabb().end.y - rotor.mesh.get_aabb().position.y, 0)
-		n.add_child(rotor)
+		_attach_top(n, rotor)
 		e["rotor"] = rotor
 	enemies.append(e)
 	return e
@@ -1476,10 +1495,8 @@ func _damage_enemy(e: Dictionary, dmg: int) -> void:
 		_burst(gp, COL_PINK, 12)
 		_burst(gp, COL_WHITE, 6)
 		SFX.play("eagle_boom")
-		var reward: int = {"E1": 5, "E2": 8, "E3": 3, "E4": 3, "E5": 10, "E6": 40,
-				"E7": 8, "E8": 15, "E9": 6, "E10": 30}.get(e["t"], 5)
-		var pts: int = {"E1": 50, "E2": 80, "E3": 30, "E4": 50, "E5": 100, "E6": 500,
-				"E7": 180, "E8": 300, "E9": 150, "E10": 800}.get(e["t"], 50)
+		var reward: int = int(unit_stat(e["t"], "reward", 5))
+		var pts: int = int(unit_stat(e["t"], "pts", 50))
 		score += pts
 		for s in reward:
 			var v := Vector3(randf_range(-6, 6), randf_range(3, 8), randf_range(-4, 4))
