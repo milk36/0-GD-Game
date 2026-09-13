@@ -841,18 +841,10 @@ func _process(delta: float) -> void:
 				blocked = true
 				break
 		wn.visible = not blocked
-	for isl in islands:
-		if world.position.z + isl.position.z > 30.0:
-			isl.position.z -= 230.0
-			isl.position.x = randf_range(-22, 22)
-	for rf in reefs:
-		if world.position.z + rf.position.z > 30.0:
-			rf.position.z -= 230.0
-			rf.position.x = randf_range(-22, 22)
-	for wk in wrecks:
-		if world.position.z + wk.position.z > 30.0:
-			wk.position.z -= 230.0
-			wk.position.x = randf_range(-20, 20)
+	for d in _decor:   # 地貌回绕：越过玩家身后 → 搬回走廊远端（x 随机换位避免重复感）
+		if world.position.z + d.position.z > 30.0:
+			d.position.z -= 230.0
+			d.position.x = randf_range(-22, 22) if d in islands else randf_range(-20, 20)
 	for fr in fires:  # 火焰闪烁
 		var fl := 1.0 + 0.35 * sin(elapsed * 13.0 + float(fr["ph"]))
 		fr["n"].scale = Vector3(fl, fl, fl)

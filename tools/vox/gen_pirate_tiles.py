@@ -31,7 +31,6 @@
 """
 
 import os
-import random
 
 import voxlib
 
@@ -69,15 +68,9 @@ def import_super_tile(src_path, name):
             raise SystemExit("[%s] 内容 %d×%d 超出 %d×%d 画布" % (name, w, h, S, S))
         struct[(nx, ny, z + 1 - z0)] = c
 
-    # ③ 补齐水面板：mod 16 噪声网格 + 全局浪带 → 与相邻海面瓦逐像素同源
-    rng = random.Random(SEED)
-    n4 = gt.pnoise(4, rng)
-    n8 = gt.pnoise(8, rng)
+    # ③ 补齐水面板：与相邻海面瓦逐像素同源，瓦界无缝
     v = dict(struct)
-    for y in range(S):
-        for x in range(S):
-            wu, wv = (x % gt.TILE) / float(gt.TILE), (y % gt.TILE) / float(gt.TILE)
-            v[(x, y, 0)] = gt._sea_color(x, y, n4(wu, wv) * 0.7 + n8(wu, wv) * 0.3)
+    v.update(gt.sea_panel(S, SEED))
 
     kx = [k[0] for k in struct]
     ky = [k[1] for k in struct]

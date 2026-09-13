@@ -122,12 +122,13 @@ const ENEMY := {
 		"vz": 2.2, "range_z": Vector2(-44.0, 40.0),
 	},
 	"BOSS": {
-		# 方舟战舰（17×24×6 × 0.5 = 8.5×12×3）：一轮周期的压轴。
+		# 方舟战舰（M3 后续精细化：20×38×12 × 0.5 = 10×19×6，体积约旧版 5 倍）：
+		# 分层舰体 + 双三联装主炮 + 四级舰桥 + 舷侧副炮 + 舰尾引擎组，一轮周期的压轴。
 		# layer=AIR 刻意不放 HIGH——Boss 战必须与玩家同一平面才读得清（altitude.gd 头注）；
 		# vz=-7.0 正好抵消滚动速度 → 与玩家相对静止（combat.gd 的 hold 处理），Boss 战是定点的。
 		# scale 0.5 与方块雄鹰同值（全表唯一例外，见 combat.gd::_new_unit_node）。
 		"vox": "boss", "scale": 0.5, "hp": 80, "layer": "AIR", "beh": "boss",
-		"hit": Vector2(7.0, 3.4), "score": 2000, "stars": 0,
+		"hit": Vector2(5.0, 9.5), "score": 2000, "stars": 0,
 		"gun": "", "vz": -7.0, "hold": true,
 	},
 }

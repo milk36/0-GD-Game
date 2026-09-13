@@ -27,7 +27,6 @@ op 层则原样复用（`voxspec.compile_part`），不复制代码。
 import glob
 import json
 import os
-import random
 import sys
 
 import voxlib
@@ -95,14 +94,7 @@ def build(spec):
 
     v = dict(struct)
     if spec["base"] == "sea":
-        rng = random.Random(gt.SEED + 31)          # 每张结构瓦独立噪声，与 gen_tiles 解耦
-        n4 = gt.pnoise(4, rng)
-        n8 = gt.pnoise(8, rng)
-        for y in range(s):
-            for x in range(s):
-                wu = (x % gt.TILE) / float(gt.TILE)
-                wv = (y % gt.TILE) / float(gt.TILE)
-                v[(x, y, 0)] = gt._sea_color(x, y, n4(wu, wv) * 0.7 + n8(wu, wv) * 0.3)
+        v.update(gt.sea_panel(s, gt.SEED + 31))    # 每张结构瓦独立噪声，与 gen_tiles 解耦
 
     zs = [k[2] for k in struct]
     info = {

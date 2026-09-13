@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>瓦片雄鹰 · 单位与弹幕图鉴</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0e1a; color: #cdd3e8;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    max-width: 1080px; margin: 0 auto; padding: 40px 24px; line-height: 1.75;
+  }
+  h1 {
+    color: #00f0ff; font-size: 1.8em; letter-spacing: 2px;
+    border-bottom: 2px solid #ff2a6d; padding-bottom: 12px;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.4);
+  }
+  h2 { color: #ff2a6d; margin-top: 40px; text-shadow: 0 0 12px rgba(255, 42, 109, 0.35); }
+  h3 { color: #ffe600; margin-top: 24px; }
+  code {
+    background: #131a2e; border: 1px solid #2a3554; border-radius: 6px;
+    padding: 2px 8px; font-size: 0.92em; color: #7ee7ff;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { border: 1px solid #2a3554; padding: 8px 14px; text-align: left; vertical-align: top; }
+  th { background: #131a2e; color: #00f0ff; }
+  td img {
+    width: 220px; border-radius: 6px; border: 1px solid #2a3554; display: block;
+  }
+  .rowimg { width: 300px; border-radius: 6px; border: 1px solid #2a3554; display: block; margin: 8px 0; }
+  .note {
+    background: #10182c; border-left: 4px solid #ffe600;
+    padding: 12px 18px; border-radius: 6px; margin: 14px 0;
+  }
+  .tag {
+    display: inline-block; border-radius: 4px; padding: 0 8px; margin-right: 6px;
+    font-size: 0.85em; border: 1px solid #2a3554; background: #131a2e;
+  }
+  .t-air { color: #7ef9ff; } .t-ground { color: #ffd23f; }
+  .t-low { color: #00ff9f; } .t-high { color: #ff2a6d; }
+</style>
+</head>
+<body>
+
+<h1>▚ 瓦片雄鹰 · 单位与弹幕图鉴</h1>
+
+<p>全部敌人单位与弹幕素材的<b>实机渲染图鉴</b>。图片由 <code>tools/tile_eagle/shot.gd</code>
+离屏出图（体素资产 0.3 世界单位/体素，与游戏内完全同源），裁切单图在
+<code>tools/tile_eagle/gallery/</code>。数值唯一事实源是
+<code>scripts/tile_eagle/waves.gd</code> 的 <code>ENEMY</code> 表——
+<b>改了数值先改表，再回来更新本页</b>。</p>
+
+<div class="note"><b>高度分层</b>（altitude.gd）：
+<span class="tag t-ground">GROUND 0.30 贴海/贴地</span>
+<span class="tag t-low">LOW 3.4 掠海</span>
+<span class="tag t-air">AIR 7.5 主空域</span>
+<span class="tag t-high">HIGH 11.5 精英层</span>
+弹幕统一在 AIR 层（combat.gd 头注），非 AIR 单位开火时以枪焰桥接。</div>
+
+<!-- ================================================================ -->
+<h2>1. 基础段单位</h2>
+
+<table>
+  <tr><th>图</th><th>单位</th><th>数值（waves.gd ENEMY）</th><th>行为</th></tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e3_drone.png" alt="E3"></td>
+    <td><b>E3 无人机</b><br><code>E3.vox + E3R.vox</code></td>
+    <td>HP 3 · AIR · 30 分/1★ · 撞击伤害<br>直线漂移（vx 横移），机枪不开火</td>
+    <td>drift：五叶旋翼独立旋转（14 rad/s），掠过战场</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e4_fighter.png" alt="E4"></td>
+    <td><b>E4 战斗机</b><br><code>E4.vox</code></td>
+    <td>HP 4 · AIR · 50 分/1★<br>自机狙 ×1（弹速 7.0）</td>
+    <td>weave：正弦横摆 ±1.5</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/tile_gallery_ground.png" alt="E1/E2"></td>
+    <td><b>E1 炮台</b>（底座+E1H 炮头）<br><b>E2 环形机</b></td>
+    <td>E1：HP 3 · GROUND · 50 分/1★ · 自机狙 ×3<br>E2：HP 4 · GROUND · 80 分/2★ · 环形 ×14</td>
+    <td>地面单位骑岛落位（等陆队列）；炮头 look_at 锁玩家</td>
+  </tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>2. 精英段单位（t ≥ 112s 逐款引入）</h2>
+
+<table>
+  <tr><th>图</th><th>单位</th><th>数值（waves.gd ENEMY）</th><th>行为</th></tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e5_cruiser.png" alt="E5"></td>
+    <td><b>E5 巡洋机</b><br><code>E5.vox</code></td>
+    <td>HP 5 · AIR · 120 分/2★<br>扇形压制 ×5（spread 42°）</td>
+    <td>strafe：大幅横移扫场（clamp ±13）</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e6_elite_cruiser.png" alt="E6"></td>
+    <td><b>E6 精英炮舰</b><br><code>E6.vox</code></td>
+    <td>HP 20 · HIGH · 400 分/5★<br>环形 ×12 / 自机狙 ×3 交替；濒死逃逸</td>
+    <td>elite：缓推 + 微幅横移，hp&lt;40% 加速 flee</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e7_heli.png" alt="E7"></td>
+    <td><b>E7 武装直升机</b><br><code>E7.vox + E7R.vox</code></td>
+    <td>HP 5 · AIR · 180 分/2★<br>双管短点射 ×2（spread 20°）</td>
+    <td>heli：正弦侧移，主旋翼独立旋转（12 rad/s）</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e8_bomber.png" alt="E8"></td>
+    <td><b>E8 飞翼轰炸机</b><br><code>E8.vox</code></td>
+    <td>HP 10 · HIGH · 300 分/4★<br>环形 ×8（慢速炸弹 4.5）</td>
+    <td>bomber：直压 + 定期四周撒弹</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e9_catamaran.png" alt="E9"></td>
+    <td><b>E9 双体炮艇</b><br><code>E9.vox</code></td>
+    <td>HP 4 · LOW · 150 分/2★ · 撞击伤害<br>导弹弹前向点射 ×1（拖尾）</td>
+    <td>raider：掠海快速冲撞（vz 8.0 + vx）</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e10_fortress.png" alt="E10"></td>
+    <td><b>E10 浮空盾堡</b><br><code>E10.vox</code></td>
+    <td>HP 24 · HIGH · 800 分/6★（小 Boss 级）<br>环形 ×12 / 自机狙 ×3 交替</td>
+    <td>fortress：极缓推进 + 微幅横移</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e11_battleship.png" alt="E11"></td>
+    <td><b>E11 战列舰</b><br><code>E11.vox + E11T.vox ×2</code></td>
+    <td>HP 30 · LOW · 600 分/5★<br>双三联装炮塔交替齐射（×3 spread 8°）</td>
+    <td>battleship：前后炮塔<b>独立限速旋转</b>追踪（1.6 rad/s），对准 ±0.2rad 才开火</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_e12_gunship.png" alt="E12"></td>
+    <td><b>E12 重型武装直升机</b><br><code>E12.vox + E12R.vox</code></td>
+    <td>HP 6 · AIR · 260 分/3★<br>机枪短点射 ×2（needle 速弹）+ 追踪导弹</td>
+    <td>gunship：导弹限转追踪（可躲）、左右短翼交替、同屏 ≤6</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/tile_gallery_projectiles.png" alt="E13"></td>
+    <td><b>E13 喷气式飞翼</b><br><code>E13.vox</code>（YB-49 风）</td>
+    <td>HP 14 · HIGH · 450 分/4★<br>横向弹墙 9 列（shell 慢弹，玩家列留缺口）</td>
+    <td>carpet：HIGH 层直压，缺口跟玩家换位</td>
+  </tr>
+  <tr>
+    <td><img src="../tools/tile_eagle/gallery/unit_boss_ark.png" alt="BOSS"></td>
+    <td><b>方舟战舰（BOSS）</b><br><code>boss.vox</code></td>
+    <td>HP 80 · AIR（hold 定点）· 2000 分<br>P1 扇形/自机狙 → P2 增援+激光 → P3 双螺旋+环</td>
+    <td>boss：三阶段 + 清屏换招 + 材质泛红；击破星星喷泉 +2000</td>
+  </tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>3. 弹幕素材</h2>
+
+<table>
+  <tr><th>图</th><th>素材（B_* 常量）</th><th>视觉 / 使用者</th></tr>
+  <tr><td><img src="../tools/tile_eagle/gallery/proj_player_bullet.png" alt="自机弹"></td>
+      <td><b>自机弹</b></td><td>青色方块（0.42），46 速直线，0.115s 间隔</td></tr>
+  <tr><td><img src="../tools/tile_eagle/gallery/proj_enemy_bullet.png" alt="圆玉"></td>
+      <td><b>B_ORB 圆玉</b></td><td>粉壳（0.62）+ 白芯（0.30）双实例；基准弹，多数单位</td></tr>
+  <tr><td><img src="../tools/tile_eagle/gallery/proj_muzzle_flash.png" alt="枪焰"></td>
+      <td><b>枪焰桥接</b></td><td>GROUND/LOW/HIGH 单位开火时补 AIR 层枪焰，把高度差接起来</td></tr>
+  <tr><td><img src="../tools/tile_eagle/gallery/proj_missile.png" alt="导弹"></td>
+      <td><b>B_MISSILE 导弹弹</b></td><td>细长条朝速度方向 + 白烟拖尾；E9 前向点射（池化）/ E12 追踪导弹（独立数组限转）</td></tr>
+  <tr><td><img src="../tools/tile_eagle/gallery/proj_star.png" alt="星"></td>
+      <td><b>掉落星</b></td><td>击落掉落、落海弹跳、磁吸半径 3.0 拾取（10 分/星）</td></tr>
+  <tr><td><img src="../tools/tile_eagle/gallery/proj_explosion.png" alt="爆炸"></td>
+      <td><b>爆炸碎片</b></td><td>击杀/受击的碎块迸溅（重力 24 + 收缩）</td></tr>
+</table>
+
+<p>细长类（needle/missile）由实例池 <code>shape=1</code> 渲染：长轴 -Z 对准速度方向、
+无自转；<code>trail=1</code> 的弹每帧由宿主补白烟（fx 池）。</p>
+
+<!-- ================================================================ -->
+<h2>4. 全景图鉴（大图）</h2>
+
+<table>
+  <tr><th>图</th><th>内容</th></tr>
+  <tr><td><img class="rowimg" src="../tools/tile_eagle/tile_gallery_small.png" alt="小型机群"></td>
+      <td><code>tile_gallery_small</code> —— 小型机群（E3/E4/E7/E9/E12/E5）</td></tr>
+  <tr><td><img class="rowimg" src="../tools/tile_eagle/tile_gallery_large.png" alt="大型单位"></td>
+      <td><code>tile_gallery_large</code> —— 大型单位（E6/E8/E10/E11/BOSS）</td></tr>
+  <tr><td><img class="rowimg" src="../tools/tile_eagle/tile_gallery_ground.png" alt="地面单位"></td>
+      <td><code>tile_gallery_ground</code> —— 地面单位骑岛进画面（E1/E2，预热 4.5s）</td></tr>
+  <tr><td><img class="rowimg" src="../tools/tile_eagle/tile_gallery_projectiles.png" alt="弹幕"></td>
+      <td><code>tile_gallery_projectiles</code> —— 弹幕全家福（cam_size 12 三倍变焦）</td></tr>
+  <tr><td><img class="rowimg" src="../tools/tile_eagle/tile_gallery_laser.png" alt="激光"></td>
+      <td><code>tile_gallery_laser</code> —— Boss 预警激光光束态</td></tr>
+</table>
+
+<p>重新出图：<code>Godot --path &lt;项目&gt; -s res://tools/tile_eagle/shot.gd</code>
+（必须带 GPU，不能用 --headless——离屏渲染三坑见 tools-vox.html §5）。
+裁切单图的下游流程产出到 <code>gallery/</code>。</p>
+
+<p style="margin-top:40px;color:#5a6486">— 生成于 2026-09-13 · demo-game · 数值源 waves.gd（改表后同步本页）</p>
+
+</body>
+</html>

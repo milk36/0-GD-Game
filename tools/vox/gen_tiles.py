@@ -74,6 +74,21 @@ def _band(x, y):
     return math.sin(2 * math.pi * (x + y) / BAND_PERIOD + BAND_PHASE)
 
 
+def sea_panel(s, seed):
+    """s×s 的整张水面板 {(x,y,0): 颜色}（z=0 单层，瓦片/超级瓦通用底）。
+    mod-16 噪声网格 + 全局浪带 → 与 sea_* 逐像素同源，瓦界无缝。
+    独立 seed 与 gen_tiles 主噪声解耦（terraintile / gen_pirate_tiles 共用）。"""
+    rng = random.Random(seed)
+    n4 = pnoise(4, rng)
+    n8 = pnoise(8, rng)
+    panel = {}
+    for y in range(s):
+        for x in range(s):
+            wu, wv = (x % TILE) / float(TILE), (y % TILE) / float(TILE)
+            panel[(x, y, 0)] = _sea_color(x, y, n4(wu, wv) * 0.7 + n8(wu, wv) * 0.3)
+    return panel
+
+
 def _sea_color(x, y, n):
     """浪带 + 噪声分色：所有海面系瓦共用，保证色带跨瓦对齐。
 
