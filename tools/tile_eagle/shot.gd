@@ -47,7 +47,8 @@ const SHOTS := [
 	{"mode": 0, "name": "tile_elite.png", "clouds": false, "elite": true, "spawn": [
 		["E6", -3.0, -32.0], ["E10", 5.0, -28.0], ["E5", -10.0, -24.0], ["E7", 10.0, -20.0],
 	]},
-	# 方舟战舰（M3）：debug_spawn 摆在中距，预热 2.8s 让它进完场（z→-9）并开一轮扇形。
+	# 方舟战舰：debug_spawn 摆在中距，预热 2.8s 让它进完场（z→-9）并开一轮扇形。
+	# 注意舰长 19 单位 —— 任何变焦都会出框，特写靠从这张按像素裁切（见 gallery/unit_boss_ark.png）。
 	# 血条在 HUD 右上角（boss_info 非空即显示）。
 	{"mode": 0, "name": "tile_boss.png", "clouds": false, "elite": true, "spawn": [
 		["BOSS", 0.0, -30.0],
@@ -68,11 +69,13 @@ const SHOTS := [
 	# HIGH/LOW 按 0.3728*高度 修正）。preroll 压到 0.05s（相机稳定即可，漂移 ~10px，裁切框留了余量）。
 	{"mode": 0, "name": "tile_gallery_small.png", "clouds": false, "elite": true, "hide_player": true,
 			"preroll": 0.05, "spawn": [
-		["E3", -7, -12], ["E4", 0, -12], ["E7", 7, -12],
-		["E9", -7, 4], ["E12", 0, 4], ["E5", 7, 4]]},
+		["E3", -7, -14], ["E4", 0, -14], ["E7", 7, -14],
+		["E9", -7, 0], ["E12", 0, 0], ["E5", 7, 0],
+		["E14", -7, 14], ["E15", 0, 14]]},
 	{"mode": 0, "name": "tile_gallery_large.png", "clouds": false, "elite": true, "hide_player": true,
 			"preroll": 0.05, "spawn": [
-		["E6", -9, -8], ["E8", 0, -8], ["E10", 9, -8], ["E11", -7, 7], ["BOSS", 7, 7]]},
+		["E6", -9, -8], ["E8", 0, -8], ["E10", 9, -8],
+		["E11", -10, 7], ["E16", 0, 7], ["BOSS", 10, 7]]},
 	# 地面单位（E1/E2）走落位队列：只认「屏外正要进屏」的岛 → 预热 4.5s 让它们骑着岛进画面
 	{"mode": 0, "name": "tile_gallery_ground.png", "clouds": false, "elite": true, "hide_player": true,
 			"preroll": 4.5, "spawn": [["E1", 0, 0], ["E2", -8, 0]]},
@@ -166,8 +169,8 @@ func _initialize() -> void:
 					pn.position.x = sn.position.x + ro.x
 					pn.position.z = sn.position.z + ro.y
 					pn.position.y = 7.5    # altitude.gd 的 AIR
-			if shot.has("cam_size"):
-				(inst.get("cam") as Camera3D).size = float(shot["cam_size"])
+			# 相机正交尺寸每张 shot 复位（cam.size 是常驻属性，不复位会泄漏到后续镜头）
+			(inst.get("cam") as Camera3D).size = float(shot.get("cam_size", 34.0))
 			if bool(shot.get("hide_player", false)):
 				# 图鉴用：直接隐藏自机（position 会被 player._process 的 z clamp 拉回画面）
 				(inst.get("player") as Node3D).visible = false

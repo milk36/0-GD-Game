@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://mvsi00cfwdmg"
-path="res://.godot/imported/_preview_isle_grass.png-5b64f486dac1e341dca067ba906d033f.ctex"
+uid="uid://dd6reai2hsp0i"
+path="res://.godot/imported/_preview_island_4x4.png-ea844208c91498932d2f5b9f6865bf59.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://tools/vox/_preview_isle_grass.png"
-dest_files=["res://.godot/imported/_preview_isle_grass.png-5b64f486dac1e341dca067ba906d033f.ctex"]
+source_file="res://tools/vox/_preview_island_4x4.png"
+dest_files=["res://.godot/imported/_preview_island_4x4.png-ea844208c91498932d2f5b9f6865bf59.ctex"]
 
 [params]
 

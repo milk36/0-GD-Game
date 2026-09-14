@@ -69,6 +69,7 @@ var _fire_cd := 0.0
 var _meshes := {}
 var _mat: Material                  # 单位受光材质（全场共享一份）
 var _rng := RandomNumberGenerator.new()
+var _trail_cd := 0.0                # 导弹弹拖尾节流器
 
 # ---- M3：幸存者救援 ----
 var survivors: Array = []           # {n, ex, arm_l, arm_r, roping, prog, anchor_y}
@@ -110,10 +111,10 @@ func setup() -> void:
 	pb = _mk_pool(96, un)
 	eb = _mk_pool(512, un)
 	stars = _mk_pool(256, un)
-	fx = _mk_pool(320, un)
+	fx = _mk_pool(480, un)   # 320 偏紧：导弹拖尾+爆炸碎片+枪焰共享
 	for k in ["E1", "E1H", "E2", "E3", "E3R", "E4",
 			"E5", "E6", "E7", "E7R", "E8", "E9", "E10", "E11", "E11T",
-			"E12", "E12R", "E13", "boss"]:
+			"E12", "E12R", "E13", "E14", "E15", "E16", "boss"]:
 		_meshes[k] = VoxReader.read_mesh("res://assets/vox/units/%s.vox" % k)
 	# 营救件：绳索（细长盒，按目标距离缩放 z）+ 机腹营救进度圈（挂在玩家机上）
 	var rm := StandardMaterial3D.new()
@@ -571,7 +572,8 @@ func _tick_unit(e: Dictionary, n: Node3D, gp: Vector3, delta: float) -> void:
 			if rotor != null:
 				rotor.rotate_y(delta * 14.0)
 		"weave":
-			n.position.x = float(e["x0"]) + sin(float(e["age"]) * 2.0) * 1.5
+			# 振幅可由 def.sway 覆盖（零式这类灵活机摆得比常规机大）
+			n.position.x = float(e["x0"]) + sin(float(e["age"]) * 2.0) * float(def.get("sway", 1.5))
 			_fire_gate(e, def, gp, delta, gp)
 		# ---- 精英段（M1 §16.2）。横向位移一律 clamp 到走廊 ±13：飞出走廊就再也打不到，
 		#      玩家只能干看着（原作 E7/E5 的同类分支也是这么夹的）。
@@ -776,7 +778,7 @@ func _enemy_bullet(p: Vector3, v: Vector3, col: Color, kind := B_ORB) -> void:
 		B_SHELL:
 			eb.spawn(q, v, col, 0.9, 8.0, 0.0, Vector3.ZERO, false, 0)
 		B_MISSILE:
-			eb.spawn(q, v, col, 1.1, 8.0, 0.0, Vector3.ZERO, false, 1, 1)
+			eb.spawn(q, v, col, 1.1, 5.0, 0.0, Vector3.ZERO, false, 1, 1)
 		_:
 			eb.spawn(q, v, col, 0.62, 8.0)
 			eb.spawn(q, v, COL_WHITE, 0.3, 8.0)
@@ -1045,12 +1047,21 @@ func _burst(at: Vector3, col: Color, n: int) -> void:
 func _update_bullets(delta: float) -> void:
 	pb.update(delta)
 	eb.update(delta)
-	for j in eb.count:   # 导弹弹拖尾（trail=1 的细长弹，每帧一缕白烟）
-		if int(eb.trail[j]) == 1:
-			fx.spawn(eb.pos[j] - Vector3(eb.vel[j]).normalized() * 0.8,
+	_trail_cd = maxf(_trail_cd - delta, 0.0)
+	var trail_tick := _trail_cd <= 0.0      # 拖尾节流：每 0.045s 一轮（此前每帧 spawn，
+	if trail_tick:                          # 每枚导弹常驻 ~13 缕白烟，fx 池被挤爆、
+		_trail_cd = 0.045                   # 击毁爆炸碎片反被丢弃——「击毁后满屏残留」的根因）
+	for j in eb.count:
+		# 出界回收：导弹弹寿命 5s 且无此判定时会带着拖尾跨整条走廊飞 8 秒
+		var bp: Vector3 = eb.pos[j]
+		if bp.z > RECYCLE_Z or bp.z < -70.0 or absf(bp.x) > 26.0:
+			eb.kill(j)
+			continue
+		if int(eb.trail[j]) == 1 and trail_tick:
+			fx.spawn(bp - Vector3(eb.vel[j]).normalized() * 0.8,
 					Vector3(eb.vel[j]) * -0.12 + Vector3(_rng.randf_range(-1, 1),
 							_rng.randf_range(0, 1.5), _rng.randf_range(-1, 1)),
-					COL_WHITE, 0.26, 0.22, 0.0, Vector3.ZERO, true)
+					COL_WHITE, 0.22, 0.15, 0.0, Vector3.ZERO, true)
 	# 自机弹 × 敌机（XZ 判定，高度不参与）
 	var i := 0
 	while i < pb.count:
@@ -1133,6 +1144,14 @@ func _damage(e: Dictionary, dmg: int) -> void:
 	var def: Dictionary = e["def"]
 	var n: Node3D = e["n"]
 	var gp := n.global_position
+	# 登陆艇（def.drop）：击沉时放出搭载的地面单位 —— 走落位队列，
+	# 落到前方的岛上；等不到岛就按队列规则兜底（与正常刷兵同一套纪律）
+	var drop: Array = def.get("drop", [])
+	var di := 0
+	for dt in drop:
+		_spawn({"t": String(dt),
+				"x": clampf(gp.x + (-3.0 if di % 2 == 0 else 3.0), -13.0, 13.0)})
+		di += 1
 	_burst(gp, COL_PINK, 12)
 	_burst(gp, COL_WHITE, 6)
 	SFX.play("eagle_boom")

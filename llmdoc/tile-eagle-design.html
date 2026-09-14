@@ -1205,6 +1205,35 @@ HUD。中间还踩了一个隐蔽的：进场目标改成 -9 后<b>完成判定�
 （实测坐标钉在 -14.0 不动，三次调参数画面毫无反应）——两处必须同一个常量
 （<code>BOSS_HOLD_Z</code>）。<b>调「走到哪」之前先查「怎么算走到」</b>。</div>
 
+<h3>18.2d 方舟战舰精细化（Boss 重做）</h3>
+<p>需求反馈：「模型比较粗、比例小没压迫感、细节不够，不符合 Boss 设定」。旧版
+<code>boss.vox</code> 17×24×6 → 8.5×12×3 世界单位，实际只是「一块平板 + 两个红盒子 +
+一个深色方块」——和 E11 战列舰（4.8×13.8×2.4）同量级，旗舰没有存在感。</p>
+<table>
+<tr><th>项</th><th>旧</th><th>新</th></tr>
+<tr><td>体素 / 世界尺寸</td><td>17×24×6 → 8.5×12×3</td><td class="ok">20×38×12 → <b>10×19×6</b>（体积 ≈5 倍）</td></tr>
+<tr><td>长宽比</td><td>1.45:1（像驳船/要塞）</td><td class="ok">1.9:1（四段半宽函数：舰尾圆角→平行中体→前段收窄→舰首收尖）</td></tr>
+<tr><td>结构</td><td>平板 + 2 红盒 + 1 深盒</td>
+<td class="ok">五层舰体（舰底/红水线/舷侧下/舷侧上/主甲板）+ 舷侧装甲缝 + 舷灯 +
+主甲板（中线走道 + 横向缝 + 白虚线标线）+ <b>前后双三联装主炮</b>（抬高炮座 + 顶板 + 白炮口）
++ 四级内收舰桥（三层观察窗 + 桅杆红灯）+ 舷侧副炮 ×2 + 舰尾引擎组（三喷口辉光 + 排气羽）+
+舰首冲角 + 舰尾识别带</td></tr>
+<tr><td>配色</td><td colspan="2">沿用旧 boss 的八色 livery（暗灰梯形 / 阵营红水线 / 青窗 / 黄引擎 / 白炮口）
+—— 只重做几何，不改识别色</td></tr>
+</table>
+<div class="risk"><b>三处挂点耦合（改尺寸必复核）</b>：① <code>combat.gd::BOSS_HOLD_Z</code> —— 悬停位，
+按新舰长 19 取 −9（视野上缘 ≈ −18.3，舰首略出框 = 压顶感）；② <code>waves.gd</code> 的 BOSS
+<code>hit</code> —— 命中半径从 (7.0, 3.4) 改 (5.0, 9.5)（半宽半长）；③ scale 0.5 不变。
+<b>顺带修掉一个镜头 bug</b>：<code>shot.gd</code> 的 <code>cam_size</code> 是常驻属性，
+不复位会泄漏到后续镜头（弹幕图鉴的 3 倍变焦曾漏到 Boss 图）——现在每张 shot 都复位默认 34。</div>
+<figure><img src="../tools/tile_eagle/tile_boss.png" alt="方舟（游戏内构图）" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>游戏内构图（<code>debug_spawn</code> 进场后悬停在 z=−9）：舰长 19 单位横跨画面高度约一半，
+舰首顶到画面上缘——方舟第一次有了「压顶」的存在感（自机在下方作比例参照）</figcaption></figure>
+<figure><img src="../tools/tile_eagle/tile_boss_closeup.png" alt="方舟特写" style="width:100%;border:1px solid #2a3554;border-radius:8px">
+<figcaption>细节特写（从 1× 实拍图裁切 2 倍放大；舰长 19 单位下<b>任何变焦都会出框</b>，
+所以特写只能靠像素裁切）：分层甲板与装甲缝、双三联装主炮与炮口、舰桥窗排与桅杆红灯、
+白色甲板标线、红水线与舰首冲角</figcaption></figure>
+
 <h3>18.2c 重型武装直升机 E12（M3 后续新增的敌方型号）</h3>
 <p>需求方补的资产：<code>E12.vox</code>（13×25×8 = 3.9×7.5×2.4，比 E7 大一圈）+
 <code>E12R.vox</code>（五叶主旋翼，单层）。机头朝向用「座舱/航灯颜色定位」核对过
@@ -1215,6 +1244,25 @@ HUD。中间还踩了一个隐蔽的：进场目标改成 -9 后<b>完成判定�
 <figure><img src="../tools/tile_eagle/tile_gunship.png" alt="重型武装直升机" style="width:100%;border:1px solid #2a3554;border-radius:8px">
 <figcaption>重型武装直升机取景（<code>debug_spawn</code> 预热 1.6s，落在画面中上部、与自机斜向错开）：
 机身/短翼/尾梁/尾旋翼/主旋翼（旋转中）齐全，粉色为座舱盖，正对下方玩家</figcaption></figure>
+
+<h3>18.2e 野牛登陆艇 E16 / 零式 E14·E15（M3 后续新增的敌方型号）</h3>
+<p>三个新型号，生成器为 <code>tools/vox/gen_hovercraft.py</code> 与 <code>tools/vox/gen_zero.py</code>：</p>
+<ul>
+<li><b>E16 野牛气垫登陆艇</b>（22×30×11 = 6.6×9.0×3.3，全表最宽最厚）：刻意「矮胖厚实」——
+比战列舰宽 1.4 倍高 1.4 倍、长只有 0.65 倍。气垫围裙（比舰体宽一圈的暗钢底边）+ 品红识别带 +
+甲板中部<b>货舱载荷</b>（大小/颜色错落的箱体与车辆）+ 左舷舰桥 + 艏跳板 + 舰尾<b>三具导管螺旋桨</b>。
+行为复用 fortress（扇形↔环形交替）；新增 <code>def.drop</code> 机制：<b>击沉时放出搭载的 E1/E2</b>
+（走落位队列，等不到岛按队列纪律兜底）—— 登陆艇的戏就是「沉了也要把兵送上岛」。</li>
+<li><b>E14/E15 零式战斗机</b>（13×15×5 = 3.9×4.5×1.5，全表最小；同一机体两种涂装：红 / 金黄）：
+下单翼椭圆翼形 + 白日徽 + 青座舱 + 暗色发动机罩。行为 weave + <code>def.sway 3.5</code>
+（常规机 1.5）—— 小、快、摆得多。红机单发快弹，金机双管点射，两条中队在 t=176 交叉进场。</li>
+</ul>
+<div class="risk"><b>踩坑（第三次撞名，这次 Godot 直接报错）</b>：把登陆艇编号成 E13 时，
+工作区里 E13 已被「喷气飞翼（carpet 弹墙轰炸）」占用——<b>且我的生成器把对方的
+<code>E13.vox</code> 覆盖了</b>。幸运的是该文件已入 git（commit da5c72d），
+<code>git checkout HEAD -- E13.vox</code> 完整恢复。教训固化：<b>新模型落盘前必须
+<code>grep 型号名 waves.gd</code> + <code>git log --all -- 该文件</code> 双查</b>；
+编号分配也应该集中登记（README 单位表就是登记处）。</div>
 
 <h3>18.3 结算与存档（<code>tile_save.gd</code>）</h3>
 <p>死亡即出结算面板（得分 / 最高分+新纪录标注 / 击落 / 救援 / 方舟击破数，回车重开 / Q 返回）。
